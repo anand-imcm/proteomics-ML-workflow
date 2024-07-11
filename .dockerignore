@@ -1,0 +1,7 @@
+data/
+workflows/
+cromwell-workflow-logs/
+cromwell-executions/
+*.md
+.git
+notes-comments.txt
