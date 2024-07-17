@@ -39,5 +39,6 @@ if __name__ == "__main__":
     out_file = f"{csv_basename}.csv"
     if args.prefix:
         out_file = f"{args.prefix}.csv"
-    print (f"{args.csv}---->{out_file}")
-    # data_scaler(args.csv, out_file)
+    
+    data_scaler(args.csv, out_file)
+    print ("Output generated: {out_file}")
