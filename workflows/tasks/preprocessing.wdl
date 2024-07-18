@@ -11,12 +11,12 @@ task preprocessing {
     Int disk_size_gb = ceil(size(input_csv, "GB")) + 2
     command <<<
         set -euo pipefail
-        python /scripts/Step1-Zscores.py \
+        python /scripts/Step1_Zscores.py \
             -i ~{input_csv} \
             -p ~{output_prefix}
     >>>
     output {
-        File csv = output_prefix + ".csv"
+        File csv = output_prefix + "_norm.csv"
     }
     runtime {
         docker: "~{docker}"
