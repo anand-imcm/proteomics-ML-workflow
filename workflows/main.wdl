@@ -8,7 +8,7 @@ workflow main {
         String output_prefix
     }
     String pipeline_version = "1.0.0"
-    String container_src = "docker.io/library/proteomics"
+    String container_src = "docker.io/library/proteomics:~{pipeline_version}"
     call p.preprocessing {
         input: 
             input_csv = input_csv,
