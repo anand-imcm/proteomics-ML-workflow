@@ -23,8 +23,8 @@
 The main inputs to the workflow are:
 
 - **required**
-  - `input_csv` : Input file in .csv format.
-  - `output_prefix` : Sample name. This will be used as prefix for all the output files.
+  - `input_csv` : [File] Input file in .csv format.
+  - `output_prefix` : [String] Sample name. This will be used as prefix for all the output files.
 - **optional**
   - `preprocessing.cpu` : [Integer] Total number of CPUs to be used in the `preprocessing` step. Default value: `8`
   - `preprocessing.memory_gb`: [Integer] Total number of RAM to be used in the `preprocessing` step. Default value: `8`
@@ -34,7 +34,7 @@ The main inputs to the workflow are:
 The main output files are listed below:
 
 - **Preprocessing**
-  - `processed_csv` : The proecessed ouput file in .csv format.
+  - `processed_csv` : [File] The proecessed ouput file in .csv format.
   
 ## Components
 
