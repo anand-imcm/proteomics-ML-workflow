@@ -1,4 +1,5 @@
 import argparse
+from pathlib import Path
 import os
 import pandas as pd
 from sklearn.preprocessing import StandardScaler
@@ -35,10 +36,11 @@ def data_scaler(inp_csv, out_csv):
 
 if __name__ == "__main__":
     args = parse_arguments()
-    csv_basename = os.path.basename(args.csv)
-    out_file = f"{csv_basename}.csv"
+    csv_basename = Path(args.csv).stem
+    print (csv_basename)
+    out_file = f"{csv_basename}_norm.csv"
     if args.prefix:
-        out_file = f"{args.prefix}.csv"
+        out_file = f"{args.prefix}_norm.csv"
     
     data_scaler(args.csv, out_file)
-    print ("Output generated: {out_file}")
+    print (f"Output generated: {out_file}")
