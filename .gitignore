@@ -1,6 +1,5 @@
 data/
 test/
-workflows/
 cromwell-*/
 *.md
 .git
