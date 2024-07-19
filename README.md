@@ -36,14 +36,14 @@ The main inputs to the workflow are:
 The main output files are listed below:
 
 - **Preprocessing**
-  - `processed_csv` : [File] A `.csv` file containing the processed data.
+  - `processed_csv` : [File] A `.csv` file containing the standardized data.
 - **Classification**
-  - `confusion_matrix_plot` : Array[File] An array of files for confusion matrix plots.
-  - `roc_curve_plot` : Array[File] An array of files for ROC curve plots.
-  - `metrics_plot` : Array[File] An array of files for metrics plots.
-  - `data_pkl` : Array[File] An array of pickle files containing data.
-  - `model_pkl` : Array[File] An array of pickle files containing the model.
-  - `data_npy` : Array[File]  An array of NumPy files containing data.
+  - `confusion_matrix_plot` : Array[File] An array of files for confusion matrix plots, showing the prediction results for each class.
+  - `roc_curve_plot` : Array[File] An array of files for ROC curve plots, indicating the model's discriminative ability, including ROC & AUC for each group and the overall performance ROC & AUC of the model.
+  - `metrics_plot` : Array[File] An array of files for metrics plots, including evaluation metrics for each model: Accuracy, F1, Sensitivity, and Specificity.
+  - `data_pkl` : Array[File] An array of pickle files containing data used for SHAP calculations.
+  - `model_pkl` : Array[File] An array of pickle files containing the best model for SHAP calculations.
+  - `data_npy` : Array[File]  An array of NumPy files containing overall ROC data for models, used for comparing the overall ROC of each model.
 
 ## Components
 
