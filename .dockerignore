@@ -1,7 +1,8 @@
 data/
+test/
 workflows/
-cromwell-workflow-logs/
-cromwell-executions/
+cromwell-*/
+__pycache__/
 *.md
 .git
 notes-comments.txt
