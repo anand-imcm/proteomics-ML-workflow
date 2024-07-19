@@ -12,11 +12,10 @@
 - [ ] Usage instructions
 - [x] List all the components and their licenses
 
-
 ## Workflow Steps
 
 - **Preprocessing** : Performs Z-score normalization on the input data.
-- **Classification** : TODO
+- **Classification** : This step applies the user defined machine learning models (`KNN` or `RF`, or both) to the preprocessed data and generates predictions, plots, and other relevant evaluation metrics for all the models.
 
 ## Inputs
 
