@@ -1,14 +1,24 @@
 import argparse
+import sys
 from pathlib import Path
-from .Step2_RF import random_forest
-from .Step2_KNN import knn
+sys.path.append((str(Path(__file__).resolve().parent)))
+from joblib import Parallel, delayed
+from Step2_RF import random_forest
+from Step2_KNN import knn
 
 def parse_arguments():
     parser = argparse.ArgumentParser(description='Script to run classifiers')
     parser.add_argument('-i','--csv',type=str, help='Input file in CSV format', required=True)
-    parser.add_argument('-m','--model',type=str, choices=['KNN','RF'], help='Name of the model', required=True)
+    parser.add_argument('-m', '--model', type=str, nargs='+', choices=['KNN', 'RF'], help='Name of the model(s)', required=True)
     parser.add_argument('-p','--prefix',type=str, help='Output prefix')
     return parser.parse_args()
+
+def run_model(model, csv, prefix):
+    if model == "RF":
+        random_forest(csv, prefix)
+    elif model == "KNN":
+        knn(csv, prefix)
+    print(f"Finished {model}")
 
 if __name__ == "__main__":
     args = parse_arguments()
@@ -16,8 +26,6 @@ if __name__ == "__main__":
     if args.prefix:
         prefix = args.prefix
     prefix = Path(args.csv).stem
-    if args.model == "RF":
-        random_forest(args.csv,prefix)
-    elif args.model == "KNN":
-        knn(args.csv, prefix)
-    print (f"Finished {args.model}")
+    results = Parallel(n_jobs=-1, backend='multiprocessing', verbose=100)(
+        delayed(run_model)(model, args.csv, prefix) for model in args.model
+    )
