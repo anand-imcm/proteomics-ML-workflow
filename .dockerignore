@@ -2,6 +2,7 @@ data/
 test/
 workflows/
 cromwell-*/
+__pycache__/
 *.md
 .git
 notes-comments.txt
