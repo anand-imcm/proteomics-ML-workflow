@@ -5,11 +5,13 @@ sys.path.append((str(Path(__file__).resolve().parent)))
 from joblib import Parallel, delayed
 from Step2_RF import random_forest
 from Step2_KNN import knn
+from Step2_NN import neural_network
+from Step2_SVM import svm
 
 def parse_arguments():
     parser = argparse.ArgumentParser(description='Script to run classifiers')
     parser.add_argument('-i','--csv',type=str, help='Input file in CSV format', required=True)
-    parser.add_argument('-m', '--model', type=str, nargs='+', choices=['KNN', 'RF'], help='Name of the model(s)', required=True)
+    parser.add_argument('-m', '--model', type=str, nargs='+', choices=['KNN', 'RF', 'NN', 'SVM'], help='Name of the model(s)', required=True)
     parser.add_argument('-p','--prefix',type=str, help='Output prefix')
     return parser.parse_args()
 
@@ -18,6 +20,10 @@ def run_model(model, csv, prefix):
         random_forest(csv, prefix)
     elif model == "KNN":
         knn(csv, prefix)
+    elif model == "NN":
+        neural_network(csv, prefix)
+    elif model == "SVM":
+        svm(csv, prefix)
     print(f"Finished {model}")
 
 if __name__ == "__main__":
