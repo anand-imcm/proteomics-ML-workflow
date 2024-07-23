@@ -15,7 +15,11 @@
 ## Workflow Steps
 
 - **Preprocessing** : Performs Z-score normalization on the input data.
-- **Classification** : This step applies the user defined machine learning models (`KNN` or `RF`, or both) to the preprocessed data and generates predictions, plots, and other relevant evaluation metrics for all the models.
+- **Classification** : This step applies the machine learning models to the standardized data and generates predictions, plots, and other relevant evaluation metrics for all the models. The available algorithms are as follows:
+  - `KNN` (K-Nearest Neighbors)
+  - `RF` (Random Forest)
+  - `NN` (Neural Network)
+  - `SVM` (Support Vector Machine)
 
 ## Inputs
 
@@ -24,7 +28,7 @@ The main inputs to the workflow are:
 - **Required**
   - `input_csv` : [File] Input file in `.csv` format.
   - `output_prefix` : [String] Sample name. This will be used as prefix for all the output files.
-  - `model` : [String] Specify the model name(s) to use. Options include `KNN` and `RF`. Multiple model names can be entered together, separated by a space.
+  - `model` : [String] Specify the model name(s) to use. Options include `KNN`, `RF`, `NN` and `SVM`. Multiple model names can be entered together, separated by a space.
 - **Optional**
   - `preprocessing.cpu` : [Integer] Total number of CPUs to be used in the `preprocessing` step. Default value: `8`
   - `preprocessing.memory_gb` : [Integer] Total number of RAM to be used in the `preprocessing` step. Default value: `8`
