@@ -16,7 +16,7 @@ task preprocessing {
             -p ~{output_prefix}
     >>>
     output {
-        File csv = output_prefix + "_norm.csv"
+        File csv = output_prefix + ".csv"
     }
     runtime {
         docker: "~{docker}"

@@ -38,9 +38,9 @@ if __name__ == "__main__":
     args = parse_arguments()
     csv_basename = Path(args.csv).stem
     print (csv_basename)
-    out_file = f"{csv_basename}_norm.csv"
+    out_file = f"{csv_basename}.csv"
     if args.prefix:
-        out_file = f"{args.prefix}_norm.csv"
+        out_file = f"{args.prefix}.csv"
     
     data_scaler(args.csv, out_file)
     print (f"Output generated: {out_file}")
