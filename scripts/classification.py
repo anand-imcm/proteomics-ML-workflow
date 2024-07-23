@@ -31,7 +31,6 @@ if __name__ == "__main__":
     prefix = Path(args.csv).stem
     if args.prefix:
         prefix = args.prefix
-    prefix = Path(args.csv).stem
     results = Parallel(n_jobs=-1, backend='multiprocessing', verbose=100)(
         delayed(run_model)(model, args.csv, prefix) for model in args.model
     )
