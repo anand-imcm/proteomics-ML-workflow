@@ -20,6 +20,7 @@
   - `RF` (Random Forest)
   - `NN` (Neural Network)
   - `SVM` (Support Vector Machine)
+  - `XGB` (XGBoost)
 
 ## Inputs
 
@@ -28,7 +29,7 @@ The main inputs to the workflow are:
 - **Required**
   - `input_csv` : [File] Input file in `.csv` format.
   - `output_prefix` : [String] Sample name. This will be used as prefix for all the output files.
-  - `model` : [String] Specify the model name(s) to use. Options include `KNN`, `RF`, `NN` and `SVM`. Multiple model names can be entered together, separated by a space.
+  - `model` : [String] Specify the model name(s) to use. Options include `KNN`, `RF`, `NN`, `XGB`, and `SVM`. Multiple model names can be entered together, separated by a space.
 - **Optional**
   - `preprocessing.cpu` : [Integer] Total number of CPUs to be used in the `preprocessing` step. Default value: `8`
   - `preprocessing.memory_gb` : [Integer] Total number of RAM to be used in the `preprocessing` step. Default value: `8`
@@ -58,5 +59,6 @@ The main output files are listed below:
 | [joblib==1.4.2](www.github.com/joblib/joblib) | BSD-3-Clause |
 | [matplotlib==3.9.1](www.matplotlib.org) | PSF/BSD-compat |
 | [numpy==2.0.0](www.numpy.org/) | BSD |
-| [pandas==2.2.2](www.pandas.pydata.org/) | BSD 3-Clause License |
+| [pandas==2.2.2](www.pandas.pydata.org/) | BSD 3-Clause |
 | [scikit-learn==1.5.1](www.scikit-learn.org) | BSD-3-Clause |
+| [xgboost==2.1.0](https://github.com/dmlc/xgboost) |  Apache-2.0 |
