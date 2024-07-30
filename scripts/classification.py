@@ -13,7 +13,7 @@ from Step2_PLSDA import plsda
 def parse_arguments():
     parser = argparse.ArgumentParser(description='Script to run classifiers')
     parser.add_argument('-i','--csv',type=str, help='Input file in CSV format', required=True)
-    parser.add_argument('-m', '--model', type=str, nargs='+', choices=['KNN', 'RF', 'NN', 'SVM', 'XGB', 'PLSDA'], help='Name of the model(s)', required=True)
+    parser.add_argument('-m', '--model', type=str, nargs='+', choices=['KNN', 'RF', 'NN', 'SVM', 'XGB', 'PLSR'], help='Name of the model(s)', required=True)
     parser.add_argument('-p','--prefix',type=str, help='Output prefix')
     return parser.parse_args()
 
@@ -28,7 +28,7 @@ def run_model(model, csv, prefix):
         svm(csv, prefix)
     elif model == "XGB":
         xgboost(csv, prefix)
-    elif model == "PLSDA":
+    elif model == "PLSR":
         plsda(csv, prefix)
     print(f"Finished {model}")
 
