@@ -21,7 +21,7 @@
   - `NN` (Neural Network)
   - `SVM` (Support Vector Machine)
   - `XGB` (XGBoost)
-  - `PLSR` (Partial Least Squares Regression)
+  - `PLSDA` (Partial Least Squares Discriminant Analysis)
 
 ## Inputs
 
