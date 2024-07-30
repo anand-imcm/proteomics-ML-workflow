@@ -8,11 +8,12 @@ from Step2_KNN import knn
 from Step2_NN import neural_network
 from Step2_SVM import svm
 from Step2_XGBOOST import xgboost
+from Step2_PLSDA import plsda
 
 def parse_arguments():
     parser = argparse.ArgumentParser(description='Script to run classifiers')
     parser.add_argument('-i','--csv',type=str, help='Input file in CSV format', required=True)
-    parser.add_argument('-m', '--model', type=str, nargs='+', choices=['KNN', 'RF', 'NN', 'SVM', 'XGB'], help='Name of the model(s)', required=True)
+    parser.add_argument('-m', '--model', type=str, nargs='+', choices=['KNN', 'RF', 'NN', 'SVM', 'XGB', 'PLSDA'], help='Name of the model(s)', required=True)
     parser.add_argument('-p','--prefix',type=str, help='Output prefix')
     return parser.parse_args()
 
@@ -27,6 +28,8 @@ def run_model(model, csv, prefix):
         svm(csv, prefix)
     elif model == "XGB":
         xgboost(csv, prefix)
+    elif model == "PLSDA":
+        plsda(csv, prefix)
     print(f"Finished {model}")
 
 if __name__ == "__main__":
