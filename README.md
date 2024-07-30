@@ -22,6 +22,7 @@
   - `SVM` (Support Vector Machine)
   - `XGB` (XGBoost)
   - `PLSDA` (Partial Least Squares Discriminant Analysis)
+- **Combined ROC plot** : This step generates a plot containing the ROC curves for all the models specified by the user.
 
 ## Inputs
 
@@ -30,12 +31,14 @@ The main inputs to the workflow are:
 - **Required**
   - `input_csv` : [File] Input file in `.csv` format.
   - `output_prefix` : [String] Sample name. This will be used as prefix for all the output files.
-  - `model` : [String] Specify the model name(s) to use. Options include `KNN`, `RF`, `NN`, `XGB`, `PLSDA`, and `SVM`. Multiple model names can be entered together, separated by a space.
+  - `model_choices` : [String] Specify the model name(s) to use. Options include `KNN`, `RF`, `NN`, `XGB`, `PLSDA`, and `SVM`. Multiple model names can be entered together, separated by a space.
 - **Optional**
   - `preprocessing.cpu` : [Integer] Total number of CPUs to be used in the `preprocessing` step. Default value: `8`
   - `preprocessing.memory_gb` : [Integer] Total number of RAM to be used in the `preprocessing` step. Default value: `8`
   - `classification.cpu` : [Integer] Total number of CPUs to be used in the `classification` step. Default value: `16`
   - `classification.memory_gb` : [Integer] Total number of RAM to be used in the `classification` step. Default value: `16`
+  - `roc_plot.cpu` : [Integer] Total number of CPUs to be used in the `roc_plot` step. Default value: `8`
+  - `roc_plot.memory_gb` : [Integer] Total number of RAM to be used in the `roc_plot` step. Default value: `8`
 
 ## Outputs
 
@@ -50,6 +53,8 @@ The main output files are listed below:
   - `data_pkl` : Array[File] An array of pickle files containing data used for SHAP calculations.
   - `model_pkl` : Array[File] An array of pickle files containing the best model for SHAP calculations.
   - `data_npy` : Array[File]  An array of NumPy files containing overall ROC data for models, used for comparing the overall ROC of each model.
+- **Combined ROC plot** 
+  - `png` : [File] A `.png` file containing the ROC curves plot for all the models specified by the user.
 
 ## Components
 
