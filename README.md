@@ -53,7 +53,7 @@ The main output files are listed below:
   - `data_pkl` : Array[File] An array of pickle files containing data used for SHAP calculations.
   - `model_pkl` : Array[File] An array of pickle files containing the best model for SHAP calculations.
   - `data_npy` : Array[File]  An array of NumPy files containing overall ROC data for models, used for comparing the overall ROC of each model.
-- **Combined ROC plot** 
+- **Combined ROC plot**
   - `png` : [File] A `.png` file containing the ROC curves plot for all the models specified by the user.
 
 ## Components
