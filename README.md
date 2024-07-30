@@ -21,6 +21,7 @@
   - `NN` (Neural Network)
   - `SVM` (Support Vector Machine)
   - `XGB` (XGBoost)
+  - `PLSR` (Partial Least Squares Regression)
 
 ## Inputs
 
@@ -29,7 +30,7 @@ The main inputs to the workflow are:
 - **Required**
   - `input_csv` : [File] Input file in `.csv` format.
   - `output_prefix` : [String] Sample name. This will be used as prefix for all the output files.
-  - `model` : [String] Specify the model name(s) to use. Options include `KNN`, `RF`, `NN`, `XGB`, and `SVM`. Multiple model names can be entered together, separated by a space.
+  - `model` : [String] Specify the model name(s) to use. Options include `KNN`, `RF`, `NN`, `XGB`, `PLSR`, and `SVM`. Multiple model names can be entered together, separated by a space.
 - **Optional**
   - `preprocessing.cpu` : [Integer] Total number of CPUs to be used in the `preprocessing` step. Default value: `8`
   - `preprocessing.memory_gb` : [Integer] Total number of RAM to be used in the `preprocessing` step. Default value: `8`
