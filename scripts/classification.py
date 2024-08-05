@@ -9,11 +9,12 @@ from Step2_NN import neural_network
 from Step2_SVM import svm
 from Step2_XGBOOST import xgboost
 from Step2_PLSDA import plsda
+from Step2_VAE_MLP import vae
 
 def parse_arguments():
     parser = argparse.ArgumentParser(description='Script to run classifiers')
     parser.add_argument('-i','--csv',type=str, help='Input file in CSV format', required=True)
-    parser.add_argument('-m', '--model', type=str, nargs='+', choices=['KNN', 'RF', 'NN', 'SVM', 'XGB', 'PLSDA'], help='Name of the model(s)', required=True)
+    parser.add_argument('-m', '--model', type=str, nargs='+', choices=['KNN', 'RF', 'NN', 'SVM', 'XGB', 'PLSDA', 'VAE'], help='Name of the model(s)', required=True)
     parser.add_argument('-p','--prefix',type=str, help='Output prefix')
     return parser.parse_args()
 
@@ -30,6 +31,8 @@ def run_model(model, csv, prefix):
         xgboost(csv, prefix)
     elif model == "PLSDA":
         plsda(csv, prefix)
+    elif model == "VAE":
+        vae(csv, prefix)
     print(f"Finished {model}")
 
 if __name__ == "__main__":
