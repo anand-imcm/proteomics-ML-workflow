@@ -1,4 +1,5 @@
 from fpdf import FPDF
+import os
 
 # Function to add a page with images and text for each model
 def add_model_page(pdf, model_name):
@@ -15,8 +16,10 @@ def add_model_page(pdf, model_name):
     # Add ROC curve image
     pdf.image(f'{model_name}_roc_curve.png', x=105, y=20, w=90)
 
-    # Add SHAP radar chart image
-    pdf.image(f'{model_name}_shap_radar_plot.png', x=105, y=120, w=90)
+    # Add SHAP radar chart image if it exists
+    shap_image_path = f'{model_name}_shap_radar_plot.png'
+    if os.path.exists(shap_image_path):
+        pdf.image(shap_image_path, x=105, y=120, w=90)
 
 # Create PDF report
 pdf = FPDF()
@@ -29,16 +32,12 @@ pdf.image('overall_roc_curves.png', x=10, y=20, w=190)
 
 # List of model names
 model_names = [
-    # 'gaussiannb', 
-    # 'logistic_regression', 
-    # 'lightgbm', 
-    # 'vae', 
     'neural_network', 
     'random_forest', 
     'xgboost', 
     'svm', 
-    #'plsda', 
-    'knn'
+    'knn',
+    'plsda'
 ]
 
 # Add pages for each model
