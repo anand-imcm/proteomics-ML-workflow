@@ -15,7 +15,7 @@ model_map = {
 def parse_arguments():
     # Set up command line argument parsing
     parser = argparse.ArgumentParser(description="Plot ROC curves for selected models.")
-    parser.add_argument('-m', '--models', type=str, nargs='+', choices=['KNN', 'RF', 'NN', 'SVM', 'XGB', 'PLSDA'], help='Name of the model(s)', required=True)
+    parser.add_argument('-m', '--models', type=str, nargs='+', choices=['KNN', 'RF', 'NN', 'SVM', 'XGB', 'PLSDA','VAE'], help='Name of the model(s)', required=True)
     parser.add_argument('-p','--prefix',type=str, required=True, help='Output prefix')
     return parser.parse_args()
 

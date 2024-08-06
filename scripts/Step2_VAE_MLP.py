@@ -1,3 +1,5 @@
+import argparse
+from pathlib import Path
 import pandas as pd
 import numpy as np
 from sklearn.model_selection import StratifiedKFold, RandomizedSearchCV, cross_val_predict
@@ -19,6 +21,12 @@ import joblib
 
 # Suppress all warnings
 warnings.filterwarnings('ignore')
+
+def parse_arguments():
+    parser = argparse.ArgumentParser(description='Script to run classifiers')
+    parser.add_argument('-i','--csv',type=str, help='Input file in CSV format', required=True)
+    parser.add_argument('-p','--prefix',type=str, help='Output prefix')
+    return parser.parse_args()
 
 # Suppress output
 class SuppressOutput(contextlib.AbstractContextManager):
@@ -313,21 +321,28 @@ def vae(inp,prefix):
     
     print("SHAP values saved to vae_shap_values.csv")
     
-    # Plot top 5% SHAP value distribution (box plot)
-    top_5_percent = int(0.05 * len(feature_names))
-    top_features = shap_df.nlargest(top_5_percent, 'Mean SHAP Value')['Feature']
-    top_shap_indices = [list(feature_names).index(feature) for feature in top_features]
+    # # Plot top 5% SHAP value distribution (box plot)
+    # top_5_percent = int(0.05 * len(feature_names))
+    # top_features = shap_df.nlargest(top_5_percent, 'Mean SHAP Value')['Feature']
+    # top_shap_indices = [list(feature_names).index(feature) for feature in top_features]
     
-    # For binary classification, shap_values shape is (n_samples, n_features)
-    # For multi-class classification, shap_values shape is (n_classes, n_samples, n_features)
-    if num_classes == 2:
-        top_shap_values = shap_values[:, top_shap_indices]
-    else:
-        top_shap_values = shap_values[:, :, top_shap_indices].reshape(-1, len(top_shap_indices))
+    # # For binary classification, shap_values shape is (n_samples, n_features)
+    # # For multi-class classification, shap_values shape is (n_classes, n_samples, n_features)
+    # if num_classes == 2:
+    #     top_shap_values = shap_values[:, top_shap_indices]
+    # else:
+    #     top_shap_values = shap_values[:, :, top_shap_indices].reshape(-1, len(top_shap_indices))
     
-    plt.figure(figsize=(10, 6))
-    plt.title('Top 5% SHAP Value Distribution for VAE')
-    plt.boxplot(top_shap_values, vert=False, labels=top_features)
-    plt.xlabel('SHAP Value')
-    plt.savefig(f"{prefix}_vae_shap_value_distribution.png")
-    plt.close()
+    # plt.figure(figsize=(10, 6))
+    # plt.title('Top 5% SHAP Value Distribution for VAE')
+    # plt.boxplot(top_shap_values, vert=False, labels=top_features)
+    # plt.xlabel('SHAP Value')
+    # plt.savefig(f"{prefix}_vae_shap_value_distribution.png")
+    # plt.close()
+
+if __name__ == "__main__":
+    args = parse_arguments()
+    prefix = Path(args.csv).stem
+    if args.prefix:
+        prefix = args.prefix
+    vae(args.csv, prefix)

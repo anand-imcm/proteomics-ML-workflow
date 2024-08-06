@@ -26,7 +26,7 @@ task classification {
         Array[File] data_npy = glob("*_data.npy")
     }
     runtime {
-        docker: "~{docker}"
+        docker: "docker.io/library/vae:1.0.0"
         cpu: "~{cpu}"
         memory: "~{memory_gb}GB"
         disks: "local-disk ~{disk_size_gb} HDD"

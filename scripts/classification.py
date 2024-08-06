@@ -1,6 +1,7 @@
 import argparse
 import sys
 from pathlib import Path
+import subprocess
 sys.path.append((str(Path(__file__).resolve().parent)))
 from joblib import Parallel, delayed
 from Step2_RF import random_forest
@@ -9,7 +10,6 @@ from Step2_NN import neural_network
 from Step2_SVM import svm
 from Step2_XGBOOST import xgboost
 from Step2_PLSDA import plsda
-from Step2_VAE_MLP import vae
 
 def parse_arguments():
     parser = argparse.ArgumentParser(description='Script to run classifiers')
@@ -32,7 +32,9 @@ def run_model(model, csv, prefix):
     elif model == "PLSDA":
         plsda(csv, prefix)
     elif model == "VAE":
-        vae(csv, prefix)
+        cmd = f"python3 /scripts/Step2_VAE_MLP.py -i {csv} -p {prefix}"
+        returned_value = subprocess.call(cmd, shell=True) 
+        print(f"VAE job return code: '{returned_value}")
     print(f"Finished {model}")
 
 if __name__ == "__main__":
