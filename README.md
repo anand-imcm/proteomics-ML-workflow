@@ -34,14 +34,16 @@ The main inputs to the workflow are:
   - `output_prefix` : [String] Sample name. This will be used as prefix for all the output files.
   - `model_choices` : [String] Specify the model name(s) to use. Options include `KNN`, `RF`, `NN`, `XGB`, `PLSDA`, `VAE`, and `SVM`. Multiple model names can be entered together, separated by a space.
 - **Optional**
+  - `dimensionality_reduction` : [Boolean] Default value: `false`
   - `preprocessing_std.cpu` : [Integer] Total number of CPUs to be used in the `preprocessing_std` step. Default value: `8`
   - `preprocessing_std.memory_gb` : [Integer] Total number of RAM to be used in the `preprocessing_std` step. Default value: `8`
   - `classification_gen.cpu` : [Integer] Total number of CPUs to be used in the `classification_gen` step. Default value: `16`
   - `classification_gen.memory_gb` : [Integer] Total number of RAM to be used in the `classification_gen` step. Default value: `16`
   - `classification_vae.cpu` : [Integer] Total number of CPUs to be used in the `classification_vae` step. Default value: `16`
   - `classification_vae.memory_gb` : [Integer] Total number of RAM to be used in the `classification_vae` step. Default value: `16`
-  - `roc_plot.cpu` : [Integer] Total number of CPUs to be used in the `roc_plot` step. Default value: `8`
-  - `roc_plot.memory_gb` : [Integer] Total number of RAM to be used in the `roc_plot` step. Default value: `8`
+  - `plot.cpu` : [Integer] Total number of CPUs to be used in the `roc_plot` step. Default value: `16`
+  - `plot.memory_gb` : [Integer] Total number of RAM to be used in the `roc_plot` step. Default value: `16`
+  - `plot.shap_radar_num_features` : [Integer] Number of top features to display in radar chart. Default value: `3`
 
 ## Outputs
 
@@ -57,20 +59,22 @@ The main output files are listed below:
   - `model_pkl` : Array[File] An array of pickle files containing the best model for SHAP calculations.
   - `data_npy` : Array[File]  An array of NumPy files containing overall ROC data for models, used for comparing the overall ROC of each model.
 - **Combined ROC plot**
-  - `png` : [File] A `.png` file containing the ROC curves plot for all the models specified by the user.
+  - `overall_roc_plot` : [File] A `.png` file containing the ROC curves plot for all the models specified by the user.
+  - `shap_radar_plot` : Array[File] An array of `.png` files with radar plots for each model specified by the user.
+  - `shap_values` : Array[File] An array of `.csv` files with SHAP values for each model specified by the user.
 
 ## Components
 
 | Package | License |
 |---------|---------|
 | [micromamba==1.5.5](www.github.com/mamba-org/mamba#micromamba) | BSD-3-Clause |
-| [python==3.10](www.python.org/) | PSF/GPL-compat |
-| [joblib==1.4.2](www.github.com/joblib/joblib) | BSD-3-Clause |
-| [matplotlib==3.9.1](www.matplotlib.org) | PSF/BSD-compat |
-| [numpy==2.0.0](www.numpy.org/) | BSD |
-| [pandas==2.2.2](www.pandas.pydata.org/) | BSD 3-Clause |
-| [scikit-learn==1.5.1](www.scikit-learn.org) | BSD-3-Clause |
-| [xgboost==2.1.0](https://github.com/dmlc/xgboost) |  Apache-2.0 |
-| [shap<=0.45.0](https://github.com/shap/shap) |  MIT |
-| [pillow<=10.3.0](https://github.com/python-pillow/Pillow) |  Open Source HPND |
-| [tensorflow<=2.12.0](https://github.com/tensorflow/tensorflow) |  Apache-2.0 |
+| [python](www.python.org/) | PSF/GPL-compat |
+| [joblib](www.github.com/joblib/joblib) | BSD-3-Clause |
+| [matplotlib](www.matplotlib.org) | PSF/BSD-compat |
+| [numpy](www.numpy.org/) | BSD |
+| [pandas](www.pandas.pydata.org/) | BSD 3-Clause |
+| [scikit-learn](www.scikit-learn.org) | BSD-3-Clause |
+| [xgboost](https://github.com/dmlc/xgboost) |  Apache-2.0 |
+| [shap](https://github.com/shap/shap) |  MIT |
+| [pillow](https://github.com/python-pillow/Pillow) |  Open Source HPND |
+| [tensorflow](https://github.com/tensorflow/tensorflow) |  Apache-2.0 |
