@@ -34,7 +34,8 @@ The main inputs to the workflow are:
   - `output_prefix` : [String] Sample name. This will be used as prefix for all the output files.
   - `model_choices` : [String] Specify the model name(s) to use. Options include `KNN`, `RF`, `NN`, `XGB`, `PLSDA`, `VAE`, and `SVM`. Multiple model names can be entered together, separated by a space.
 - **Optional**
-  - `dimensionality_reduction` : [Boolean] Default value: `false`
+  - `use_dimensionality_reduction` : [Boolean] Use this switch to apply dimensionality reduction to the input data. Default value: `false`
+  - `skip_ML_models` : [Boolean] Use this switch to skip running ML models. Default value: `false`
   - `preprocessing_std.cpu` : [Integer] Total number of CPUs to be used in the `preprocessing_std` step. Default value: `8`
   - `preprocessing_std.memory_gb` : [Integer] Total number of RAM to be used in the `preprocessing_std` step. Default value: `8`
   - `classification_gen.cpu` : [Integer] Total number of CPUs to be used in the `classification_gen` step. Default value: `16`
