@@ -2,7 +2,7 @@ version 1.0
 
 import "./tasks/preprocessing.wdl" as p
 import "./tasks/classification.wdl" as cls
-import "./tasks/roc_plot.wdl" as plt
+import "./tasks/plot.wdl" as plt
 
 workflow main {
     input {
@@ -53,9 +53,11 @@ workflow main {
         Array[File] all_metrics_plot = flatten([classification_gen.metrics_plot, classification_vae.metrics_plot])
         Array[File] all_roc_curve_plot = flatten([classification_gen.roc_curve_plot, classification_vae.roc_curve_plot])
         Array[File] all_confusion_matrix_plot = flatten([classification_gen.confusion_matrix_plot, classification_vae.confusion_matrix_plot])
-        call plt.roc_plot {
+        call plt.plot {
             input:
                 data_npy = all_data_npy,
+                model_pkl = all_model_pkl,
+                data_pkl = all_data_pkl,
                 model = model_choices,
                 output_prefix = output_prefix,
                 docker = container_gen
@@ -69,6 +71,8 @@ workflow main {
         Array[File]? data_pkl = all_data_pkl
         Array[File]? model_pkl = all_model_pkl
         Array[File]? data_npy = all_data_npy
-        File? overall_roc_plot = roc_plot.png
+        File? overall_roc_plot = plot.all_roc_curves
+        Array[File]? shap_radar_plot = plot.radar_plot
+        Array[File]? shap_values = plot.shap_values
     }
 }
