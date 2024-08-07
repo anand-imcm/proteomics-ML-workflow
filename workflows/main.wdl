@@ -1,6 +1,6 @@
 version 1.0
 
-import "./tasks/preprocessing.wdl" as p
+import "./tasks/preprocessing.wdl" as pre
 import "./tasks/classification.wdl" as cls
 import "./tasks/plot.wdl" as plt
 
@@ -9,22 +9,22 @@ workflow main {
         File input_csv
         String output_prefix
         String model_choices
-        Boolean dimensionality_reduction = false
-        Boolean run_classification = true
+        Boolean use_dimensionality_reduction = false
+        Boolean skip_ML_models = false
     }
     String pipeline_version = "1.0.0"
     String container_gen = "docker.io/library/proteomics:~{pipeline_version}"
     String container_vae = "docker.io/library/vae:~{pipeline_version}"
-    if (dimensionality_reduction) {
-        call p.preprocessing_dim {
+    if (use_dimensionality_reduction) {
+        call pre.preprocessing_dim {
             input: 
                 input_csv = input_csv,
                 output_prefix = output_prefix,
                 docker = container_gen
         }
     }
-    if (!dimensionality_reduction) {
-        call p.preprocessing_std {
+    if (!use_dimensionality_reduction) {
+        call pre.preprocessing_std {
             input: 
                 input_csv = input_csv,
                 output_prefix = output_prefix,
@@ -32,7 +32,7 @@ workflow main {
         }
     }
     File data_csv = select_first([preprocessing_dim.csv, preprocessing_std.csv])
-    if (run_classification) {
+    if (!skip_ML_models) {
         call cls.classification_gen {
             input:
                 input_csv = data_csv,
@@ -53,11 +53,13 @@ workflow main {
         Array[File] all_metrics_plot = flatten([classification_gen.metrics_plot, classification_vae.metrics_plot])
         Array[File] all_roc_curve_plot = flatten([classification_gen.roc_curve_plot, classification_vae.roc_curve_plot])
         Array[File] all_confusion_matrix_plot = flatten([classification_gen.confusion_matrix_plot, classification_vae.confusion_matrix_plot])
+        Array[File] vae_shap_out = flatten([classification_vae.vae_shap_csv])
         call plt.plot {
             input:
                 data_npy = all_data_npy,
                 model_pkl = all_model_pkl,
                 data_pkl = all_data_pkl,
+                vae_shap = vae_shap_out,
                 model = model_choices,
                 output_prefix = output_prefix,
                 docker = container_gen
