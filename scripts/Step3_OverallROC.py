@@ -9,7 +9,8 @@ model_map = {
     "NN": "neural_network",
     "SVM": "svm",
     "XGB": "xgboost",
-    "PLSDA": "plsda"
+    "PLSDA": "plsda",
+    "VAE": "vae"
 }
 
 def parse_arguments():
