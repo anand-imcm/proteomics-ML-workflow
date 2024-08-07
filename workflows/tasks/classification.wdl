@@ -60,6 +60,7 @@ task classification_vae {
         Array[File] data_pkl = glob("*_data.pkl")
         Array[File] model_pkl = glob("*_model.pkl")
         Array[File] data_npy = glob("*_data.npy")
+        Array[File] vae_shap_csv = glob("*_shap_values.csv")
     }
     runtime {
         docker: "~{docker}"
