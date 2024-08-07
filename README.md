@@ -22,6 +22,7 @@
   - `SVM` (Support Vector Machine)
   - `XGB` (XGBoost)
   - `PLSDA` (Partial Least Squares Discriminant Analysis)
+  - `VAE` (Variational autoencoder)
 - **Combined ROC plot** : This step generates a plot containing the ROC curves for all the models specified by the user.
 
 ## Inputs
@@ -31,12 +32,14 @@ The main inputs to the workflow are:
 - **Required**
   - `input_csv` : [File] Input file in `.csv` format.
   - `output_prefix` : [String] Sample name. This will be used as prefix for all the output files.
-  - `model_choices` : [String] Specify the model name(s) to use. Options include `KNN`, `RF`, `NN`, `XGB`, `PLSDA`, and `SVM`. Multiple model names can be entered together, separated by a space.
+  - `model_choices` : [String] Specify the model name(s) to use. Options include `KNN`, `RF`, `NN`, `XGB`, `PLSDA`, `VAE`, and `SVM`. Multiple model names can be entered together, separated by a space.
 - **Optional**
-  - `preprocessing.cpu` : [Integer] Total number of CPUs to be used in the `preprocessing` step. Default value: `8`
-  - `preprocessing.memory_gb` : [Integer] Total number of RAM to be used in the `preprocessing` step. Default value: `8`
-  - `classification.cpu` : [Integer] Total number of CPUs to be used in the `classification` step. Default value: `16`
-  - `classification.memory_gb` : [Integer] Total number of RAM to be used in the `classification` step. Default value: `16`
+  - `preprocessing_std.cpu` : [Integer] Total number of CPUs to be used in the `preprocessing_std` step. Default value: `8`
+  - `preprocessing_std.memory_gb` : [Integer] Total number of RAM to be used in the `preprocessing_std` step. Default value: `8`
+  - `classification_gen.cpu` : [Integer] Total number of CPUs to be used in the `classification_gen` step. Default value: `16`
+  - `classification_gen.memory_gb` : [Integer] Total number of RAM to be used in the `classification_gen` step. Default value: `16`
+  - `classification_vae.cpu` : [Integer] Total number of CPUs to be used in the `classification_vae` step. Default value: `16`
+  - `classification_vae.memory_gb` : [Integer] Total number of RAM to be used in the `classification_vae` step. Default value: `16`
   - `roc_plot.cpu` : [Integer] Total number of CPUs to be used in the `roc_plot` step. Default value: `8`
   - `roc_plot.memory_gb` : [Integer] Total number of RAM to be used in the `roc_plot` step. Default value: `8`
 
@@ -68,3 +71,6 @@ The main output files are listed below:
 | [pandas==2.2.2](www.pandas.pydata.org/) | BSD 3-Clause |
 | [scikit-learn==1.5.1](www.scikit-learn.org) | BSD-3-Clause |
 | [xgboost==2.1.0](https://github.com/dmlc/xgboost) |  Apache-2.0 |
+| [shap<=0.45.0](https://github.com/shap/shap) |  MIT |
+| [pillow<=10.3.0](https://github.com/python-pillow/Pillow) |  Open Source HPND |
+| [tensorflow<=2.12.0](https://github.com/tensorflow/tensorflow) |  Apache-2.0 |
