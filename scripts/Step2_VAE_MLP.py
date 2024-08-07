@@ -19,14 +19,15 @@ import contextlib
 import tensorflow as tf
 import joblib
 
-# Suppress all warnings
-warnings.filterwarnings('ignore')
-
 def parse_arguments():
     parser = argparse.ArgumentParser(description='Script to run classifiers')
     parser.add_argument('-i','--csv',type=str, help='Input file in CSV format', required=True)
     parser.add_argument('-p','--prefix',type=str, help='Output prefix')
     return parser.parse_args()
+
+
+# Suppress all warnings
+warnings.filterwarnings('ignore')
 
 # Suppress output
 class SuppressOutput(contextlib.AbstractContextManager):
@@ -41,7 +42,98 @@ class SuppressOutput(contextlib.AbstractContextManager):
         sys.stdout = self._stdout
         sys.stderr = self._stderr
 
-def vae(inp,prefix):
+class VAE_MLP(BaseEstimator, ClassifierMixin):
+    def __init__(self, input_dim=30, num_classes=2, latent_dim=2, encoder_layers=[64, 32], decoder_layers=[32, 64], mlp_layers=[32, 16], learning_rate=0.001, epochs=50, batch_size=32):
+        self.input_dim = input_dim
+        self.num_classes = num_classes
+        self.latent_dim = latent_dim
+        self.encoder_layers = encoder_layers
+        self.decoder_layers = decoder_layers
+        self.mlp_layers = mlp_layers
+        self.learning_rate = learning_rate
+        self.epochs = epochs
+        self.batch_size = batch_size
+        self.vae = None
+        self.encoder = None
+        self.decoder = None
+        self.mlp_model = None
+        self.classes_ = None
+
+    def sampling(self, args):
+        z_mean, z_log_var = args
+        epsilon = K.random_normal(shape=(K.shape(z_mean)[0], K.int_shape(z_mean)[1]))
+        return z_mean + K.exp(0.5 * z_log_var) * epsilon
+
+    def create_vae(self):
+        inputs = Input(shape=(self.input_dim,))
+        h = inputs
+        for units in self.encoder_layers:
+            h = Dense(units)(h)
+            h = LeakyReLU()(h)
+        z_mean = Dense(self.latent_dim)(h)
+        z_log_var = Dense(self.latent_dim)(h)
+        z = Lambda(self.sampling, output_shape=(self.latent_dim,))([z_mean, z_log_var])
+
+        self.encoder = Model(inputs, [z_mean, z_log_var, z], name='encoder')
+
+        latent_inputs = Input(shape=(self.latent_dim,))
+        h_decoded = latent_inputs
+        for units in self.decoder_layers:
+            h_decoded = Dense(units)(h_decoded)
+            h_decoded = LeakyReLU()(h_decoded)
+        outputs = Dense(self.input_dim)(h_decoded)
+
+        self.decoder = Model(latent_inputs, outputs, name='decoder')
+
+        outputs = self.decoder(self.encoder(inputs)[2])
+        self.vae = Model(inputs, outputs, name='vae_mlp')
+
+        # VAE loss
+        reconstruction_loss = binary_crossentropy(inputs, outputs) * self.input_dim
+        kl_loss = 1 + z_log_var - K.square(z_mean) - K.exp(z_log_var)
+        kl_loss = K.sum(kl_loss, axis=-1)
+        kl_loss *= -0.5
+        vae_loss = K.mean(reconstruction_loss + kl_loss)
+        self.vae.add_loss(vae_loss)
+        self.vae.compile(optimizer=Adam(learning_rate=self.learning_rate))
+
+    def create_mlp_model(self):
+        mlp_input = Input(shape=(self.input_dim,))
+        x = mlp_input
+        for units in self.mlp_layers:
+            x = Dense(units)(x)
+            x = LeakyReLU()(x)
+        if self.num_classes == 2:
+            mlp_output = Dense(1, activation='sigmoid')(x)
+            self.mlp_model = Model(mlp_input, mlp_output)
+            self.mlp_model.compile(optimizer=Adam(learning_rate=self.learning_rate), loss='binary_crossentropy', metrics=['accuracy'])
+        else:
+            mlp_output = Dense(self.num_classes, activation='softmax')(x)
+            self.mlp_model = Model(mlp_input, mlp_output)
+            self.mlp_model.compile(optimizer=Adam(learning_rate=self.learning_rate), loss='sparse_categorical_crossentropy', metrics=['accuracy'])
+
+    def fit(self, X, y):
+        self.classes_ = np.unique(y)
+        self.create_vae()
+        self.vae.fit(X, epochs=self.epochs, batch_size=self.batch_size, verbose=0)
+        X_decoded = self.decoder.predict(self.encoder.predict(X)[2])
+        self.create_mlp_model()
+        self.mlp_model.fit(X_decoded, y, epochs=self.epochs, batch_size=self.batch_size, verbose=0)
+        return self
+
+    def predict(self, X):
+        X_decoded = self.decoder.predict(self.encoder.predict(X)[2])
+        y_pred = self.mlp_model(X_decoded, training=False)
+        if self.num_classes == 2:
+            return (y_pred > 0.5).numpy().astype(int).flatten()
+        else:
+            return np.argmax(y_pred, axis=1)
+
+    def predict_proba(self, X):
+        X_decoded = self.decoder.predict(self.encoder.predict(X)[2])
+        return self.mlp_model(X_decoded, training=False).numpy()
+
+def vae(inp, prefix):
     # Load and preprocess data
     data = pd.read_csv(inp)
     X = data.drop(columns=['Label']).values
@@ -58,101 +150,10 @@ def vae(inp,prefix):
     else:
         y_binarized = pd.get_dummies(y).values
     
-    # Define VAE model
-    input_dim = X.shape[1]
-    latent_dim = 2
-    
-    class VAE_MLP(BaseEstimator, ClassifierMixin):
-        def __init__(self, latent_dim=2, encoder_layers=[64, 32], decoder_layers=[32, 64], mlp_layers=[32, 16], learning_rate=0.001, epochs=50, batch_size=32):
-            self.latent_dim = latent_dim
-            self.encoder_layers = encoder_layers
-            self.decoder_layers = decoder_layers
-            self.mlp_layers = mlp_layers
-            self.learning_rate = learning_rate
-            self.epochs = epochs
-            self.batch_size = batch_size
-            self.vae = None
-            self.encoder = None
-            self.decoder = None
-            self.mlp_model = None
-            self.classes_ = None
-    
-        def sampling(self, args):
-            z_mean, z_log_var = args
-            epsilon = K.random_normal(shape=(K.shape(z_mean)[0], K.int_shape(z_mean)[1]))
-            return z_mean + K.exp(0.5 * z_log_var) * epsilon
-    
-        def create_vae(self):
-            inputs = Input(shape=(input_dim,))
-            h = inputs
-            for units in self.encoder_layers:
-                h = Dense(units)(h)
-                h = LeakyReLU()(h)
-            z_mean = Dense(self.latent_dim)(h)
-            z_log_var = Dense(self.latent_dim)(h)
-            z = Lambda(self.sampling, output_shape=(self.latent_dim,))([z_mean, z_log_var])
-    
-            self.encoder = Model(inputs, [z_mean, z_log_var, z], name='encoder')
-    
-            latent_inputs = Input(shape=(self.latent_dim,))
-            h_decoded = latent_inputs
-            for units in self.decoder_layers:
-                h_decoded = Dense(units)(h_decoded)
-                h_decoded = LeakyReLU()(h_decoded)
-            outputs = Dense(input_dim)(h_decoded)
-    
-            self.decoder = Model(latent_inputs, outputs, name='decoder')
-    
-            outputs = self.decoder(self.encoder(inputs)[2])
-            self.vae = Model(inputs, outputs, name='vae_mlp')
-    
-            # VAE loss
-            reconstruction_loss = binary_crossentropy(inputs, outputs) * input_dim
-            kl_loss = 1 + z_log_var - K.square(z_mean) - K.exp(z_log_var)
-            kl_loss = K.sum(kl_loss, axis=-1)
-            kl_loss *= -0.5
-            vae_loss = K.mean(reconstruction_loss + kl_loss)
-            self.vae.add_loss(vae_loss)
-            self.vae.compile(optimizer=Adam(learning_rate=self.learning_rate))
-    
-        def create_mlp_model(self):
-            mlp_input = Input(shape=(input_dim,))
-            x = mlp_input
-            for units in self.mlp_layers:
-                x = Dense(units)(x)
-                x = LeakyReLU()(x)
-            if num_classes == 2:
-                mlp_output = Dense(1, activation='sigmoid')(x)
-                self.mlp_model = Model(mlp_input, mlp_output)
-                self.mlp_model.compile(optimizer=Adam(learning_rate=self.learning_rate), loss='binary_crossentropy', metrics=['accuracy'])
-            else:
-                mlp_output = Dense(num_classes, activation='softmax')(x)
-                self.mlp_model = Model(mlp_input, mlp_output)
-                self.mlp_model.compile(optimizer=Adam(learning_rate=self.learning_rate), loss='sparse_categorical_crossentropy', metrics=['accuracy'])
-    
-        def fit(self, X, y):
-            self.classes_ = np.unique(y)
-            self.create_vae()
-            self.vae.fit(X, epochs=self.epochs, batch_size=self.batch_size, verbose=0)
-            X_decoded = self.decoder.predict(self.encoder.predict(X)[2])
-            self.create_mlp_model()
-            self.mlp_model.fit(X_decoded, y, epochs=self.epochs, batch_size=self.batch_size, verbose=0)
-            return self
-    
-        def predict(self, X):
-            X_decoded = self.decoder.predict(self.encoder.predict(X)[2])
-            y_pred = self.mlp_model(X_decoded, training=False)
-            if num_classes == 2:
-                return (y_pred > 0.5).numpy().astype(int).flatten()
-            else:
-                return np.argmax(y_pred, axis=1)
-    
-        def predict_proba(self, X):
-            X_decoded = self.decoder.predict(self.encoder.predict(X)[2])
-            return self.mlp_model(X_decoded, training=False).numpy()
-    
     # Define parameter search space
     param_distributions = {
+        'input_dim': [X.shape[1]],
+        'num_classes': [num_classes],
         'latent_dim': [2, 4, 8, 16, 32, 64, 128, 256, 512], 
         'encoder_layers': [[64, 32], [128, 64], [64, 64, 32], [256, 128], [128, 128, 64]],  
         'decoder_layers': [[32, 64], [64, 128], [32, 32, 64], [128, 256], [64, 64, 128]],  
@@ -196,8 +197,8 @@ def vae(inp,prefix):
         f1 = f1_score(y_test, y_pred, average='macro' if num_classes > 2 else 'binary')
     
         # Compute sensitivity and specificity
-        cm = confusion_matrix(y_test, y_pred)
-        cm_total += cm
+        cm = confusion_matrix(y_test, y_pred, labels=np.arange(num_classes))
+        cm_total[:cm.shape[0], :cm.shape[1]] += cm  # Adjust to ensure same shape
         if num_classes == 2:
             tn, fp, fn, tp = cm.ravel()
             sensitivity = tp / (tp + fn)
