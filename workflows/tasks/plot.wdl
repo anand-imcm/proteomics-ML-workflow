@@ -5,6 +5,7 @@ task plot {
         Array[File] data_npy
         Array[File] model_pkl
         Array[File] data_pkl
+        Array[File] vae_shap
         String model
         String output_prefix
         String docker
@@ -12,13 +13,13 @@ task plot {
         Int memory_gb = 16
         Int cpu = 16
     }
-    Array[File] all_data = flatten([data_npy, model_pkl, data_pkl])
+    Array[File] all_data = flatten([data_npy, model_pkl, data_pkl, vae_shap])
     Int disk_size_gb = ceil(size(all_data, "GB")) + 2
     
     command <<<
         set -euo pipefail
-        for model in ~{sep=' ' all_data}; do
-            ln -s $model $(basename $model)
+        for file_name in ~{sep=' ' all_data}; do
+            cp $file_name $(basename $file_name)
         done
         python /scripts/Step3_OverallROC.py \
             -m ~{model} \
