@@ -1,6 +1,6 @@
 version 1.0
 
-task preprocessing {
+task preprocessing_std {
     input {
         File input_csv
         String output_prefix 
