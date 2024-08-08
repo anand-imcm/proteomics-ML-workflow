@@ -41,3 +41,38 @@ task plot {
         disks: "local-disk ~{disk_size_gb} HDD"
     }
 }
+
+task pdf {
+    input {
+        Array[File] confusion_matrix
+        Array[File] roc_curve
+        Array[File] metrics
+        Array[File] vae_shap
+        String model
+        String output_prefix
+        String docker
+        Int memory_gb = 16
+        Int cpu = 16
+    }
+    Array[File] all_data = flatten([confusion_matrix, roc_curve, metrics, vae_shap])
+    Int disk_size_gb = ceil(size(all_data, "GB")) + 2
+    
+    command <<<
+        set -euo pipefail
+        for file_name in ~{sep=' ' all_data}; do
+            cp $file_name $(basename $file_name)
+        done
+        python /scripts/Step5_PDF_summary.py \
+            -m ~{model} \
+            -p ~{output_prefix}
+    >>>
+    output {
+        File report = output_prefix + "_model_reports.pdf"
+    }
+    runtime {
+        docker: "~{docker}"
+        cpu: "~{cpu}"
+        memory: "~{memory_gb}GB"
+        disks: "local-disk ~{disk_size_gb} HDD"
+    }
+}
