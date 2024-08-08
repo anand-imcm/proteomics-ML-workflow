@@ -39,11 +39,11 @@ The main inputs to the workflow are:
   - `preprocessing_std.cpu` : [Integer] Total number of CPUs to be used in the `preprocessing_std` step. Default value: `8`
   - `preprocessing_std.memory_gb` : [Integer] Total number of RAM to be used in the `preprocessing_std` step. Default value: `8`
   - `classification_gen.cpu` : [Integer] Total number of CPUs to be used in the `classification_gen` step. Default value: `16`
-  - `classification_gen.memory_gb` : [Integer] Total number of RAM to be used in the `classification_gen` step. Default value: `16`
+  - `classification_gen.memory_gb` : [Integer] Total number of RAM to be used in the `classification_gen` step. Default value: `24`
   - `classification_vae.cpu` : [Integer] Total number of CPUs to be used in the `classification_vae` step. Default value: `16`
-  - `classification_vae.memory_gb` : [Integer] Total number of RAM to be used in the `classification_vae` step. Default value: `16`
+  - `classification_vae.memory_gb` : [Integer] Total number of RAM to be used in the `classification_vae` step. Default value: `24`
   - `plot.cpu` : [Integer] Total number of CPUs to be used in the `roc_plot` step. Default value: `16`
-  - `plot.memory_gb` : [Integer] Total number of RAM to be used in the `roc_plot` step. Default value: `16`
+  - `plot.memory_gb` : [Integer] Total number of RAM to be used in the `roc_plot` step. Default value: `24`
   - `plot.shap_radar_num_features` : [Integer] Number of top features to display in radar chart. Default value: `10`
 
 ## Outputs

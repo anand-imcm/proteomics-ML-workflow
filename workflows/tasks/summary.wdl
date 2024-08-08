@@ -10,7 +10,7 @@ task plot {
         String output_prefix
         String docker
         Int shap_radar_num_features = 10
-        Int memory_gb = 16
+        Int memory_gb = 24
         Int cpu = 16
     }
     Array[File] all_data = flatten([data_npy, model_pkl, data_pkl, vae_shap])
@@ -52,7 +52,7 @@ task pdf {
         String model
         String output_prefix
         String docker
-        Int memory_gb = 16
+        Int memory_gb = 24
         Int cpu = 16
     }
     Array[File] all_data = flatten([confusion_matrix, roc_curve, metrics, vae_shap])

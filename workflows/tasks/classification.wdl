@@ -6,7 +6,7 @@ task classification_gen {
         String model
         String output_prefix 
         String docker
-        Int memory_gb = 16
+        Int memory_gb = 24
         Int cpu = 16
     }
     Int disk_size_gb = ceil(size(input_csv, "GB")) + 5
@@ -40,7 +40,7 @@ task classification_vae {
         String model
         String output_prefix 
         String docker
-        Int memory_gb = 16
+        Int memory_gb = 24
         Int cpu = 16
     }
     Int disk_size_gb = ceil(size(input_csv, "GB")) + 5
