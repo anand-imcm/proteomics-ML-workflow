@@ -182,11 +182,11 @@ def perform_dimensionality_reduction(file_path, file_prefix, method, dims=3, sta
 
 # Example usage
 # file_path = "/Users/yuhan/Downloads/proDataLabel.csv"
-# perform_dimensionality_reduction(file_path, method='PCA', dims=3, standardize=True)
-# perform_dimensionality_reduction(file_path, method='', dims=3, standardize=True)
-# perform_dimensionality_reduction(file_path, method='t-SNE', dims=3, standardize=True)
-# perform_dimensionality_reduction(file_path, method='KPCA', dims=3, standardize=True)
-# perform_dimensionality_reduction(file_path, method='PLS', dims=3, standardize=True)
+# perform_dimensionality_reduction(file_path, prefix, method='PCA', dims=3, standardize=True)
+# perform_dimensionality_reduction(file_path, prefix, method='UMAP', dims=3, standardize=True)
+# perform_dimensionality_reduction(file_path, prefix, method='t-SNE', dims=3, standardize=True)
+# perform_dimensionality_reduction(file_path, prefix, method='KPCA', dims=3, standardize=True)
+# perform_dimensionality_reduction(file_path, prefix, method='PLS', dims=3, standardize=True)
 
 if __name__ == "__main__":
     args = parse_arguments()
