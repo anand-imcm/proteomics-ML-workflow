@@ -9,7 +9,7 @@ task plot {
         String model
         String output_prefix
         String docker
-        Int shap_radar_num_features = 3
+        Int shap_radar_num_features = 10
         Int memory_gb = 16
         Int cpu = 16
     }
@@ -46,6 +46,7 @@ task pdf {
     input {
         Array[File] confusion_matrix
         Array[File] roc_curve
+        File joint_roc_curve
         Array[File] metrics
         Array[File] vae_shap
         String model
@@ -59,6 +60,7 @@ task pdf {
     
     command <<<
         set -euo pipefail
+        cp ~{joint_roc_curve} .
         for file_name in ~{sep=' ' all_data}; do
             cp $file_name $(basename $file_name)
         done
