@@ -281,7 +281,7 @@ def vae(inp, prefix):
     
     plt.title('Evaluation Metrics for VAE')
     plt.ylabel('Score')
-    plt.savefig(f"{prefix}_vae_evaluation_metrics.png")
+    plt.savefig(f"{prefix}_vae_metrics.png")
     plt.close()
     
     # Plot ROC curves
@@ -321,25 +321,6 @@ def vae(inp, prefix):
     shap_df.to_csv(f"{prefix}_vae_shap_values.csv", index=False)
     
     print("SHAP values saved to vae_shap_values.csv")
-    
-    # # Plot top 5% SHAP value distribution (box plot)
-    # top_5_percent = int(0.05 * len(feature_names))
-    # top_features = shap_df.nlargest(top_5_percent, 'Mean SHAP Value')['Feature']
-    # top_shap_indices = [list(feature_names).index(feature) for feature in top_features]
-    
-    # # For binary classification, shap_values shape is (n_samples, n_features)
-    # # For multi-class classification, shap_values shape is (n_classes, n_samples, n_features)
-    # if num_classes == 2:
-    #     top_shap_values = shap_values[:, top_shap_indices]
-    # else:
-    #     top_shap_values = shap_values[:, :, top_shap_indices].reshape(-1, len(top_shap_indices))
-    
-    # plt.figure(figsize=(10, 6))
-    # plt.title('Top 5% SHAP Value Distribution for VAE')
-    # plt.boxplot(top_shap_values, vert=False, labels=top_features)
-    # plt.xlabel('SHAP Value')
-    # plt.savefig(f"{prefix}_vae_shap_value_distribution.png")
-    # plt.close()
 
 if __name__ == "__main__":
     args = parse_arguments()
