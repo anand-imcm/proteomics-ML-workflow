@@ -79,3 +79,6 @@ The main output files are listed below:
 | [shap](https://github.com/shap/shap) |  MIT |
 | [pillow](https://github.com/python-pillow/Pillow) |  Open Source HPND |
 | [tensorflow](https://github.com/tensorflow/tensorflow) |  Apache-2.0 |
+| [fpdf](https://github.com/reingart/pyfpdf) |  LGPL-3.0 |
+| [seaborn](https://github.com/mwaskom/seaborn) |  BSD-3-Clause |
+| [umap-learn](https://github.com/lmcinnes/umap) |  BSD-3-Clause |
