@@ -1,5 +1,6 @@
 import argparse
 from fpdf import FPDF
+from PIL import Image
 import os
 
 model_map = {
@@ -18,26 +19,37 @@ def parse_arguments():
     parser.add_argument('-p','--prefix',type=str, help='Output prefix')
     return parser.parse_args()
 
-# Function to add a page with images and text for each model
+def get_image_dimensions(image_path):
+    with Image.open(image_path) as img:
+        return img.size
+
 def add_model_page(pdf, model_name, file_prefix):
     pdf.add_page()
-    pdf.set_font("Arial", size=12)
+    pdf.set_font("Arial", size=15)
     pdf.cell(0, 10, txt=f"{model_name.capitalize()} Model Report", ln=True, align='L')
 
-    # Add confusion matrix image
-    pdf.image(f"{file_prefix}_{model_name}_confusion_matrix.png", x=10, y=20, w=90)
+    effective_page_width = pdf.w - 2 * pdf.l_margin
+    available_page_height = pdf.h - pdf.t_margin - pdf.b_margin - pdf.get_y()
+    row_height = available_page_height / 2
+    column_width = effective_page_width / 2
+    y_offset = pdf.get_y()
 
-    # Add evaluation metrics image
-    pdf.image(f"{file_prefix}_{model_name}_metrics.png", x=10, y=120, w=90)
-
-    # Add ROC curve image
-    pdf.image(f"{file_prefix}_{model_name}_roc_curve.png", x=105, y=20, w=90)
-
-    # Add SHAP radar chart image if it exists
-    shap_image_path = f"{file_prefix}_{model_name}_shap_radar.png"
-    if os.path.exists(shap_image_path):
-        pdf.image(shap_image_path, x=105, y=120, w=90)
-
+    images = [f"{file_prefix}_{model_name}_roc_curve.png", f"{file_prefix}_{model_name}_metrics.png", f"{file_prefix}_{model_name}_confusion_matrix.png", f"{file_prefix}_{model_name}_shap_radar.png"]
+    
+    for i, image in enumerate(images):
+        if os.path.exists(image):
+            image_width, image_height = get_image_dimensions(image)
+            aspect_ratio = image_height / image_width
+            width = column_width
+            height = width * aspect_ratio
+            if height > row_height:
+                height = row_height
+                width = height / aspect_ratio
+            x_offset = pdf.l_margin + (i % 2) * column_width
+            pdf.image(image, x=x_offset, y=y_offset, w=width, h=height)
+            if i % 2 == 1:
+                y_offset += row_height + 5
+                pdf.set_y(y_offset)
 
 if __name__ == "__main__":
     args = parse_arguments()
@@ -49,7 +61,7 @@ if __name__ == "__main__":
 
     # Add the overall ROC curve page
     pdf.add_page()
-    pdf.set_font("Arial", size=12)
+    pdf.set_font("Arial", size=15)
     pdf.cell(0, 10, txt="Overall ROC Curves for All Models", ln=True, align='L')
     pdf.image(f"{prefix}_overall_roc_curves.png", x=10, y=20, w=190)
 
