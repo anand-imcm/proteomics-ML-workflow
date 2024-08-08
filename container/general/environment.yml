@@ -12,6 +12,6 @@ dependencies:
   - scikit-learn<=1.5.1
   - xgboost<=2.1.1
   - shap<=0.45.1
-  - fpdf<==1.7.2
+  - fpdf<=1.7.2
   - seaborn<=0.13.2
-  - umap-learn=<0.5.6
+  - umap-learn<=0.5.6
