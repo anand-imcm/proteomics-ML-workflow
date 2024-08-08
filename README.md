@@ -44,7 +44,7 @@ The main inputs to the workflow are:
   - `classification_vae.memory_gb` : [Integer] Total number of RAM to be used in the `classification_vae` step. Default value: `16`
   - `plot.cpu` : [Integer] Total number of CPUs to be used in the `roc_plot` step. Default value: `16`
   - `plot.memory_gb` : [Integer] Total number of RAM to be used in the `roc_plot` step. Default value: `16`
-  - `plot.shap_radar_num_features` : [Integer] Number of top features to display in radar chart. Default value: `3`
+  - `plot.shap_radar_num_features` : [Integer] Number of top features to display in radar chart. Default value: `10`
 
 ## Outputs
 
