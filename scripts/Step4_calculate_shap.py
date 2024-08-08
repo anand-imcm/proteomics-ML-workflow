@@ -208,7 +208,7 @@ def plot_shap_radar(model, shap_values_mean, feature_names, num_features, file_p
     ax.set_xticklabels(labels, fontsize=12)
 
     plt.title(f'SHAP Values for {model}', size=20, color='black', weight='bold')
-    plt.savefig(f"{file_prefix}_shap_radar.png")
+    plt.savefig(f"{file_prefix}_{model}_shap_radar.png")
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Calculate SHAP values for specified models')
