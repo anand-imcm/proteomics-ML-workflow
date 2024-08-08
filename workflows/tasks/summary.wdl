@@ -48,14 +48,14 @@ task pdf {
         Array[File] roc_curve
         File joint_roc_curve
         Array[File] metrics
-        Array[File] vae_shap
+        Array[File] vae_shap_radar
         String model
         String output_prefix
         String docker
         Int memory_gb = 24
         Int cpu = 16
     }
-    Array[File] all_data = flatten([confusion_matrix, roc_curve, metrics, vae_shap])
+    Array[File] all_data = flatten([confusion_matrix, roc_curve, metrics, vae_shap_radar])
     Int disk_size_gb = ceil(size(all_data, "GB")) + 2
     
     command <<<

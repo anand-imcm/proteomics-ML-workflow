@@ -70,7 +70,7 @@ workflow main {
                 roc_curve = cls_roc_curve_plot,
                 joint_roc_curve = plot.all_roc_curves,
                 metrics = cls_metrics_plot,
-                vae_shap = vae_shap_out,
+                vae_shap_radar = plot.radar_plot,
                 model = model_choices,
                 output_prefix = output_prefix,
                 docker = container_gen
