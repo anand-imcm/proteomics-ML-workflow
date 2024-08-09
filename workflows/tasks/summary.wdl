@@ -44,18 +44,18 @@ task plot {
 
 task pdf {
     input {
-        Array[File] confusion_matrix
-        Array[File] roc_curve
-        File joint_roc_curve
-        Array[File] metrics
-        Array[File] vae_shap_radar
-        String model
+        Array[File]? confusion_matrix
+        Array[File]? roc_curve
+        File? joint_roc_curve
+        Array[File]? metrics
+        Array[File]? vae_shap_radar
+        String? model
         String output_prefix
         String docker
         Int memory_gb = 24
         Int cpu = 16
     }
-    Array[File] all_data = flatten([confusion_matrix, roc_curve, metrics, vae_shap_radar])
+    Array[File] all_data = select_all([confusion_matrix, roc_curve, metrics, vae_shap_radar])
     Int disk_size_gb = ceil(size(all_data, "GB")) + 2
     
     command <<<
