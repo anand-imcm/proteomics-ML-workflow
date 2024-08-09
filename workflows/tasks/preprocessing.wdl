@@ -40,7 +40,7 @@ task preprocessing_dim {
     Int disk_size_gb = ceil(size(input_csv, "GB")) + 2
     command <<<
         set -euo pipefail
-        python /scripts/Step1_Preprocessing_V2.py \
+        python /scripts/Step1_Preprocessing.py \
             -i ~{input_csv} \
             -m ~{dim_reduction_method}
             -d ~{num_dimensions}
