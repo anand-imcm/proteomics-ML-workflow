@@ -40,7 +40,6 @@ The main inputs to the workflow are:
   - `preprocessing_std.memory_gb` : [Integer] Total number of RAM to be used in the `preprocessing_std` step. Default value: `8`
   - `preprocessing_dim.dim_reduction_method` : [String] Specify the model name(s) to use. Options include `PCA`, `UMAP`, `t-SNE`, `KPCA` and `PLS`. Multiple model names can be entered together, separated by a space. Default value: `PCA`
   - `preprocessing_dim.num_dimensions` : Int (optional, default = 3)
-  - `preprocessing_dim.standardize` : Boolean (optional, default = true)
   - `preprocessing_dim.memory_gb` : Int (optional, default = 16)
   - `preprocessing_dim.cpu` : Int (optional, default = 16)
   - `classification_gen.cpu` : [Integer] Total number of CPUs to be used in the `classification_gen` step. Default value: `16`
