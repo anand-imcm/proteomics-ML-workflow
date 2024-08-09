@@ -38,6 +38,11 @@ The main inputs to the workflow are:
   - `skip_ML_models` : [Boolean] Use this switch to skip running ML models. Default value: `false`
   - `preprocessing_std.cpu` : [Integer] Total number of CPUs to be used in the `preprocessing_std` step. Default value: `8`
   - `preprocessing_std.memory_gb` : [Integer] Total number of RAM to be used in the `preprocessing_std` step. Default value: `8`
+  - `preprocessing_dim.dim_reduction_method` : [String] Specify the model name(s) to use. Options include `PCA`, `UMAP`, `t-SNE`, `KPCA` and `PLS`. Multiple model names can be entered together, separated by a space. Default value: `PCA`
+  - `preprocessing_dim.num_dimensions` : Int (optional, default = 3)
+  - `preprocessing_dim.standardize` : Boolean (optional, default = true)
+  - `preprocessing_dim.memory_gb` : Int (optional, default = 16)
+  - `preprocessing_dim.cpu` : Int (optional, default = 16)
   - `classification_gen.cpu` : [Integer] Total number of CPUs to be used in the `classification_gen` step. Default value: `16`
   - `classification_gen.memory_gb` : [Integer] Total number of RAM to be used in the `classification_gen` step. Default value: `24`
   - `classification_vae.cpu` : [Integer] Total number of CPUs to be used in the `classification_vae` step. Default value: `16`
@@ -45,6 +50,8 @@ The main inputs to the workflow are:
   - `plot.cpu` : [Integer] Total number of CPUs to be used in the `roc_plot` step. Default value: `16`
   - `plot.memory_gb` : [Integer] Total number of RAM to be used in the `roc_plot` step. Default value: `24`
   - `plot.shap_radar_num_features` : [Integer] Number of top features to display in radar chart. Default value: `10`
+  - `pdf.memory_gb` : Int (optional, default = 24)
+  - `pdf.cpu` : Int (optional, default = 16)
 
 ## Outputs
 
