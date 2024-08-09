@@ -194,5 +194,5 @@ if __name__ == "__main__":
     if args.prefix:
         prefix = args.prefix
     results = Parallel(n_jobs=-1, backend='multiprocessing', verbose=100)(
-        delayed(perform_dimensionality_reduction)(args.csv, prefix, method=method_name, dims=args.dimensions, standardize=args.standardize) for method_name in args.methods
+        delayed(perform_dimensionality_reduction)(args.csv, prefix, method=method_name, dims=args.dimensions, standardize=args.standardize.capitalize()) for method_name in args.methods
     )
