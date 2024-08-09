@@ -32,7 +32,6 @@ task preprocessing_dim {
         String output_prefix
         String dim_reduction_method = "PCA"
         Int num_dimensions = 3
-        Boolean standardize = true
         String docker
         Int memory_gb = 16
         Int cpu = 16
@@ -42,12 +41,13 @@ task preprocessing_dim {
         set -euo pipefail
         python /scripts/Step1_Preprocessing.py \
             -i ~{input_csv} \
-            -m ~{dim_reduction_method}
-            -d ~{num_dimensions}
-            -s ~{standardize}
+            -m ~{dim_reduction_method} \
+            -d ~{num_dimensions} \
+            -p ~{output_prefix}
     >>>
     output {
-        File csv = output_prefix + ".csv"
+        Array[File] csv = glob("*_result.csv")
+        Array[File] png = glob("*_result.png")
     }
     runtime {
         docker: "~{docker}"
