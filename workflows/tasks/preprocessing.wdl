@@ -44,10 +44,21 @@ task preprocessing_dim {
             -m ~{dim_reduction_method} \
             -d ~{num_dimensions} \
             -p ~{output_prefix}
+        
+        result_files=( *_result.csv )
+        if [ ${#result_files[@]} -eq 1 ]; then
+            mv "${result_files[0]}" "~{output_prefix}_result.csv"
+        fi
+        result_files=( *_result.png )
+        if [ ${#result_files[@]} -eq 1 ]; then
+            mv "${result_files[0]}" "~{output_prefix}_result.png"
+        fi
     >>>
     output {
-        Array[File] csv = glob("*_result.csv")
-        Array[File] png = glob("*_result.png")
+        File csv = output_prefix + "_result.csv"
+        File png = output_prefix + "_result.png"
+        Array[File] csv_list = glob("*_result.csv")
+        Array[File] png_list = glob("*_result.png")
     }
     runtime {
         docker: "~{docker}"

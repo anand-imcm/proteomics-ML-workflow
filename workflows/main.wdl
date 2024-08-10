@@ -32,6 +32,7 @@ workflow main {
         }
     }
     File data_csv = select_first([preprocessing_std.csv, preprocessing_dim.csv])
+    File? dim_reduct_plot_out = preprocessing_dim.png
     if (!skip_ML_models) {
         call cls.classification_gen {
             input:
@@ -71,19 +72,20 @@ workflow main {
                 joint_roc_curve = plot.all_roc_curves,
                 metrics = cls_metrics_plot,
                 vae_shap_radar = plot.radar_plot,
+                dim_reduct_plot = dim_reduct_plot_out,
                 model = model_choices,
                 output_prefix = output_prefix,
                 docker = container_gen
         }
     }
-    if (skip_ML_models) {
-        call report.pdf as pdf_dim {
-            input:
-                output_prefix = output_prefix,
-                docker = container_gen
-        }
-    }
-    File pdf_report = select_first([pdf.report, pdf_dim.report])
+    # if (skip_ML_models) {
+    #     call report.pdf as pdf_dim {
+    #         input:
+    #             output_prefix = output_prefix,
+    #             docker = container_gen
+    #     }
+    # }
+    # File pdf_report = select_first([pdf.report, pdf_dim.report])
     output {
         File processed_csv = data_csv
         Array[File]? confusion_matrix_plot = cls_confusion_matrix_plot
@@ -95,6 +97,6 @@ workflow main {
         File? overall_roc_plot = plot.all_roc_curves
         Array[File]? shap_radar_plot = plot.radar_plot
         Array[File]? shap_values = plot.shap_values
-        File? pdf_summary = pdf_report
+        # File? pdf_summary = pdf_report
     }
 }
