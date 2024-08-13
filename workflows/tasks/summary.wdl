@@ -15,7 +15,6 @@ task plot {
     }
     Array[File] all_data = flatten([data_npy, model_pkl, data_pkl, vae_shap])
     Int disk_size_gb = ceil(size(all_data, "GB")) + 2
-    
     command <<<
         set -euo pipefail
         for file_name in ~{sep=' ' all_data}; do
@@ -57,8 +56,7 @@ task pdf {
         Int cpu = 16
     }
     Array[File] all_data = flatten([confusion_matrix, roc_curve, metrics, vae_shap_radar])
-    Int disk_size_gb = ceil(size(all_data, "GB")) + 2
-    
+    Int disk_size_gb = ceil(size(all_data, "GB")) + 2 
     command <<<
         set -euo pipefail
         cp ~{joint_roc_curve} ~{dim_reduct_plot} .
@@ -89,14 +87,11 @@ task dim {
         Int memory_gb = 24
         Int cpu = 16
     }
-
     Array[Array[File]] dim_results = [dim_reduct_plot, dim_reduct_data]
     Array[File] all_data = flatten(dim_results)
     Int disk_size_gb = ceil(size(all_data, "GB")) + 2
-    
     command <<<
         set -euo pipefail
-
         for file_name in ~{sep=' ' all_data}; do
             cp $file_name $(basename $file_name)
         done
