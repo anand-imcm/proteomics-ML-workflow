@@ -3,6 +3,7 @@ version 1.0
 import "./tasks/preprocessing.wdl" as pre
 import "./tasks/classification.wdl" as cls
 import "./tasks/summary.wdl" as report
+import "./dim_reduction.wdl" as drwf
 
 workflow main {
     input {
@@ -15,13 +16,14 @@ workflow main {
     String pipeline_version = "1.0.0"
     String container_gen = "docker.io/library/proteomics:~{pipeline_version}"
     String container_vae = "docker.io/library/vae:~{pipeline_version}"
-    if (use_dimensionality_reduction) {
-        call pre.preprocessing_dim {
-            input: 
+    if (use_dimensionality_reduction && skip_ML_models)  {
+        call drwf.dim_reduction_wf as dim_reduction {
+            input:
                 input_csv = input_csv,
                 output_prefix = output_prefix,
-                docker = container_gen
-        }
+                docker = container_gen,
+                method_name = "PCA"
+        } 
     }
     if (!use_dimensionality_reduction) {
         call pre.preprocessing_std {
@@ -31,8 +33,8 @@ workflow main {
                 docker = container_gen
         }
     }
-    File data_csv = select_first([preprocessing_std.csv, preprocessing_dim.csv])
-    File? dim_reduct_plot_out = preprocessing_dim.png
+    File data_csv = select_first([preprocessing_std.csv, dim_reduction.csv])
+    File? dim_reduct_plot_out = dim_reduction.png
     if (!skip_ML_models) {
         call cls.classification_gen {
             input:
@@ -98,5 +100,6 @@ workflow main {
         Array[File]? shap_radar_plot = plot.radar_plot
         Array[File]? shap_values = plot.shap_values
         # File? pdf_summary = pdf_report
+        File? dim_report = dim_reduction.report
     }
 }
