@@ -29,46 +29,9 @@ task plot {
             -f ~{shap_radar_num_features}
     >>>
     output {
-        File all_roc_curves = output_prefix + "_overall_roc_curves.png"
+        File? all_roc_curves = output_prefix + "_overall_roc_curves.png"
         Array[File] radar_plot = glob("*_shap_radar.png")
         Array[File] shap_values = glob("*_shap_values.csv")
-    }
-    runtime {
-        docker: "~{docker}"
-        cpu: "~{cpu}"
-        memory: "~{memory_gb}GB"
-        disks: "local-disk ~{disk_size_gb} HDD"
-    }
-}
-
-task pdf {
-    input {
-        Array[File] confusion_matrix
-        Array[File] roc_curve
-        File joint_roc_curve
-        Array[File] metrics
-        Array[File] vae_shap_radar
-        File? dim_reduct_plot
-        String? model
-        String output_prefix
-        String docker
-        Int memory_gb = 24
-        Int cpu = 16
-    }
-    Array[File] all_data = flatten([confusion_matrix, roc_curve, metrics, vae_shap_radar])
-    Int disk_size_gb = ceil(size(all_data, "GB")) + 2 
-    command <<<
-        set -euo pipefail
-        cp ~{joint_roc_curve} ~{dim_reduct_plot} .
-        for file_name in ~{sep=' ' all_data}; do
-            cp $file_name $(basename $file_name)
-        done
-        python /scripts/Step5_PDF_summary.py \
-            -m ~{model} \
-            -p ~{output_prefix}
-    >>>
-    output {
-        File report = output_prefix + "_model_reports.pdf"
     }
     runtime {
         docker: "~{docker}"
@@ -95,10 +58,41 @@ task dim {
         for file_name in ~{sep=' ' all_data}; do
             cp $file_name $(basename $file_name)
         done
-        touch ~{output_prefix}"_model_reports.pdf"
+        python /scripts/Step5_PDF_summary_analysis.py \
+            -p ~{output_prefix}
+        mv "~{output_prefix}_report.pdf" "~{output_prefix}_dimensionality_reduction_report.pdf"
     >>>
     output {
-        File report = output_prefix + "_model_reports.pdf"
+        File report = output_prefix + "_dimensionality_reduction_report.pdf"
+    }
+    runtime {
+        docker: "~{docker}"
+        cpu: "~{cpu}"
+        memory: "~{memory_gb}GB"
+        disks: "local-disk ~{disk_size_gb} HDD"
+    }
+}
+
+task summary {
+    input {
+        Array[File] summary_data
+        String output_prefix
+        String docker
+        Int memory_gb = 24
+        Int cpu = 16
+    }
+    Int disk_size_gb = ceil(size(summary_data, "GB")) + 2
+    command <<<
+        set -euo pipefail
+        for file_name in ~{sep=' ' summary_data}; do
+            cp $file_name $(basename $file_name)
+        done
+        python /scripts/Step5_PDF_summary_analysis.py \
+            -p ~{output_prefix}
+        mv "~{output_prefix}_report.pdf" "~{output_prefix}_analysis_report.pdf"
+    >>>
+    output {
+        File report = output_prefix + "_analysis_report.pdf"
     }
     runtime {
         docker: "~{docker}"
