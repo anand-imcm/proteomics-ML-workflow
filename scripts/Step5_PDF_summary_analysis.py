@@ -1,5 +1,16 @@
+import argparse
 from fpdf import FPDF
 import os
+
+def parse_arguments():
+    parser = argparse.ArgumentParser(description='Script for generating PDF report using the plots generated from previous steps.')
+    parser.add_argument('-s', '--source', type=str, help='Path to the directory which contains all the plots generated from the previous steps.', default=".")
+    parser.add_argument('-p','--prefix',type=str, help='Output prefix')
+    return parser.parse_args()
+
+args = parse_arguments()
+source_dir = args.source
+prefix = args.prefix.lower()
 
 class PDFReport(FPDF):
     def header(self):
@@ -48,7 +59,7 @@ pdf.add_image_with_caption(overall_roc_curve_path, "Overall ROC Curves for All M
 
 # Analysis Images section
 analysis_images = {
-    'PC_result': ('Principal Component Analysis (PCA)', 'PCA results showing the distribution of data points in reduced dimensions PCs.'),
+    'PCA_result': ('Principal Component Analysis (PCA)', 'PCA results showing the distribution of data points in reduced dimensions PCs.'),
     't-SNE_result': ('t-Distributed Stochastic Neighbor Embedding (t-SNE)', 't-SNE results visualizing the data in a lower-dimensional space.'),
     'UMAP_result': ('Uniform Manifold Approximation and Projection (UMAP)', 'UMAP results displaying the clustering of data points.'),
     'KPCA_result': ('Kernel Principal Component Analysis (KPCA)', 'KPCA results providing a non-linear dimensionality reduction view.'),
@@ -56,7 +67,7 @@ analysis_images = {
 }
 
 for img_name, (title, caption) in analysis_images.items():
-    img_path = f'{img_name}.png'
+    img_path = f'{source_dir}/{prefix}_{img_name}.png'
     pdf.add_image_with_caption(img_path, title, caption)
 
 # Model Images section
@@ -67,14 +78,14 @@ model_images = {
     'svm': 'Support Vector Machine (SVM) model performance analysis including confusion matrix, evaluation metrics, ROC curve, and variable importance radar plot.',
     'knn': 'K-Nearest Neighbors (KNN) model performance analysis including confusion matrix, evaluation metrics, ROC curve, and variable importance radar plot.',
     'plsda': 'Partial Least Squares Discriminant Analysis (PLSDA) model performance analysis including confusion matrix, evaluation metrics, ROC curve, and variable importance radar plot.',
-    'vae_mlp': 'Variational Autoencoder with MLP (VAE_MLP) model performance analysis including confusion matrix, evaluation metrics, ROC curve, and variable importance radar plot.'
+    'vae': 'Variational Autoencoder with MLP (VAE_MLP) model performance analysis including confusion matrix, evaluation metrics, ROC curve, and variable importance radar plot.'
 }
 
 for model_name, caption in model_images.items():
-    confusion_matrix_path = f'{model_name}_confusion_matrix.png'
-    metrics_path = f'{model_name}_metrics.png'
-    roc_curve_path = f'{model_name}_roc_curve.png'
-    shap_image_path = f'{model_name}_shap_radar_plot.png'
+    confusion_matrix_path = f'{source_dir}/{prefix}_{model_name}_confusion_matrix.png'
+    metrics_path = f'{source_dir}/{prefix}_{model_name}_metrics.png'
+    roc_curve_path = f'{source_dir}/{prefix}_{model_name}_roc_curve.png'
+    shap_image_path = f'{source_dir}/{prefix}_{model_name}_shap_radar_plot.png'
     
     pdf.add_image_with_caption(confusion_matrix_path, f"{model_name.capitalize()} Confusion Matrix", caption)
     pdf.add_image_with_caption(metrics_path, f"{model_name.capitalize()} Evaluation Metrics", caption)
