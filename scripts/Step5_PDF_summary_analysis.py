@@ -93,4 +93,4 @@ for model_name, caption in model_images.items():
     pdf.add_image_with_caption(shap_image_path, f"{model_name.capitalize()} SHAP Radar Plot", caption)
 
 # Save PDF
-pdf.output("model_reports.pdf")
+pdf.output(f"{prefix}_report.pdf")
