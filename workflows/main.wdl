@@ -18,6 +18,7 @@ workflow main {
     String pipeline_version = "1.0.0"
     String container_gen = "docker.io/library/proteomics:~{pipeline_version}"
     String container_vae = "docker.io/library/vae:~{pipeline_version}"
+    Array[File] default_arr = []
     if (use_dimensionality_reduction && skip_ML_models)  {
         call drwf.dim_reduction_wf as dim_reduction {
             input:
@@ -26,22 +27,6 @@ workflow main {
                 docker = container_gen,
                 method_name = method_name
         } 
-    }
-    if (!use_dimensionality_reduction && !skip_ML_models) {
-        call pre.preprocessing_std as std_csv {
-            input: 
-                input_csv = input_csv,
-                output_prefix = output_prefix,
-                docker = container_gen
-        }
-        call mlwf.standard_ml_wf as ml_std {
-            input:
-                input_csv = std_csv.csv,
-                output_prefix = output_prefix,
-                container_gen = container_gen,
-                container_vae = container_vae,
-                model_choices = model_choices
-        }
     }
     if (use_dimensionality_reduction && !skip_ML_models) {
         call drwf.dim_reduction_wf as dim_reduction_ml {
@@ -76,74 +61,63 @@ workflow main {
                 model_choices = model_choices
         }
     }
-    # File data_csv = select_first([std_csv.csv, dim_reduction.csv])
-    # File? dim_reduct_plot_out = dim_reduction.png
-
-    # if (!skip_ML_models) {
-    #     call cls.classification_gen {
-    #         input:
-    #             input_csv = data_csv,
-    #             output_prefix = output_prefix,
-    #             model = model_choices,
-    #             docker = container_gen
-    #     }
-    #     call cls.classification_vae {
-    #         input:
-    #             input_csv = data_csv,
-    #             output_prefix = output_prefix,
-    #             model = model_choices,
-    #             docker = container_vae
-    #     }
-    #     Array[File] cls_data_npy = flatten([classification_gen.data_npy, classification_vae.data_npy])
-    #     Array[File] cls_model_pkl = flatten([classification_gen.model_pkl, classification_vae.model_pkl])
-    #     Array[File] cls_data_pkl = flatten([classification_gen.data_pkl, classification_vae.data_pkl])
-    #     Array[File] cls_metrics_plot = flatten([classification_gen.metrics_plot, classification_vae.metrics_plot])
-    #     Array[File] cls_roc_curve_plot = flatten([classification_gen.roc_curve_plot, classification_vae.roc_curve_plot])
-    #     Array[File] cls_confusion_matrix_plot = flatten([classification_gen.confusion_matrix_plot, classification_vae.confusion_matrix_plot])
-    #     Array[File] vae_shap_out = flatten([classification_vae.vae_shap_csv])
-    #     call report.plot {
-    #         input:
-    #             data_npy = cls_data_npy,
-    #             model_pkl = cls_model_pkl,
-    #             data_pkl = cls_data_pkl,
-    #             vae_shap = vae_shap_out,
-    #             model = model_choices,
-    #             output_prefix = output_prefix,
-    #             docker = container_gen
-    #     }
-    #     call report.pdf {
-    #         input:
-    #             confusion_matrix = cls_confusion_matrix_plot,
-    #             roc_curve = cls_roc_curve_plot,
-    #             joint_roc_curve = plot.all_roc_curves,
-    #             metrics = cls_metrics_plot,
-    #             vae_shap_radar = plot.radar_plot,
-    #             dim_reduct_plot = dim_reduct_plot_out,
-    #             model = model_choices,
-    #             output_prefix = output_prefix,
-    #             docker = container_gen
-    #     }
-    # }
-    # if (skip_ML_models) {
-    #     call report.pdf as pdf_dim {
-    #         input:
-    #             output_prefix = output_prefix,
-    #             docker = container_gen
-    #     }
-    # }
-    # File pdf_report = select_first([pdf.report, pdf_dim.report])
-    # output {
-    #     File processed_csv = data_csv
-    #     Array[File]? confusion_matrix_plot = cls_confusion_matrix_plot
-    #     Array[File]? roc_curve_plot = cls_roc_curve_plot
-    #     Array[File]? metrics_plot = cls_metrics_plot
-    #     Array[File]? data_pkl = cls_data_pkl
-    #     Array[File]? model_pkl = cls_model_pkl
-    #     Array[File]? data_npy = cls_data_npy
-    #     File? overall_roc_plot = plot.all_roc_curves
-    #     Array[File]? shap_radar_plot = plot.radar_plot
-    #     Array[File]? shap_values = plot.shap_values
-    #     # File? pdf_summary = pdf_report
-    #     File? dim_report = dim_reduction.report
-    # }
+    if (!use_dimensionality_reduction && !skip_ML_models) {
+        call pre.preprocessing_std as std_csv {
+            input: 
+                input_csv = input_csv,
+                output_prefix = output_prefix,
+                docker = container_gen
+        }
+        call mlwf.standard_ml_wf as ml_std {
+            input:
+                input_csv = std_csv.csv,
+                output_prefix = output_prefix,
+                container_gen = container_gen,
+                container_vae = container_vae,
+                model_choices = model_choices
+        }
+    }
+    File overall_roc_plots = if (!skip_ML_models) then select_first([
+        ml_std.out_all_roc_curves,
+        ml_dim.out_all_roc_curves,
+        ml_std_def.out_all_roc_curves
+    ]) else input_csv
+    Array[File] dim_reduct_plots = if (use_dimensionality_reduction) then flatten(select_all([
+        dim_reduction.png_list,
+        dim_reduction_ml.png_list
+    ])) else default_arr
+    Array[File] confusion_matrix_plots = if (!skip_ML_models) then flatten(select_all([
+        ml_std.out_cls_confusion_matrix_plot,
+        ml_dim.out_cls_confusion_matrix_plot,
+        ml_std_def.out_cls_confusion_matrix_plot
+    ])) else default_arr
+    Array[File] eval_matrix_plots = if (!skip_ML_models) then flatten(select_all([
+        ml_std.out_cls_metrics_plot,
+        ml_dim.out_cls_metrics_plot,
+        ml_std_def.out_cls_metrics_plot
+    ])) else default_arr
+    Array[File] roc_curve_plots = if (!skip_ML_models) then flatten(select_all([
+        ml_std.out_cls_roc_curve_plot,
+        ml_dim.out_cls_roc_curve_plot,
+        ml_std_def.out_cls_roc_curve_plot
+    ])) else default_arr
+    Array[File] shap_radar_plots = if (!skip_ML_models) then flatten(select_all([
+        ml_std.out_radar_plot,
+        ml_dim.out_radar_plot,
+        ml_std_def.out_radar_plot
+    ])) else default_arr
+    Array[File] all_valid_files = flatten([
+        [overall_roc_plots],
+        dim_reduct_plots,
+        confusion_matrix_plots,
+        eval_matrix_plots,
+        roc_curve_plots,
+        shap_radar_plots
+    ])
+    call report.summary as analysis_report {
+        input:
+            summary_data = all_valid_files,
+            output_prefix = output_prefix,
+            docker = container_gen
+    }
 }
