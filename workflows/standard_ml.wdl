@@ -50,7 +50,7 @@ workflow standard_ml_wf {
         Array[File] out_cls_roc_curve_plot = cls_roc_curve_plot
         Array[File] out_cls_confusion_matrix_plot = cls_confusion_matrix_plot
         Array[File] out_vae_shap_out = vae_shap_out
-        File out_all_roc_curves = roc_shap_summary.all_roc_curves
+        File? out_all_roc_curves = roc_shap_summary.all_roc_curves
         Array[File] out_radar_plot = roc_shap_summary.radar_plot
         Array[File] out_shap_values = roc_shap_summary.shap_values
     }
