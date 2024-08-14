@@ -9,13 +9,15 @@ workflow dim_reduction_wf {
         String output_prefix
         String docker
         String method_name = "PCA"
+        Int num_of_dimensions = 3
     }
     call dim.preprocessing_dim as dim_reduction_wf {
         input: 
             input_csv = input_csv,
             output_prefix = output_prefix,
             docker = docker,
-            dim_reduction_method = method_name
+            dim_reduction_method = method_name,
+            num_dimensions = num_of_dimensions
     }
     call dim_report.dim as summary_wf {
         input:
