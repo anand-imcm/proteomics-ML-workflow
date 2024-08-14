@@ -86,7 +86,7 @@ def perform_pca(data, out_prefix, labels, dims=3, standardize=True, random_state
     best_params = grid_search.best_params_
     pca = PCA(n_components=best_params['n_components'])
     pca_result = pca.fit_transform(data)
-    plot_pairplot(pca_result, out_prefix, labels, "PC", best_params['n_components'])
+    plot_pairplot(pca_result, out_prefix, labels, "PCA", best_params['n_components'])
     df_result = pd.DataFrame(pca_result, columns=[f"PC{i+1}" for i in range(best_params['n_components'])])
     df_result['Label'] = labels
     df_result.to_csv(f"{out_prefix}_PCA_result.csv", index=False)
