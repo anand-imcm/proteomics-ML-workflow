@@ -93,6 +93,10 @@ workflow main {
         ml_std.out_radar_plot,
         ml_dim.out_radar_plot,
     ])) else default_arr
+    Array[File] shap_csv_out = if (!skip_ML_models) then flatten(select_all([
+        ml_std.out_shap_values,
+        ml_dim.out_shap_values
+    ])) else default_arr
     Array[File] all_valid_files = flatten([
         [overall_roc_plots],
         dim_reduct_plots,
@@ -118,5 +122,7 @@ workflow main {
     output {
         Array[File] dimensionality_reduction_csv = dim_csv_output
         File std_preprocessing_csv = std_csv_output
+        Array[File] shap_csv = shap_csv_out
+        File report = analysis_report.report
     }
 }
