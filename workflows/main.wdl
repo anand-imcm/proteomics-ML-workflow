@@ -52,14 +52,14 @@ workflow main {
                 output_prefix = output_prefix,
                 docker = container_gen
         }
-        call mlwf.standard_ml_wf as ml_std_def {
-            input:
-                input_csv = std_csv_def.csv,
-                output_prefix = output_prefix,
-                container_gen = container_gen,
-                container_vae = container_vae,
-                model_choices = model_choices
-        }
+        # call mlwf.standard_ml_wf as ml_std_def {
+        #     input:
+        #         input_csv = std_csv_def.csv,
+        #         output_prefix = output_prefix,
+        #         container_gen = container_gen,
+        #         container_vae = container_vae,
+        #         model_choices = model_choices
+        # }
     }
     if (!use_dimensionality_reduction && !skip_ML_models) {
         call pre.preprocessing_std as std_csv {
@@ -80,7 +80,6 @@ workflow main {
     File overall_roc_plots = if (!skip_ML_models) then select_first([
         ml_std.out_all_roc_curves,
         ml_dim.out_all_roc_curves,
-        ml_std_def.out_all_roc_curves
     ]) else input_csv
     Array[File] dim_reduct_plots = if (use_dimensionality_reduction) then flatten(select_all([
         dim_reduction.png_list,
@@ -89,22 +88,18 @@ workflow main {
     Array[File] confusion_matrix_plots = if (!skip_ML_models) then flatten(select_all([
         ml_std.out_cls_confusion_matrix_plot,
         ml_dim.out_cls_confusion_matrix_plot,
-        ml_std_def.out_cls_confusion_matrix_plot
     ])) else default_arr
     Array[File] eval_matrix_plots = if (!skip_ML_models) then flatten(select_all([
         ml_std.out_cls_metrics_plot,
         ml_dim.out_cls_metrics_plot,
-        ml_std_def.out_cls_metrics_plot
     ])) else default_arr
     Array[File] roc_curve_plots = if (!skip_ML_models) then flatten(select_all([
         ml_std.out_cls_roc_curve_plot,
         ml_dim.out_cls_roc_curve_plot,
-        ml_std_def.out_cls_roc_curve_plot
     ])) else default_arr
     Array[File] shap_radar_plots = if (!skip_ML_models) then flatten(select_all([
         ml_std.out_radar_plot,
         ml_dim.out_radar_plot,
-        ml_std_def.out_radar_plot
     ])) else default_arr
     Array[File] all_valid_files = flatten([
         [overall_roc_plots],
@@ -114,10 +109,19 @@ workflow main {
         roc_curve_plots,
         shap_radar_plots
     ])
+    Array[File] dim_csv_output = if (use_dimensionality_reduction) then flatten(select_all([
+        dim_reduction.csv_list,
+        dim_reduction_ml.csv_list
+        ])) else default_arr
+    File std_csv_output =  if (!use_dimensionality_reduction) then select_first([std_csv_def.csv,std_csv.csv]) else input_csv
     call report.summary as analysis_report {
         input:
             summary_data = all_valid_files,
             output_prefix = output_prefix,
             docker = container_gen
+    }
+    output {
+        Array[File] dimensionality_reduction_csv = dim_csv_output
+        File std_preprocessing_csv = std_csv_output
     }
 }
