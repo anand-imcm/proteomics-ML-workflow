@@ -52,14 +52,6 @@ workflow main {
                 output_prefix = output_prefix,
                 docker = container_gen
         }
-        # call mlwf.standard_ml_wf as ml_std_def {
-        #     input:
-        #         input_csv = std_csv_def.csv,
-        #         output_prefix = output_prefix,
-        #         container_gen = container_gen,
-        #         container_vae = container_vae,
-        #         model_choices = model_choices
-        # }
     }
     if (!use_dimensionality_reduction && !skip_ML_models) {
         call pre.preprocessing_std as std_csv {
@@ -113,7 +105,10 @@ workflow main {
         dim_reduction.csv_list,
         dim_reduction_ml.csv_list
         ])) else default_arr
-    File std_csv_output =  if (!use_dimensionality_reduction) then select_first([std_csv_def.csv,std_csv.csv]) else input_csv
+    File std_csv_output =  if (!use_dimensionality_reduction) then select_first([
+        std_csv_def.csv,
+        std_csv.csv
+        ]) else input_csv
     call report.summary as analysis_report {
         input:
             summary_data = all_valid_files,
