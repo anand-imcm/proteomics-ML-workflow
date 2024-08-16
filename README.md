@@ -6,15 +6,21 @@
 ## todo
 
 - [x] Initial Layout
-- [ ] Workflow description
-- [ ] Describe Inputs
-- [ ] Describe Outputs
+- [x] Workflow description
+- [x] Describe Inputs
+- [x] Describe Outputs
 - [ ] Usage instructions
 - [x] List all the components and their licenses
 
 ## Workflow Steps
 
-- **Preprocessing** : Performs Z-score normalization on the input data.
+- **Preprocessing** : By default, Z-score normalization is applied to the input data. Optionally, users can choose to apply dimensionality reduction to the dataset. The available methods include:
+  - PCA (Principal Component Analysis)
+  - UMAP (Uniform Manifold Approximation and Projection)
+  - t-SNE (t-Distributed Stochastic Neighbor Embedding)
+  - KPCA (Kernel Principal Component Analysis)
+  - PLS (Partial Least Squares)
+
 - **Classification** : This step applies the machine learning models to the standardized data and generates predictions, plots, and other relevant evaluation metrics for all the models. The available algorithms are as follows:
   - `KNN` (K-Nearest Neighbors)
   - `RF` (Random Forest)
@@ -23,17 +29,19 @@
   - `XGB` (XGBoost)
   - `PLSDA` (Partial Least Squares Discriminant Analysis)
   - `VAE` (Variational autoencoder)
-- **Combined ROC plot** : This step generates a plot containing the ROC curves for all the models specified by the user.
+
+- **SHAP summary** : This step calculates SHAP values and plots ROC curves for all the models specified by the user.
+
+- **Combined report** : This step aggregates all outputs from the previous steps and compiles them into a `.pdf` report.
 
 ## Inputs
-
-The main inputs to the workflow are:
 
 - **Required**
   - `main.input_csv` : [File] Input file in `.csv` format.
   - `main.output_prefix` : [String] Sample name. This will be used as prefix for all the output files.
   - `main.model_choices` : [String] Specify the model name(s) to use. Options include `KNN`, `RF`, `NN`, `XGB`, `PLSDA`, `VAE`, and `SVM`. Multiple model names can be entered together, separated by a space.
-  - `main.method_name` : [String] Specify the model name(s) to use. Options include `PCA`, `UMAP`, `t-SNE`, `KPCA` and `PLS`. Multiple model names can be entered together, separated by a space. Default value: `PCA`
+  - `main.method_name` : [String] Specify the method name(s) to use. Options include `PCA`, `UMAP`, `t-SNE`, `KPCA` and `PLS`. Multiple model names can be entered together, separated by a space. Default value: `PCA`
+
 - **Optional**
   - `main.use_dimensionality_reduction` : [Boolean] Use this switch to apply dimensionality reduction to the input data. Default value: `false`
   - `main.skip_ML_models` : [Boolean] Use this switch to skip running ML models. Default value: `false`
