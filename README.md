@@ -15,11 +15,11 @@
 ## Workflow Steps
 
 - **Preprocessing** : By default, Z-score normalization is applied to the input data. Optionally, users can choose to apply dimensionality reduction to the dataset. The available methods include:
-  - PCA (Principal Component Analysis)
-  - UMAP (Uniform Manifold Approximation and Projection)
-  - t-SNE (t-Distributed Stochastic Neighbor Embedding)
-  - KPCA (Kernel Principal Component Analysis)
-  - PLS (Partial Least Squares)
+  - `PCA` (Principal Component Analysis)
+  - `UMAP` (Uniform Manifold Approximation and Projection)
+  - `t-SNE` (t-Distributed Stochastic Neighbor Embedding)
+  - `KPCA` (Kernel Principal Component Analysis)
+  - `PLS` (Partial Least Squares)
 
 - **Classification** : This step applies the machine learning models to the standardized data and generates predictions, plots, and other relevant evaluation metrics for all the models. The available algorithms are as follows:
   - `KNN` (K-Nearest Neighbors)
