@@ -39,8 +39,8 @@
 - **Required**
   - `main.input_csv` : [File] Input file in `.csv` format.
   - `main.output_prefix` : [String] Sample name. This will be used as prefix for all the output files.
-  - `main.model_choices` : [String] Specify the model name(s) to use. Options include `KNN`, `RF`, `NN`, `XGB`, `PLSDA`, `VAE`, and `SVM`. Multiple model names can be entered together, separated by a space.
-  - `main.method_name` : [String] Specify the method name(s) to use. Options include `PCA`, `UMAP`, `t-SNE`, `KPCA` and `PLS`. Multiple model names can be entered together, separated by a space. Default value: `PCA`
+  - `main.model_choices` : [String] Specify the model name(s) to use. Options include `KNN`, `RF`, `NN`, `XGB`, `PLSDA`, `VAE`, and `SVM`. Multiple model names can be entered together, separated by a space. Default value: `RF`
+  - `main.method_name` : [String] Specify the method name(s) to use. Options include `PCA`, `UMAP`, `t-SNE`, `KPCA` and `PLS`. Multiple methods can be entered together, separated by a space. Default value: `PCA`
 
 - **Optional**
   - `main.use_dimensionality_reduction` : [Boolean] Use this switch to apply dimensionality reduction to the input data. Default value: `false`
