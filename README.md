@@ -3,16 +3,20 @@
 > [!WARNING]
 > This project is under development and is not ready for production use.
 
+## Introduction
+
+This cloud-based platform integrates key algorithms, including Principal Component Analysis (PCA), Kernel PCA (KPCA), Partial Least Squares (PLS), t-SNE, and UMAP, for robust pre-processing, visualization, and dimensionality reduction. Incorporating state-of-the-art machine learning and deep learning methods, such as Multilayer Perceptron (MLP), Random Forest (RF), Support Vector Machine (SVM), PLS Discriminant Analysis (PLSDA), XGBoost, K-Nearest Neighbors (KNN), and Variational Autoencoder (VAE-MLP) etc., the workflow ensures comprehensive data analysis. SHapley Additive exPlanations (SHAP) are used to quantify the significance of identified proteins, enhancing the interpretability of results. Functional enrichment and protein-protein interaction (PPI) network analyses are performed, focusing on visualization, to facilitate understanding of disease mechanisms. This workflow advances the early diagnosis and treatment of neurodegenerative diseases by enabling the efficient identification of critical biomarkers.
+
 ## Workflow Steps
 
-- **Preprocessing** : By default, Z-score normalization is applied to the input data. Optionally, users can choose to apply dimensionality reduction to the dataset. The available methods include:
-  - `PCA` (Principal Component Analysis)
+- **Preprocessing** : By default, Z-score standardisation is applied to the input data. Optionally, users can choose to apply dimensionality reduction to the dataset. Display scatter plots for every two dimensions based on the selected number of output dimensions. The available methods include:
+  - `PCA` (Principal Component Analysis for linear data)
   - `UMAP` (Uniform Manifold Approximation and Projection)
   - `t-SNE` (t-Distributed Stochastic Neighbor Embedding)
-  - `KPCA` (Kernel Principal Component Analysis)
+  - `KPCA` (Kernel Principal Component Analysis for non-linear data)
   - `PLS` (Partial Least Squares)
 
-- **Classification** : This step applies the machine learning models to the standardized data and generates predictions, plots, and other relevant evaluation metrics for all the models. The available algorithms are as follows:
+- **Classification** : This step applies the machine learning models to the standardized data and generates a confusion matrix, ROC plots for all classes and averages, and other relevant evaluation metrics (Accuracy, F1, sensitivity, specificity) for all the models. The available algorithms are as follows:
   - `KNN` (K-Nearest Neighbors)
   - `RF` (Random Forest)
   - `NN` (Neural Network)
@@ -21,33 +25,33 @@
   - `PLSDA` (Partial Least Squares Discriminant Analysis)
   - `VAE` (Variational autoencoder)
 
-- **SHAP summary** : This step calculates SHAP values and plots ROC curves for all the models specified by the user.
+- **SHAP summary** : This step calculates SHAP values for variable importance (CSV file and radar plot for top features) and plots ROC curves for all the models specified by the user.
 
-- **Combined report** : This step aggregates all outputs from the previous steps and compiles them into a `.pdf` report.
+- **Combined report** : This step aggregates all output plots from the previous steps and compiles them into a `.pdf` report.
 
 ## Inputs
 
 - **Required**
-  - `main.input_csv` : [File] Input file in `.csv` format.
-  - `main.output_prefix` : [String] Sample name. This will be used as prefix for all the output files.
+  - `main.input_csv` : [File] Input file in `.csv` format, includes a 'Label' column, with each row representing a sample and each column representing a feature.
+  - `main.output_prefix` : [String] Analysis ID. This will be used as prefix for all the output files.
 
 > [!IMPORTANT]
 > It is preferable to choose just one dimensionality reduction method when utilizing dimensionality reduction in conjunction with ML models. The `skip_ML_models` option should be `true` while applying multiple dimensionality reduction methods.
 
 - **Optional**
   - `main.use_dimensionality_reduction` : [Boolean] Use this option to apply dimensionality reduction to the input data. Default value: `false`
-  - `main.*.num_of_dimensions`: [Int] Default value: `3`
+  - `main.*.num_of_dimensions`: [Int] Default value: `3`, to choose to view or retain data from several dimensions
   - `main.skip_ML_models` : [Boolean] Use this option to skip running ML models. Default value: `false`
   - `main.model_choices` : [String] Specify the model name(s) to use. Options include `KNN`, `RF`, `NN`, `XGB`, `PLSDA`, `VAE`, and `SVM`. Multiple model names can be entered together, separated by a space. Default value: `RF`
   - `main.method_name` : [String] Specify the dimensionality method name(s) to use. Options include `PCA`, `UMAP`, `t-SNE`, `KPCA` and `PLS`. Multiple methods can be entered together, separated by a space. Default value: `PCA`
-  - `main.*.standard_ml_wf.roc_shap_summary.shap_radar_num_features`: [Int] Default value: `10`
+  - `main.*.standard_ml_wf.roc_shap_summary.shap_radar_num_features`: [Int] Default value: `10`， to choose how many top features to display on the radar chart
 
 ## Outputs
 
-- `report` : [File] A `.pdf` file containing the standardized data through the default method.
-- `shap_csv` : Array[File] A list of `.csv` files containing SHAP values.
+- `report` : [File] A `.pdf` file containing the result plots from all the required analyses.
+- `shap_csv` : Array[File] A list of `.csv` files containing SHAP values for each input variable.
 - `std_preprocessing_csv` : [File] A `.csv` file with data standardized using the default method.
-- `dimensionality_reduction_csv` : [File] A `.csv` file with data standardized using the user-selected dimensionality reduction method.
+- `dimensionality_reduction_csv` : [File] A `.csv` file with the selected dimensional data using the user-selected dimensionality reduction method.
 
 ## Components
 
