@@ -1,0 +1,17 @@
+name: base
+channels:
+  - bioconda
+  - conda-forge
+  - defaults
+dependencies:
+  - python
+  - joblib<=1.4.2
+  - matplotlib<=3.9.1
+  - numpy<=1.26.4
+  - pandas<=2.2.2
+  - scikit-learn<=1.5.1
+  - xgboost<=2.1.1
+  - shap<=0.45.1
+  - fpdf<=1.7.2
+  - seaborn<=0.13.2
+  - umap-learn<=0.5.6
