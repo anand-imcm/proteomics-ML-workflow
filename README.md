@@ -3,15 +3,6 @@
 > [!WARNING]
 > This project is under development and is not ready for production use.
 
-## todo
-
-- [x] Initial Layout
-- [x] Workflow description
-- [x] Describe Inputs
-- [x] Describe Outputs
-- [ ] Usage instructions
-- [x] List all the components and their licenses
-
 ## Workflow Steps
 
 - **Preprocessing** : By default, Z-score normalization is applied to the input data. Optionally, users can choose to apply dimensionality reduction to the dataset. The available methods include:
@@ -39,12 +30,17 @@
 - **Required**
   - `main.input_csv` : [File] Input file in `.csv` format.
   - `main.output_prefix` : [String] Sample name. This will be used as prefix for all the output files.
-  - `main.model_choices` : [String] Specify the model name(s) to use. Options include `KNN`, `RF`, `NN`, `XGB`, `PLSDA`, `VAE`, and `SVM`. Multiple model names can be entered together, separated by a space. Default value: `RF`
-  - `main.method_name` : [String] Specify the method name(s) to use. Options include `PCA`, `UMAP`, `t-SNE`, `KPCA` and `PLS`. Multiple methods can be entered together, separated by a space. Default value: `PCA`
+
+> [!IMPORTANT]
+> It is preferable to choose just one dimensionality reduction method when utilizing dimensionality reduction in conjunction with ML models. The `skip_ML_models` option should be `true` while applying multiple dimensionality reduction methods.
 
 - **Optional**
-  - `main.use_dimensionality_reduction` : [Boolean] Use this switch to apply dimensionality reduction to the input data. Default value: `false`
-  - `main.skip_ML_models` : [Boolean] Use this switch to skip running ML models. Default value: `false`
+  - `main.use_dimensionality_reduction` : [Boolean] Use this option to apply dimensionality reduction to the input data. Default value: `false`
+  - `main.*.num_of_dimensions`: [Int] Default value: `3`
+  - `main.skip_ML_models` : [Boolean] Use this option to skip running ML models. Default value: `false`
+  - `main.model_choices` : [String] Specify the model name(s) to use. Options include `KNN`, `RF`, `NN`, `XGB`, `PLSDA`, `VAE`, and `SVM`. Multiple model names can be entered together, separated by a space. Default value: `RF`
+  - `main.method_name` : [String] Specify the dimensionality method name(s) to use. Options include `PCA`, `UMAP`, `t-SNE`, `KPCA` and `PLS`. Multiple methods can be entered together, separated by a space. Default value: `PCA`
+  - `main.*.standard_ml_wf.roc_shap_summary.shap_radar_num_features`: [Int] Default value: `10`
 
 ## Outputs
 
