@@ -32,11 +32,18 @@ This cloud-based platform integrates key algorithms, including Principal Compone
 ## Inputs
 
 - **Required**
-  - `main.input_csv` : [File] Input file in `.csv` format, includes a 'Label' column, with each row representing a sample and each column representing a feature.
+  - `main.input_csv` : [File] Input file in `.csv` format, includes a 'Label' column, with each row representing a sample and each column representing a feature. An example of the `.csv` is shown below:
+
+  | Label | Protein1 | Protein2 | ... | ProteinN |
+  |---------|---------|---------|---------|---------|
+  | Label1 | 0.1 | 0.4 | ... | 0.01 |
+  | Label2 | 0.2 | 0.1 | ... | 0.3 |
+
   - `main.output_prefix` : [String] Analysis ID. This will be used as prefix for all the output files.
 
 > [!IMPORTANT]
 > It is preferable to choose just one dimensionality reduction method when utilizing dimensionality reduction in conjunction with ML models. The `skip_ML_models` option should be `true` while applying multiple dimensionality reduction methods.
+> User can run multiple dimensionality reduction methods on the input dataset, and skip the ML models and directly, view the pdf report and access the results.
 
 - **Optional**
   - `main.use_dimensionality_reduction` : [Boolean] Use this option to apply dimensionality reduction to the input data. Default value: `false`
