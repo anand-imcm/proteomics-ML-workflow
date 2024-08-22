@@ -45,7 +45,7 @@ This cloud-based platform integrates key algorithms, including Principal Compone
 > It is recommended to select only one dimensionality reduction method when using it alongside ML models. Set the `skip_ML_models` option to `true` if applying multiple dimensionality reduction methods. If `skip_ML_models` is `false` while using multiple dimensionality reduction methods, the pipeline will automatically select one of the output files from the dimensionality reduction step for classification. [Not recommended]
 
 > [!TIP]
-> User can run multiple dimensionality reduction methods on the input dataset, and skip the ML models and directly, view the pdf report and access the results.
+> User can run multiple dimensionality reduction methods on the input dataset, and skip the ML models (`skip_ML_models = true`) and directly, view the pdf report and access the results.
 
 - **Optional**
   - `main.use_dimensionality_reduction` : [Boolean] Use this option to apply dimensionality reduction to the input data. Default value: `false`
