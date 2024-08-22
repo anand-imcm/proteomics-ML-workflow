@@ -34,10 +34,10 @@ This cloud-based platform integrates key algorithms, including Principal Compone
 - **Required**
   - `main.input_csv` : [File] Input file in `.csv` format, includes a 'Label' column, with each row representing a sample and each column representing a feature. An example of the `.csv` is shown below:
 
-    | Label | Protein1 | Protein2 | ... | ProteinN |
-    |---------|---------|---------|---------|---------|
-    | Label1 | 0.1 | 0.4 | ... | 0.01 |
-    | Label2 | 0.2 | 0.1 | ... | 0.3 |
+    | Label  | Protein1 | Protein2 | ... | ProteinN |
+    |:-------|:---------|:---------|-----|:---------|
+    | Label1 | 0.1      | 0.4      | ... | 0.01     |
+    | Label2 | 0.2      | 0.1      | ... | 0.3      |
 
   - `main.output_prefix` : [String] Analysis ID. This will be used as prefix for all the output files.
 
@@ -67,7 +67,7 @@ This cloud-based platform integrates key algorithms, including Principal Compone
 ## Components
 
 | Package | License |
-|---------|---------|
+|:---------|:---------|
 | [micromamba==1.5.5](www.github.com/mamba-org/mamba#micromamba) | BSD-3-Clause |
 | [python](www.python.org/) | PSF/GPL-compat |
 | [joblib](www.github.com/joblib/joblib) | BSD-3-Clause |
