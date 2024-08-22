@@ -90,9 +90,11 @@ task summary {
         python /scripts/Step5_PDF_summary_analysis.py \
             -p ~{output_prefix}
         mv "~{output_prefix}_report.pdf" "~{output_prefix}_analysis_report.pdf"
+        tar -czvf "~{output_prefix}_plots.png.tar.gz" *.png
     >>>
     output {
         File report = output_prefix + "_analysis_report.pdf"
+        File plots = output_prefix + "_plots.png.tar.gz"
     }
     runtime {
         docker: "~{docker}"
