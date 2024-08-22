@@ -41,8 +41,8 @@ This cloud-based platform integrates key algorithms, including Principal Compone
 
   - `main.output_prefix` : [String] Analysis ID. This will be used as prefix for all the output files.
 
-> [!IMPORTANT]
-> It is preferable to choose just one dimensionality reduction method when utilizing dimensionality reduction in conjunction with ML models. The `skip_ML_models` option should be `true` while applying multiple dimensionality reduction methods.
+> [!WARNING]
+> It is recommended to select only one dimensionality reduction method when using it alongside ML models. Set the `skip_ML_models` option to `true` if applying multiple dimensionality reduction methods. If `skip_ML_models` is `false` while using multiple dimensionality reduction methods, the pipeline will automatically select one of the output files from the dimensionality reduction step for classification. [Not recommended]
 
 > [!TIP]
 > User can run multiple dimensionality reduction methods on the input dataset, and skip the ML models and directly, view the pdf report and access the results.
@@ -54,6 +54,8 @@ This cloud-based platform integrates key algorithms, including Principal Compone
   - `main.model_choices` : [String] Specify the model name(s) to use. Options include `KNN`, `RF`, `NN`, `XGB`, `PLSDA`, `VAE`, and `SVM`. Multiple model names can be entered together, separated by a space. Default value: `RF`
   - `main.method_name` : [String] Specify the dimensionality method name(s) to use. Options include `PCA`, `UMAP`, `t-SNE`, `KPCA` and `PLS`. Multiple methods can be entered together, separated by a space. Default value: `PCA`
   - `main.*.standard_ml_wf.roc_shap_summary.shap_radar_num_features`: [Int] Default value: `10`， to choose how many top features to display on the radar chart
+- `*.memory_gb` : Amount of memory in GB needed to execute the specific task.
+- `*.cpu` : Number of CPUs necessary to perform the task.
 
 ## Outputs
 
