@@ -58,9 +58,11 @@ This cloud-based platform integrates key algorithms, including Principal Compone
 ## Outputs
 
 - `report` : [File] A `.pdf` file containing the result plots from all the required analyses.
+- `plots` : [File] A `.gz` file containing the result plots from all the required analyses.
 - `shap_csv` : Array[File] A list of `.csv` files containing SHAP values for each input variable.
 - `std_preprocessing_csv` : [File] A `.csv` file with data standardized using the default method.
 - `dimensionality_reduction_csv` : [File] A `.csv` file with the selected dimensional data using the user-selected dimensionality reduction method.
+- `dimensionality_reduction_plots` : Array[File] A list of `.png` files with the selected dimensional output plots using the user-selected dimensionality reduction method.
 
 ## Components
 
