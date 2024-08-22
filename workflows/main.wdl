@@ -121,8 +121,10 @@ workflow main {
     }
     output {
         Array[File] dimensionality_reduction_csv = dim_csv_output
+        Array[File] dimensionality_reduction_plots = dim_reduct_plots
         File std_preprocessing_csv = std_csv_output
         Array[File] shap_csv = shap_csv_out
         File report = analysis_report.report
+        File plots = analysis_report.plots
     }
 }
