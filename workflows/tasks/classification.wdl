@@ -12,9 +12,15 @@ task classification_gen {
     Int disk_size_gb = ceil(size(input_csv, "GB")) + 5
     command <<<
         set -euo pipefail
+        filename=~{input_csv}
+        if [[ $filename == *.tar.gz ]]; then
+            tar -xzf "$filename"
+            filename=$(find . -maxdepth 1 -type f -name "*.csv" | head -n 1)
+        fi
+        printf "Running classification using $filename\n"
         model_modified=$(echo "~{model}" | sed 's/VAE//g')
         python /scripts/classification.py \
-            -i ~{input_csv} \
+            -i $filename \
             -p ~{output_prefix} \
             -m ${model_modified}
     >>>
@@ -47,9 +53,15 @@ task classification_vae {
     Int disk_size_gb = ceil(size(input_csv, "GB")) + 5
     command <<<
         set -euo pipefail
+        filename=~{input_csv}
+        if [[ $filename == *.tar.gz ]]; then
+            tar -xzf "$filename"
+            filename=$(find . -maxdepth 1 -type f -name "*.csv" | head -n 1)
+        fi
+        printf "Running classification using $filename\n"
         if [[ "~{model}" == *"VAE"* ]]; then
             python /scripts/classification.py \
-            -i ~{input_csv} \
+            -i $filename \
             -p ~{output_prefix} \
             -m VAE
         fi
