@@ -16,7 +16,7 @@ workflow dim_reduction_wf {
             input_csv = input_csv,
             output_prefix = output_prefix,
             docker = docker,
-            dim_reduction_method = method_name,
+            dim_method = method_name,
             num_dimensions = num_of_dimensions
     }
     call dim_report.dim as summary_wf {

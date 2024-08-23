@@ -30,7 +30,7 @@ task preprocessing_dim {
     input {
         File input_csv
         String output_prefix
-        String dim_reduction_method = "PCA"
+        String dim_method = "PCA"
         Int num_dimensions = 3
         String docker
         Int memory_gb = 16
@@ -41,7 +41,7 @@ task preprocessing_dim {
         set -euo pipefail
         python /scripts/Step1_Preprocessing.py \
             -i ~{input_csv} \
-            -m ~{dim_reduction_method} \
+            -m ~{dim_method} \
             -d ~{num_dimensions} \
             -p ~{output_prefix}
         tar -czvf "~{output_prefix}_result.png.tar.gz" *.png

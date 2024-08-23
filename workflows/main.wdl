@@ -10,10 +10,11 @@ workflow main {
         File input_csv
         String output_prefix
         String model_choices = "RF"
-        String method_name = "PCA"
+        String dimensionality_reduction_choices = "PCA"
         Boolean use_dimensionality_reduction = false
         Boolean skip_ML_models = false
         Int shap_radar_num_features = 10
+        Int num_of_dimensions = 3
     }
     String pipeline_version = "1.0.0"
     String container_gen = "docker.io/library/proteomics:~{pipeline_version}"
@@ -25,7 +26,8 @@ workflow main {
                 input_csv = input_csv,
                 output_prefix = output_prefix,
                 docker = container_gen,
-                method_name = method_name
+                method_name = dimensionality_reduction_choices,
+                num_of_dimensions = num_of_dimensions
         } 
     }
     if (use_dimensionality_reduction && !skip_ML_models) {
@@ -34,7 +36,8 @@ workflow main {
                 input_csv = input_csv,
                 output_prefix = output_prefix,
                 docker = container_gen,
-                method_name = method_name
+                method_name = dimensionality_reduction_choices,
+                num_of_dimensions = num_of_dimensions
         } 
         call mlwf.standard_ml_wf as ml_dim {
             input:
