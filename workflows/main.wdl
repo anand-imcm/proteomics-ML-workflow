@@ -42,8 +42,8 @@ workflow main {
     }
     
     String pipeline_version = "1.0.0"
-    String container_gen = "docker.io/library/proteomics:~{pipeline_version}"
-    String container_vae = "docker.io/library/vae:~{pipeline_version}"
+    String container_gen = "ghcr.io/anand-imcm/proteomics-ml-workflow-gen:~{pipeline_version}"
+    String container_vae = "ghcr.io/anand-imcm/proteomics-ml-workflow-vae:~{pipeline_version}"
     Array[File] default_arr = []
     
     if (use_dimensionality_reduction && skip_ML_models)  {

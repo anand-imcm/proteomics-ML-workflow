@@ -1,5 +1,7 @@
 # proteomics-ML-workflow
 
+[![publish](https://img.shields.io/github/actions/workflow/status/anand-imcm/proteomics-ML-workflow/publish_gen.yml)](https://github.com/anand-imcm/proteomics-ML-workflow/releases)
+
 ## Introduction
 
 This cloud-based platform integrates key algorithms, including Principal Component Analysis (PCA), Kernel PCA (KPCA), Partial Least Squares (PLS), t-SNE, and UMAP, for robust pre-processing, visualization, and dimensionality reduction. Incorporating state-of-the-art machine learning and deep learning methods, such as Multilayer Perceptron (MLP), Random Forest (RF), Support Vector Machine (SVM), PLS Discriminant Analysis (PLSDA), XGBoost, K-Nearest Neighbors (KNN), and Variational Autoencoder (VAE-MLP) etc., the workflow ensures comprehensive data analysis. SHapley Additive exPlanations (SHAP) are used to quantify the significance of identified proteins, enhancing the interpretability of results. Functional enrichment and protein-protein interaction (PPI) network analyses are performed, focusing on visualization, to facilitate understanding of disease mechanisms. This workflow advances the early diagnosis and treatment of neurodegenerative diseases by enabling the efficient identification of critical biomarkers.
