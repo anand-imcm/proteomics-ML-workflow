@@ -4,6 +4,7 @@ import "./tasks/classification.wdl" as ml
 import "./tasks/summary.wdl" as std_ml_report
 
 workflow standard_ml_wf {
+    
     input {
         File input_csv
         String output_prefix
@@ -16,6 +17,7 @@ workflow standard_ml_wf {
         Int memory_gb_SHAP_summary = 32
         Int cpu_SHAP_summary = 16
     }
+    
     call ml.classification_gen as gen {
         input:
             input_csv = input_csv,
@@ -25,6 +27,7 @@ workflow standard_ml_wf {
             memory_gb = memory_gb_ML,
             cpu = cpu_ML
     }
+    
     call ml.classification_vae as vae {
         input:
             input_csv = input_csv,
@@ -34,6 +37,7 @@ workflow standard_ml_wf {
             memory_gb = memory_gb_ML,
             cpu = cpu_ML
     }
+    
     Array[File] cls_data_npy = flatten([gen.data_npy, vae.data_npy])
     Array[File] cls_model_pkl = flatten([gen.model_pkl, vae.model_pkl])
     Array[File] cls_data_pkl = flatten([gen.data_pkl, vae.data_pkl])
@@ -41,6 +45,7 @@ workflow standard_ml_wf {
     Array[File] cls_roc_curve_plot = flatten([gen.roc_curve_plot, vae.roc_curve_plot])
     Array[File] cls_confusion_matrix_plot = flatten([gen.confusion_matrix_plot, vae.confusion_matrix_plot])
     Array[File] vae_shap_out = flatten([vae.vae_shap_csv])
+    
     call std_ml_report.plot as roc_shap_summary {
         input:
             data_npy = cls_data_npy,
@@ -54,6 +59,7 @@ workflow standard_ml_wf {
             memory_gb = memory_gb_SHAP_summary,
             cpu = cpu_SHAP_summary
     }
+    
     output {
         Array[File] out_cls_data_npy = cls_data_npy
         Array[File] out_cls_model_pkl = cls_model_pkl

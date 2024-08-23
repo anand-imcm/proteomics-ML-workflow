@@ -1,6 +1,7 @@
 version 1.0
 
 task classification_gen {
+    
     input {
         File input_csv
         String model
@@ -9,7 +10,9 @@ task classification_gen {
         Int memory_gb = 24
         Int cpu = 16
     }
+    
     Int disk_size_gb = ceil(size(input_csv, "GB")) + 5
+    
     command <<<
         set -euo pipefail
         filename=~{input_csv}
@@ -24,6 +27,7 @@ task classification_gen {
             -p ~{output_prefix} \
             -m ${model_modified}
     >>>
+    
     output {
         Array[File] confusion_matrix_plot = glob("*_confusion_matrix.png")
         Array[File] roc_curve_plot = glob("*_roc_curve.png")
@@ -32,6 +36,7 @@ task classification_gen {
         Array[File] model_pkl = glob("*_model.pkl")
         Array[File] data_npy = glob("*_data.npy")
     }
+    
     runtime {
         docker: "~{docker}"
         cpu: "~{cpu}"
@@ -42,6 +47,7 @@ task classification_gen {
 }
 
 task classification_vae {
+    
     input {
         File input_csv
         String model
@@ -50,7 +56,9 @@ task classification_vae {
         Int memory_gb = 24
         Int cpu = 16
     }
+    
     Int disk_size_gb = ceil(size(input_csv, "GB")) + 5
+    
     command <<<
         set -euo pipefail
         filename=~{input_csv}
@@ -66,6 +74,7 @@ task classification_vae {
             -m VAE
         fi
     >>>
+    
     output {
         Array[File] confusion_matrix_plot = glob("*_confusion_matrix.png")
         Array[File] roc_curve_plot = glob("*_roc_curve.png")
@@ -75,6 +84,7 @@ task classification_vae {
         Array[File] data_npy = glob("*_data.npy")
         Array[File] vae_shap_csv = glob("*_shap_values.csv")
     }
+    
     runtime {
         docker: "~{docker}"
         cpu: "~{cpu}"

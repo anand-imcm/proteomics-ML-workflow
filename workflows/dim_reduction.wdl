@@ -4,6 +4,7 @@ import "./tasks/preprocessing.wdl" as dim
 import "./tasks/summary.wdl" as dim_report
 
 workflow dim_reduction_wf {
+    
     input {
         File input_csv
         String output_prefix
@@ -15,6 +16,7 @@ workflow dim_reduction_wf {
         Int memory_gb_SHAP_summary = 32
         Int cpu_SHAP_summary = 16
     }
+    
     call dim.preprocessing_dim as dim_reduction_wf {
         input: 
             input_csv = input_csv,
@@ -25,6 +27,7 @@ workflow dim_reduction_wf {
             memory_gb = memory_gb_preprocessing,
             cpu = cpu_preprocessing
     }
+    
     call dim_report.dim as summary_wf {
         input:
             dim_reduct_plot = dim_reduction_wf.png_list,
@@ -34,6 +37,7 @@ workflow dim_reduction_wf {
             memory_gb = memory_gb_SHAP_summary,
             cpu = cpu_SHAP_summary
     }
+    
     output {
         Array[File] csv_list = dim_reduction_wf.csv_list
         Array[File] png_list = dim_reduction_wf.png_list
