@@ -9,7 +9,7 @@ task plot {
         String model
         String output_prefix
         String docker
-        Int shap_radar_num_features = 10
+        Int shap_num_features
         Int memory_gb = 24
         Int cpu = 16
     }
@@ -26,7 +26,7 @@ task plot {
         python /scripts/Step4_calculate_shap.py \
             -m ~{model} \
             -p ~{output_prefix} \
-            -f ~{shap_radar_num_features}
+            -f ~{shap_num_features}
     >>>
     output {
         File? all_roc_curves = output_prefix + "_overall_roc_curves.png"

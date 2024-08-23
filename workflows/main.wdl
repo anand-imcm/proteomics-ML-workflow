@@ -1,7 +1,6 @@
 version 1.0
 
 import "./tasks/preprocessing.wdl" as pre
-import "./tasks/classification.wdl" as cls
 import "./tasks/summary.wdl" as report
 import "./dim_reduction.wdl" as drwf
 import "./standard_ml.wdl" as mlwf
@@ -14,6 +13,7 @@ workflow main {
         String method_name = "PCA"
         Boolean use_dimensionality_reduction = false
         Boolean skip_ML_models = false
+        Int shap_radar_num_features = 10
     }
     String pipeline_version = "1.0.0"
     String container_gen = "docker.io/library/proteomics:~{pipeline_version}"
@@ -42,7 +42,9 @@ workflow main {
                 output_prefix = output_prefix,
                 container_gen = container_gen,
                 container_vae = container_vae,
-                model_choices = model_choices
+                model_choices = model_choices,
+                shap_num_features = shap_radar_num_features
+                
         }
     }
     if (!use_dimensionality_reduction && skip_ML_models) {
@@ -66,7 +68,8 @@ workflow main {
                 output_prefix = output_prefix,
                 container_gen = container_gen,
                 container_vae = container_vae,
-                model_choices = model_choices
+                model_choices = model_choices,
+                shap_num_features = shap_radar_num_features
         }
     }
     File overall_roc_plots = if (!skip_ML_models) then select_first([

@@ -10,6 +10,7 @@ workflow standard_ml_wf {
         String container_gen
         String container_vae
         String model_choices
+        Int shap_num_features
     }
     call ml.classification_gen as gen {
         input:
@@ -40,7 +41,8 @@ workflow standard_ml_wf {
             vae_shap = vae_shap_out,
             model = model_choices,
             output_prefix = output_prefix,
-            docker = container_gen
+            docker = container_gen,
+            shap_num_features = shap_num_features
     }
     output {
         Array[File] out_cls_data_npy = cls_data_npy
