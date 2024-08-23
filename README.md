@@ -44,11 +44,11 @@ It is recommended to select only one dimensionality reduction method when using 
 
 - **Optional**
   - **`main.use_dimensionality_reduction`** : [Boolean] Use this option to apply dimensionality reduction to the input data. Default value: `false`
-  - **`main.num_of_dimensions`**: [Int] Default value: `3`, to choose to view or retain data from several dimensions
+  - **`main.num_of_dimensions`**: [Int] Total number of expected dimensions after applying dimensionality reduction. Default value: `3`.
   - **`main.skip_ML_models`** : [Boolean] Use this option to skip running ML models. Default value: `false`
   - **`main.model_choices`** : [String] Specify the model name(s) to use. Options include `KNN`, `RF`, `NN`, `XGB`, `PLSDA`, `VAE`, and `SVM`. Multiple model names can be entered together, separated by a space. Default value: `RF`
   - **`main.dimensionality_reduction_choices`** : [String] Specify the dimensionality method name(s) to use. Options include `PCA`, `UMAP`, `t-SNE`, `KPCA` and `PLS`. Multiple methods can be entered together, separated by a space. Default value: `PCA`
-  - **`main.shap_radar_num_features`**: [Int] Default value: `10`， to choose how many top features to display on the radar chart
+  - **`main.shap_radar_num_features`**: [Int] Top features to display on the radar chart. Default value: `10`
   - **`main.memory_*`** : [Int] Amount of memory in GB needed to execute the specific task. Default value: `32`
   - **`*main.cpu_*`** : [Int] Number of CPUs needed to execute the specific task. Default value: `16`
 
