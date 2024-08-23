@@ -1,8 +1,5 @@
 # proteomics-ML-workflow
 
-> [!WARNING]
-> This project is under development and is not ready for production use.
-
 ## Introduction
 
 This cloud-based platform integrates key algorithms, including Principal Component Analysis (PCA), Kernel PCA (KPCA), Partial Least Squares (PLS), t-SNE, and UMAP, for robust pre-processing, visualization, and dimensionality reduction. Incorporating state-of-the-art machine learning and deep learning methods, such as Multilayer Perceptron (MLP), Random Forest (RF), Support Vector Machine (SVM), PLS Discriminant Analysis (PLSDA), XGBoost, K-Nearest Neighbors (KNN), and Variational Autoencoder (VAE-MLP) etc., the workflow ensures comprehensive data analysis. SHapley Additive exPlanations (SHAP) are used to quantify the significance of identified proteins, enhancing the interpretability of results. Functional enrichment and protein-protein interaction (PPI) network analyses are performed, focusing on visualization, to facilitate understanding of disease mechanisms. This workflow advances the early diagnosis and treatment of neurodegenerative diseases by enabling the efficient identification of critical biomarkers.
@@ -31,31 +28,29 @@ This cloud-based platform integrates key algorithms, including Principal Compone
 
 ## Inputs
 
-- **Required**
-  - `main.input_csv` : [File] Input file in `.csv` format, includes a 'Label' column, with each row representing a sample and each column representing a feature. An example of the `.csv` is shown below:
+> [!TIP]
+User can run multiple dimensionality reduction methods on the input dataset, and skip the ML models (`skip_ML_models = true`) and directly, view the pdf report and access the results.
 
+- **Required**
+  - **`main.input_csv`** : [File] Input file in `.csv` format, includes a `Label` column, with each row representing a sample and each column representing a feature. An example of the `.csv` is shown below:
     | Label  | Protein1 | Protein2 | ... | ProteinN |
     |:-------|:---------|:---------|-----|:---------|
     | Label1 | 0.1      | 0.4      | ... | 0.01     |
     | Label2 | 0.2      | 0.1      | ... | 0.3      |
-
-  - `main.output_prefix` : [String] Analysis ID. This will be used as prefix for all the output files.
+  - **`main.output_prefix`** : [String] Analysis ID. This will be used as prefix for all the output files.
 
 > [!WARNING]
-> It is recommended to select only one dimensionality reduction method when using it alongside ML models. Set the `skip_ML_models` option to `true` if applying multiple dimensionality reduction methods. If `skip_ML_models` is `false` while using multiple dimensionality reduction methods, the pipeline will automatically select one of the output files from the dimensionality reduction step for classification. [Not recommended]
-
-> [!TIP]
-> User can run multiple dimensionality reduction methods on the input dataset, and skip the ML models (`skip_ML_models = true`) and directly, view the pdf report and access the results.
+It is recommended to select only one dimensionality reduction method when using it alongside ML models. Set the `skip_ML_models` option to `true` if applying multiple dimensionality reduction methods. If `skip_ML_models` is `false` while using multiple dimensionality reduction methods, the pipeline will automatically select one of the output files from the dimensionality reduction step for classification.
 
 - **Optional**
-  - `main.use_dimensionality_reduction` : [Boolean] Use this option to apply dimensionality reduction to the input data. Default value: `false`
-  - `main.*.num_of_dimensions`: [Int] Default value: `3`, to choose to view or retain data from several dimensions
-  - `main.skip_ML_models` : [Boolean] Use this option to skip running ML models. Default value: `false`
-  - `main.model_choices` : [String] Specify the model name(s) to use. Options include `KNN`, `RF`, `NN`, `XGB`, `PLSDA`, `VAE`, and `SVM`. Multiple model names can be entered together, separated by a space. Default value: `RF`
-  - `main.method_name` : [String] Specify the dimensionality method name(s) to use. Options include `PCA`, `UMAP`, `t-SNE`, `KPCA` and `PLS`. Multiple methods can be entered together, separated by a space. Default value: `PCA`
-  - `main.*.standard_ml_wf.roc_shap_summary.shap_radar_num_features`: [Int] Default value: `10`， to choose how many top features to display on the radar chart
-- `*.memory_gb` : Amount of memory in GB needed to execute the specific task.
-- `*.cpu` : Number of CPUs necessary to perform the task.
+  - **`main.use_dimensionality_reduction`** : [Boolean] Use this option to apply dimensionality reduction to the input data. Default value: `false`
+  - **`main.num_of_dimensions`**: [Int] Default value: `3`, to choose to view or retain data from several dimensions
+  - **`main.skip_ML_models`** : [Boolean] Use this option to skip running ML models. Default value: `false`
+  - **`main.model_choices`** : [String] Specify the model name(s) to use. Options include `KNN`, `RF`, `NN`, `XGB`, `PLSDA`, `VAE`, and `SVM`. Multiple model names can be entered together, separated by a space. Default value: `RF`
+  - **`main.dimensionality_reduction_choices`** : [String] Specify the dimensionality method name(s) to use. Options include `PCA`, `UMAP`, `t-SNE`, `KPCA` and `PLS`. Multiple methods can be entered together, separated by a space. Default value: `PCA`
+  - **`main.shap_radar_num_features`**: [Int] Default value: `10`， to choose how many top features to display on the radar chart
+- **`main.memory_*`** : [Int] Amount of memory in GB needed to execute the specific task. Default value: `32`
+- **`*main.cpu_*`** : [Int] Number of CPUs needed to execute the specific task. Default value: `16`
 
 ## Outputs
 
