@@ -49,8 +49,8 @@ It is recommended to select only one dimensionality reduction method when using 
   - **`main.model_choices`** : [String] Specify the model name(s) to use. Options include `KNN`, `RF`, `NN`, `XGB`, `PLSDA`, `VAE`, and `SVM`. Multiple model names can be entered together, separated by a space. Default value: `RF`
   - **`main.dimensionality_reduction_choices`** : [String] Specify the dimensionality method name(s) to use. Options include `PCA`, `UMAP`, `t-SNE`, `KPCA` and `PLS`. Multiple methods can be entered together, separated by a space. Default value: `PCA`
   - **`main.shap_radar_num_features`**: [Int] Default value: `10`， to choose how many top features to display on the radar chart
-- **`main.memory_*`** : [Int] Amount of memory in GB needed to execute the specific task. Default value: `32`
-- **`*main.cpu_*`** : [Int] Number of CPUs needed to execute the specific task. Default value: `16`
+  - **`main.memory_*`** : [Int] Amount of memory in GB needed to execute the specific task. Default value: `32`
+  - **`*main.cpu_*`** : [Int] Number of CPUs needed to execute the specific task. Default value: `16`
 
 ## Outputs
 
