@@ -11,20 +11,28 @@ workflow standard_ml_wf {
         String container_vae
         String model_choices
         Int shap_num_features
+        Int memory_gb_ML = 32
+        Int cpu_ML = 16
+        Int memory_gb_SHAP_summary = 32
+        Int cpu_SHAP_summary = 16
     }
     call ml.classification_gen as gen {
         input:
             input_csv = input_csv,
             output_prefix = output_prefix,
             model = model_choices,
-            docker = container_gen
+            docker = container_gen,
+            memory_gb = memory_gb_ML,
+            cpu = cpu_ML
     }
     call ml.classification_vae as vae {
         input:
             input_csv = input_csv,
             output_prefix = output_prefix,
             model = model_choices,
-            docker = container_vae
+            docker = container_vae,
+            memory_gb = memory_gb_ML,
+            cpu = cpu_ML
     }
     Array[File] cls_data_npy = flatten([gen.data_npy, vae.data_npy])
     Array[File] cls_model_pkl = flatten([gen.model_pkl, vae.model_pkl])
@@ -42,7 +50,9 @@ workflow standard_ml_wf {
             model = model_choices,
             output_prefix = output_prefix,
             docker = container_gen,
-            shap_num_features = shap_num_features
+            shap_num_features = shap_num_features,
+            memory_gb = memory_gb_SHAP_summary,
+            cpu = cpu_SHAP_summary
     }
     output {
         Array[File] out_cls_data_npy = cls_data_npy

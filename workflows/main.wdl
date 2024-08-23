@@ -15,6 +15,12 @@ workflow main {
         Boolean skip_ML_models = false
         Int shap_radar_num_features = 10
         Int num_of_dimensions = 3
+        Int memory_gb_preprocessing = 32
+        Int cpu_preprocessing = 16
+        Int memory_gb_ML = 32
+        Int cpu_ML = 16
+        Int memory_gb_SHAP_summary = 32
+        Int cpu_SHAP_summary = 16
     }
     String pipeline_version = "1.0.0"
     String container_gen = "docker.io/library/proteomics:~{pipeline_version}"
@@ -27,7 +33,11 @@ workflow main {
                 output_prefix = output_prefix,
                 docker = container_gen,
                 method_name = dimensionality_reduction_choices,
-                num_of_dimensions = num_of_dimensions
+                num_of_dimensions = num_of_dimensions,
+                memory_gb_preprocessing = memory_gb_preprocessing,
+                cpu_preprocessing = cpu_preprocessing,
+                memory_gb_SHAP_summary = memory_gb_SHAP_summary,
+                cpu_SHAP_summary = cpu_SHAP_summary
         } 
     }
     if (use_dimensionality_reduction && !skip_ML_models) {
@@ -37,7 +47,11 @@ workflow main {
                 output_prefix = output_prefix,
                 docker = container_gen,
                 method_name = dimensionality_reduction_choices,
-                num_of_dimensions = num_of_dimensions
+                num_of_dimensions = num_of_dimensions,
+                memory_gb_preprocessing = memory_gb_preprocessing,
+                cpu_preprocessing = cpu_preprocessing,
+                memory_gb_SHAP_summary = memory_gb_SHAP_summary,
+                cpu_SHAP_summary = cpu_SHAP_summary
         } 
         call mlwf.standard_ml_wf as ml_dim {
             input:
@@ -46,7 +60,11 @@ workflow main {
                 container_gen = container_gen,
                 container_vae = container_vae,
                 model_choices = model_choices,
-                shap_num_features = shap_radar_num_features
+                shap_num_features = shap_radar_num_features,
+                memory_gb_ML = memory_gb_ML,
+                cpu_ML = cpu_ML,
+                memory_gb_SHAP_summary = memory_gb_SHAP_summary,
+                cpu_SHAP_summary = cpu_SHAP_summary
                 
         }
     }
@@ -55,7 +73,9 @@ workflow main {
             input: 
                 input_csv = input_csv,
                 output_prefix = output_prefix,
-                docker = container_gen
+                docker = container_gen,
+                memory_gb = memory_gb_preprocessing,
+                cpu = cpu_preprocessing
         }
     }
     if (!use_dimensionality_reduction && !skip_ML_models) {
@@ -63,7 +83,9 @@ workflow main {
             input: 
                 input_csv = input_csv,
                 output_prefix = output_prefix,
-                docker = container_gen
+                docker = container_gen,
+                memory_gb = memory_gb_preprocessing,
+                cpu = cpu_preprocessing
         }
         call mlwf.standard_ml_wf as ml_std {
             input:
@@ -72,7 +94,11 @@ workflow main {
                 container_gen = container_gen,
                 container_vae = container_vae,
                 model_choices = model_choices,
-                shap_num_features = shap_radar_num_features
+                shap_num_features = shap_radar_num_features,
+                memory_gb_ML = memory_gb_ML,
+                cpu_ML = cpu_ML,
+                memory_gb_SHAP_summary = memory_gb_SHAP_summary,
+                cpu_SHAP_summary = cpu_SHAP_summary
         }
     }
     File overall_roc_plots = if (!skip_ML_models) then select_first([
@@ -123,7 +149,9 @@ workflow main {
         input:
             summary_data = all_valid_files,
             output_prefix = output_prefix,
-            docker = container_gen
+            docker = container_gen,
+            memory_gb = memory_gb_SHAP_summary,
+            cpu = cpu_SHAP_summary
     }
     output {
         Array[File] dimensionality_reduction_csv = dim_csv_output

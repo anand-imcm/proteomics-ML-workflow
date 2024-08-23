@@ -10,6 +10,10 @@ workflow dim_reduction_wf {
         String docker
         String method_name = "PCA"
         Int num_of_dimensions = 3
+        Int memory_gb_preprocessing = 32
+        Int cpu_preprocessing = 16
+        Int memory_gb_SHAP_summary = 32
+        Int cpu_SHAP_summary = 16
     }
     call dim.preprocessing_dim as dim_reduction_wf {
         input: 
@@ -17,14 +21,18 @@ workflow dim_reduction_wf {
             output_prefix = output_prefix,
             docker = docker,
             dim_method = method_name,
-            num_dimensions = num_of_dimensions
+            num_dimensions = num_of_dimensions,
+            memory_gb = memory_gb_preprocessing,
+            cpu = cpu_preprocessing
     }
     call dim_report.dim as summary_wf {
         input:
             dim_reduct_plot = dim_reduction_wf.png_list,
             dim_reduct_data = dim_reduction_wf.csv_list,
             output_prefix = output_prefix,
-            docker = docker
+            docker = docker,
+            memory_gb = memory_gb_SHAP_summary,
+            cpu = cpu_SHAP_summary
     }
     output {
         Array[File] csv_list = dim_reduction_wf.csv_list
