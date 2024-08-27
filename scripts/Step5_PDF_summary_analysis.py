@@ -53,7 +53,7 @@ pdf.multi_cell(0, 10, introduction_text)
 pdf.ln(10)
 
 # Overall ROC Curves section
-overall_roc_curve_path = 'overall_roc_curves.png'
+overall_roc_curve_path = f'{source_dir}/{prefix}_overall_roc_curves.png'
 overall_roc_caption = "This plot shows the ROC curves for all the models evaluated in this report, providing a comparative view of their performance."
 pdf.add_image_with_caption(overall_roc_curve_path, "Overall ROC Curves for All Models", overall_roc_caption)
 
@@ -85,7 +85,7 @@ for model_name, caption in model_images.items():
     confusion_matrix_path = f'{source_dir}/{prefix}_{model_name}_confusion_matrix.png'
     metrics_path = f'{source_dir}/{prefix}_{model_name}_metrics.png'
     roc_curve_path = f'{source_dir}/{prefix}_{model_name}_roc_curve.png'
-    shap_image_path = f'{source_dir}/{prefix}_{model_name}_shap_radar_plot.png'
+    shap_image_path = f'{source_dir}/{prefix}_{model_name}_shap_radar.png'
     
     pdf.add_image_with_caption(confusion_matrix_path, f"{model_name.capitalize()} Confusion Matrix", caption)
     pdf.add_image_with_caption(metrics_path, f"{model_name.capitalize()} Evaluation Metrics", caption)
