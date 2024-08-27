@@ -1,6 +1,6 @@
 # proteomics-ML-workflow
 
-[![Open](https://img.shields.io/badge/Open-Dockstore-blue)](https://dockstore.org/my-workflows/github.com/anand-imcm/proteomics-ML-workflow:main?tab=info)&nbsp;&nbsp;
+[![Open](https://img.shields.io/badge/Open-Dockstore-blue)](https://dockstore.org/workflows/github.com/anand-imcm/proteomics-ML-workflow)&nbsp;&nbsp;
 [![publish](https://img.shields.io/github/actions/workflow/status/anand-imcm/proteomics-ML-workflow/publish_gen.yml)](https://github.com/anand-imcm/proteomics-ML-workflow/releases)&nbsp;&nbsp;
 ![GitHub release (with filter)](https://img.shields.io/github/v/release/anand-imcm/proteomics-ML-workflow)&nbsp;&nbsp;
 
