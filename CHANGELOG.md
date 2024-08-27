@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.0.1] - 2024-08-27
+
+### Fixed
+
+- Missing Overall ROC curve and SHAP Radar plot in the PDF report.
+- The report generation script had the wrong prefix, which prevented the PNG files from being included in the PDF report.
+
 ## [1.0.0] - 2024-08-23
 
 ### Release Notes

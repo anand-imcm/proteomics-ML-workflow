@@ -41,7 +41,7 @@ workflow main {
         cpu_SHAP_summary : "Number of CPUs needed to execute the summary task."
     }
     
-    String pipeline_version = "1.0.0"
+    String pipeline_version = "1.0.1"
     String container_gen = "ghcr.io/anand-imcm/proteomics-ml-workflow-gen:~{pipeline_version}"
     String container_vae = "ghcr.io/anand-imcm/proteomics-ml-workflow-vae:~{pipeline_version}"
     Array[File] default_arr = []
