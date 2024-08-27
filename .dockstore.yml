@@ -6,14 +6,17 @@ workflows:
     readMePath: /README.md
     authors:
       - name: Yuhan Zhou
+        orcid: 0000-0002-3091-1425
         email: yuhan.zhou@well.ox.ac.uk
         affiliation: Oxford-GSK Institute of Molecular and Computational Medicine, Nuffield Department of Medicine, University of Oxford, Old Road Campus, Oxford,OX3 7BN
       - name: Anand Maurya
+        orcid: 0000-0002-6204-2164
         email: anand.maurya@well.ox.ac.uk
         affiliation: Oxford-GSK Institute of Molecular and Computational Medicine, Nuffield Department of Medicine, University of Oxford, Old Road Campus, Oxford,OX3 7BN
       - name: Yun Deng
         email: yun.deng@well.ox.ac.uk
         affiliation: Oxford-GSK Institute of Molecular and Computational Medicine, Nuffield Department of Medicine, University of Oxford, Old Road Campus, Oxford,OX3 7BN
       - name: Avigail Taylor
+        orcid: 0000-0002-8199-1007
         email: avigail.taylor@well.ox.ac.uk
         affiliation: Oxford-GSK Institute of Molecular and Computational Medicine, Nuffield Department of Medicine, University of Oxford, Old Road Campus, Oxford,OX3 7BN
