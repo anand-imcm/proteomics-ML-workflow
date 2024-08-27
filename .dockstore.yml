@@ -1,19 +1,19 @@
 version: 1.2
 workflows:
-  - subclass: WDL
+  - name: proteomics-ML-workflow
+    subclass: WDL
     primaryDescriptorPath: /workflows/main.wdl
     readMePath: /README.md
-  - doi: 10.5281/zenodo.13378490
-  - authors:
-    - name: Yuhan Zhou
-      email: yuhan.zhou@well.ox.ac.uk
-      affiliation: Oxford-GSK Institute of Molecular and Computational Medicine, Nuffield Department of Medicine, University of Oxford, Old Road Campus, Oxford,OX3 7BN
-    - name: Anand Maurya
-      email: anand.maurya@well.ox.ac.uk
-      affiliation: Oxford-GSK Institute of Molecular and Computational Medicine, Nuffield Department of Medicine, University of Oxford, Old Road Campus, Oxford,OX3 7BN
-    - name: Yun Deng
-      email: yun.deng@well.ox.ac.uk
-      affiliation: Oxford-GSK Institute of Molecular and Computational Medicine, Nuffield Department of Medicine, University of Oxford, Old Road Campus, Oxford,OX3 7BN
-    - name: Avigail Taylor
-      email: avigail.taylor@well.ox.ac.uk
-      affiliation: Oxford-GSK Institute of Molecular and Computational Medicine, Nuffield Department of Medicine, University of Oxford, Old Road Campus, Oxford,OX3 7BN
+    authors:
+      - name: Yuhan Zhou
+        email: yuhan.zhou@well.ox.ac.uk
+        affiliation: Oxford-GSK Institute of Molecular and Computational Medicine, Nuffield Department of Medicine, University of Oxford, Old Road Campus, Oxford,OX3 7BN
+      - name: Anand Maurya
+        email: anand.maurya@well.ox.ac.uk
+        affiliation: Oxford-GSK Institute of Molecular and Computational Medicine, Nuffield Department of Medicine, University of Oxford, Old Road Campus, Oxford,OX3 7BN
+      - name: Yun Deng
+        email: yun.deng@well.ox.ac.uk
+        affiliation: Oxford-GSK Institute of Molecular and Computational Medicine, Nuffield Department of Medicine, University of Oxford, Old Road Campus, Oxford,OX3 7BN
+      - name: Avigail Taylor
+        email: avigail.taylor@well.ox.ac.uk
+        affiliation: Oxford-GSK Institute of Molecular and Computational Medicine, Nuffield Department of Medicine, University of Oxford, Old Road Campus, Oxford,OX3 7BN
