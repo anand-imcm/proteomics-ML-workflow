@@ -196,9 +196,9 @@ def perform_dimensionality_reduction(file_path, file_prefix, method, dims=3, sta
 
 if __name__ == "__main__":
     args = parse_arguments()
-    prefix = Path(args.csv).stem
+    prefix = Path(args.csv).stem.lower()
     if args.prefix:
-        prefix = args.prefix
+        prefix = args.prefix.lower()
     results = Parallel(n_jobs=-1, backend='multiprocessing', verbose=100)(
         delayed(perform_dimensionality_reduction)(args.csv, prefix, method=method_name, dims=args.dimensions, standardize=args.standardize) for method_name in args.methods
     )
