@@ -11,10 +11,10 @@ workflow dim_reduction_wf {
         String docker
         String method_name = "PCA"
         Int num_of_dimensions = 3
-        Int memory_gb_preprocessing = 32
-        Int cpu_preprocessing = 16
-        Int memory_gb_SHAP_summary = 32
-        Int cpu_SHAP_summary = 16
+        Int memory_gb_preprocessing = 64
+        Int cpu_preprocessing = 32
+        Int memory_gb_SHAP_summary = 64
+        Int cpu_SHAP_summary = 32
     }
     
     call dim.preprocessing_dim as dim_reduction_wf {

@@ -16,12 +16,12 @@ workflow main {
         Boolean skip_ML_models = false
         Int shap_radar_num_features = 10
         Int num_of_dimensions = 3
-        Int memory_gb_preprocessing = 64
-        Int cpu_preprocessing = 32
-        Int memory_gb_ML = 64
-        Int cpu_ML = 32
-        Int memory_gb_SHAP_summary = 64
-        Int cpu_SHAP_summary = 32
+        Int memory_gb_preprocessing = 128
+        Int cpu_preprocessing = 64
+        Int memory_gb_ML = 128
+        Int cpu_ML = 64
+        Int memory_gb_SHAP_summary = 128
+        Int cpu_SHAP_summary = 64
     }
     
     parameter_meta {

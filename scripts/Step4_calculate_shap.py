@@ -220,7 +220,7 @@ if __name__ == '__main__':
     
     models = args.models
     model_choices = [model_map[item] for item in models]
-    prefix = args.prefix.lower()
+    prefix = args.prefix
     
     for model_name in model_choices:
         if model_name == 'vae':

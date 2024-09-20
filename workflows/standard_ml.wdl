@@ -12,10 +12,10 @@ workflow standard_ml_wf {
         String container_vae
         String model_choices
         Int shap_num_features
-        Int memory_gb_ML = 32
-        Int cpu_ML = 16
-        Int memory_gb_SHAP_summary = 32
-        Int cpu_SHAP_summary = 16
+        Int memory_gb_ML = 64
+        Int cpu_ML = 32
+        Int memory_gb_SHAP_summary = 64
+        Int cpu_SHAP_summary = 32
     }
     
     call ml.classification_gen as gen {

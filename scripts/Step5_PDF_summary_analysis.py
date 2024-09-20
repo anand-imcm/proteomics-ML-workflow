@@ -10,7 +10,7 @@ def parse_arguments():
 
 args = parse_arguments()
 source_dir = args.source
-prefix = args.prefix.lower()
+prefix = args.prefix
 
 class PDFReport(FPDF):
     def header(self):

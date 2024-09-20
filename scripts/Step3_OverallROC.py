@@ -60,5 +60,5 @@ if __name__ == "__main__":
     args = parse_arguments()
     models = args.models
     model_choices = [model_map[item] for item in models]
-    prefix = args.prefix.lower()
+    prefix = args.prefix
     plot_roc(model_choices, prefix)
