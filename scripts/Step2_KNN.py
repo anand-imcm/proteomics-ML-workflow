@@ -1,7 +1,8 @@
+import argparse
 import pandas as pd
 import numpy as np
 from sklearn.preprocessing import LabelEncoder
-from sklearn.model_selection import StratifiedKFold, GridSearchCV, cross_val_predict
+from sklearn.model_selection import StratifiedKFold, cross_val_predict
 from sklearn.neighbors import KNeighborsClassifier
 from sklearn.metrics import roc_curve, auc, confusion_matrix, f1_score, accuracy_score, ConfusionMatrixDisplay
 import matplotlib.pyplot as plt
@@ -9,6 +10,8 @@ import warnings
 import sys
 import contextlib
 import joblib
+import optuna
+from optuna.samplers import TPESampler
 
 # Suppress all warnings
 warnings.filterwarnings('ignore')
@@ -26,71 +29,102 @@ class SuppressOutput(contextlib.AbstractContextManager):
         sys.stdout = self._stdout
         sys.stderr = self._stderr
 
-def knn(inp,prefix):
+def knn(inp, prefix):
     # Read data
     data = pd.read_csv(inp)
-
+    
+    # Ensure 'SampleID' and 'Label' columns exist
+    if 'SampleID' not in data.columns or 'Label' not in data.columns:
+        raise ValueError("Input data must contain 'SampleID' and 'Label' columns.")
+    
+    # Extract SampleID
+    sample_ids = data['SampleID']
+    
     # Data processing
-    X = data.drop(columns=['Label'])
+    X = data.drop(columns=['SampleID', 'Label'])
     y = data['Label']
-
+    
     # Convert target variable to categorical
     le = LabelEncoder()
     y_encoded = le.fit_transform(y)
     y_binarized = pd.get_dummies(y_encoded).values
     num_classes = len(np.unique(y_encoded))
-
-    # Model and parameters
-    clf = KNeighborsClassifier()
-    param_grid = {'n_neighbors': list(range(1, 10))}
-
-    # Cross-validation
+    
+    # Define cross-validation strategy
     cv_outer = StratifiedKFold(n_splits=5, shuffle=True, random_state=1234)
-    cv_inner = StratifiedKFold(n_splits=10, shuffle=True, random_state=1234)
-
+    
+    # Define the objective function for Optuna
+    def objective(trial):
+        # Suggest a value for n_neighbors
+        n_neighbors = trial.suggest_int('n_neighbors', 1, 30)
+        
+        # Initialize KNN with suggested hyperparameter
+        clf = KNeighborsClassifier(n_neighbors=n_neighbors)
+        
+        # Perform cross-validation
+        with SuppressOutput():
+            scores = []
+            for train_idx, valid_idx in cv_outer.split(X, y_encoded):
+                X_train, X_valid = X.iloc[train_idx], X.iloc[valid_idx]
+                y_train, y_valid = y_encoded[train_idx], y_encoded[valid_idx]
+                clf.fit(X_train, y_train)
+                y_pred = clf.predict(X_valid)
+                f1 = f1_score(y_valid, y_pred, average='weighted')
+                scores.append(f1)
+            return np.mean(scores)
+    
+    # Create an Optuna study
+    study = optuna.create_study(direction='maximize', sampler=TPESampler(seed=1234))
+    study.optimize(objective, n_trials=50, show_progress_bar=True)
+    
+    # Best hyperparameters
+    best_params = study.best_params
+    best_n_neighbors = best_params['n_neighbors']
+    
+    # Initialize the best model
+    best_model = KNeighborsClassifier(n_neighbors=best_n_neighbors)
+    
+    # Fit the model on the entire dataset
     with SuppressOutput():
-        # Inner cross-validation to search for best parameters
-        grid_search = GridSearchCV(estimator=clf, param_grid=param_grid, cv=cv_inner, scoring='accuracy', n_jobs=-1)
-        grid_search.fit(X, y_encoded)
-        best_model = grid_search.best_estimator_
-
+        best_model.fit(X, y_encoded)
+    
     # Save the best model and data
     joblib.dump(best_model, f"{prefix}_knn_model.pkl")
     joblib.dump((X, y_encoded, le), f"{prefix}_knn_data.pkl")
-
+    
     # Output the best parameters
-    print(f"Best parameters for KNN: {grid_search.best_params_}")
-
-    # Prediction
-    y_pred_prob = cross_val_predict(best_model, X, y_encoded, cv=cv_outer, method='predict_proba')
+    print(f"Best parameters for KNN: {best_params}")
+    
+    # Prediction using cross_val_predict
+    y_pred_prob = cross_val_predict(best_model, X, y_encoded, cv=cv_outer, method='predict_proba', n_jobs=-1)
     y_pred_class = np.argmax(y_pred_prob, axis=1)
-
+    
     # Compute metrics
     acc = accuracy_score(y_encoded, y_pred_class)
     f1 = f1_score(y_encoded, y_pred_class, average='weighted')
     cm = confusion_matrix(y_encoded, y_pred_class)
-
+    
     # Compute sensitivity and specificity
     if num_classes == 2:
         tn, fp, fn, tp = cm.ravel()
-        sensitivity = tp / (tp + fn)
-        specificity = tn / (tn + fp)
+        sensitivity = tp / (tp + fn) if (tp + fn) > 0 else 0
+        specificity = tn / (tn + fp) if (tn + fp) > 0 else 0
     else:
         sensitivity = np.mean(np.diag(cm) / np.sum(cm, axis=1))
         specificity = np.mean(np.diag(cm) / np.sum(cm, axis=0))
-
+    
     # Confusion matrix
     disp = ConfusionMatrixDisplay(confusion_matrix=cm, display_labels=le.classes_)
     disp.plot(cmap=plt.cm.Blues)
     plt.title('Confusion Matrix for KNN')
-    plt.savefig(f"{prefix}_knn_confusion_matrix.png")
+    plt.savefig(f"{prefix}_knn_confusion_matrix.png",dpi=300)
     plt.close()
-
+    
     # ROC and AUC
     fpr = {}
     tpr = {}
     roc_auc = {}
-
+    
     # Different handling for binary and multi-class cases
     if num_classes == 2:
         fpr[0], tpr[0], _ = roc_curve(y_binarized[:, 0], y_pred_prob[:, 0])
@@ -103,7 +137,7 @@ def knn(inp,prefix):
         # Compute overall ROC AUC for multi-class
         fpr["micro"], tpr["micro"], _ = roc_curve(y_binarized.ravel(), y_pred_prob.ravel())
         roc_auc["micro"] = auc(fpr["micro"], tpr["micro"])
-
+    
     # Save ROC data
     roc_data = {
         'fpr': fpr,
@@ -111,17 +145,17 @@ def knn(inp,prefix):
         'roc_auc': roc_auc
     }
     np.save(f"{prefix}_knn_roc_data.npy", roc_data)
-
+    
     # Plot and save ROC curve
     plt.figure(figsize=(10, 8))
-
+    
     if num_classes == 2:
-        plt.plot(fpr[0], tpr[0], label=f'Class {le.classes_[0]} (AUC = {roc_auc[0]:.2f})')
+        plt.plot(fpr[0], tpr[0], label=f'AUC = {roc_auc[0]:.2f}')
     else:
         for i in range(len(le.classes_)):
             plt.plot(fpr[i], tpr[i], label=f'{le.inverse_transform([i])[0]} (AUC = {roc_auc[i]:.2f})')
         plt.plot(fpr["micro"], tpr["micro"], label=f'Overall (AUC = {roc_auc["micro"]:.2f})', linestyle='--')
-
+    
     plt.plot([0, 1], [0, 1], 'k--')
     plt.xlim([0.0, 1.0])
     plt.ylim([0.0, 1.05])
@@ -129,9 +163,9 @@ def knn(inp,prefix):
     plt.ylabel('True Positive Rate')
     plt.title('ROC Curves for KNN')
     plt.legend(loc="lower right")
-    plt.savefig(f"{prefix}_knn_roc_curve.png")
+    plt.savefig(f"{prefix}_knn_roc_curve.png",dpi=300)
     plt.close()
-
+    
     # Output performance metrics as a bar chart
     metrics = {'Accuracy': acc, 'F1 Score': f1, 'Sensitivity': sensitivity, 'Specificity': specificity}
     metrics_df = pd.DataFrame(list(metrics.items()), columns=['Metric', 'Value'])
@@ -139,9 +173,33 @@ def knn(inp,prefix):
     plt.title('Performance Metrics for KNN')
     plt.ylabel('Value')
     plt.ylim(0, 1)
-    for i in ax.containers:
-        ax.bar_label(i,)
+    for container in ax.containers:
+        ax.bar_label(container, fmt='%.2f')
     plt.xticks(rotation=45, ha='right')
     plt.tight_layout()
-    plt.savefig(f"{prefix}_knn_metrics.png")
+    plt.savefig(f"{prefix}_knn_metrics.png",dpi=300)
     plt.close()
+    
+    # Create a DataFrame for predictions
+    predictions_df = pd.DataFrame({
+        'SampleID': sample_ids,
+        'Original Label': y,
+        'Predicted Label': le.inverse_transform(y_pred_class)
+    })
+    
+    # Save predictions to CSV
+    predictions_df.to_csv(f"{prefix}_knn_predictions.csv", index=False)
+    
+    print(f"Predictions saved to {prefix}_knn_predictions.csv")
+
+if __name__ == '__main__':
+    # Define argument parser
+    parser = argparse.ArgumentParser(description='Run KNN model with Optuna hyperparameter optimization.')
+    parser.add_argument('--input', type=str, required=True, help='Path to the input CSV file.')
+    parser.add_argument('--output_prefix', type=str, required=True, help='Prefix for output files.')
+    
+    # Parse the arguments
+    args = parser.parse_args()
+    
+    # Run the KNN function
+    knn(args.input, args.output_prefix)
