@@ -41,7 +41,8 @@ def knn(inp, prefix):
     sample_ids = data['SampleID']
     
     # Data processing
-    X = data.drop(columns=['SampleID', 'Label'])
+    # Convert features to NumPy array to ensure C-contiguous memory layout
+    X = data.drop(columns=['SampleID', 'Label']).to_numpy()
     y = data['Label']
     
     # Convert target variable to categorical
@@ -65,7 +66,7 @@ def knn(inp, prefix):
         with SuppressOutput():
             scores = []
             for train_idx, valid_idx in cv_outer.split(X, y_encoded):
-                X_train, X_valid = X.iloc[train_idx], X.iloc[valid_idx]
+                X_train, X_valid = X[train_idx], X[valid_idx]
                 y_train, y_valid = y_encoded[train_idx], y_encoded[valid_idx]
                 clf.fit(X_train, y_train)
                 y_pred = clf.predict(X_valid)
@@ -117,7 +118,7 @@ def knn(inp, prefix):
     disp = ConfusionMatrixDisplay(confusion_matrix=cm, display_labels=le.classes_)
     disp.plot(cmap=plt.cm.Blues)
     plt.title('Confusion Matrix for KNN')
-    plt.savefig(f"{prefix}_knn_confusion_matrix.png",dpi=300)
+    plt.savefig(f"{prefix}_knn_confusion_matrix.png")
     plt.close()
     
     # ROC and AUC
@@ -163,7 +164,7 @@ def knn(inp, prefix):
     plt.ylabel('True Positive Rate')
     plt.title('ROC Curves for KNN')
     plt.legend(loc="lower right")
-    plt.savefig(f"{prefix}_knn_roc_curve.png",dpi=300)
+    plt.savefig(f"{prefix}_knn_roc_curve.png")
     plt.close()
     
     # Output performance metrics as a bar chart
@@ -177,7 +178,7 @@ def knn(inp, prefix):
         ax.bar_label(container, fmt='%.2f')
     plt.xticks(rotation=45, ha='right')
     plt.tight_layout()
-    plt.savefig(f"{prefix}_knn_metrics.png",dpi=300)
+    plt.savefig(f"{prefix}_knn_metrics.png")
     plt.close()
     
     # Create a DataFrame for predictions
