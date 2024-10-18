@@ -4,3 +4,4 @@ cromwell-*/
 .git
 notes-comments.txt
 __pycache__
+.DS_Store
