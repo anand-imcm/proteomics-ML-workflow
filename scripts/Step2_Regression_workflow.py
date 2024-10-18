@@ -505,14 +505,48 @@ def regression(inp, prefix, selected_models):
 if __name__ == '__main__':
     # Define argument parser
     parser = argparse.ArgumentParser(description='Run regression models with Optuna hyperparameter optimization.')
-    parser.add_argument('--input', type=str, required=True, help='Path to the input CSV file.')
-    parser.add_argument('--output_prefix', type=str, required=True, help='Prefix for output files.')
-    parser.add_argument('--models', type=str, nargs='+', default=[
+
+    parser.add_argument('--i', type=str, required=True, help='Path to the input CSV file.')
+    parser.add_argument('--p', type=str, required=True, help='Prefix for output files.')
+    parser.add_argument('--m', type=str, nargs='+', default=[
                         'Neural Network reg', 'Random Forest reg', 'SVM reg', 'XGBoost reg', 'PLS reg', 'KNN reg', 'LightGBM reg'],
-                        help='List of models to run. Available models: Neural Network reg, Random Forest reg, SVM reg, XGBoost reg, PLS reg, KNN reg, LightGBM reg')
+                        help='List of models to run. Available models: NNR, RFR, SVMR, XGBR, PLSR, KNNR, LGBMR or their full names.')
 
     # Parse arguments
     args = parser.parse_args()
 
+    # Define Model Map for abbreviations
+    MODEL_MAP = {
+        'NNR': 'Neural Network reg',
+        'RFR': 'Random Forest reg',
+        'SVMR': 'SVM reg',
+        'XGBR': 'XGBoost reg',
+        'PLSR': 'PLS reg',
+        'KNNR': 'KNN reg',
+        'LGBMR': 'LightGBM reg'
+    }
+
+    # Process model names to map abbreviations to full names
+    processed_models = []
+    for model in args.m:
+        if model in MODEL_MAP:
+            processed_models.append(MODEL_MAP[model])
+        elif model in MODEL_MAP.values():
+            processed_models.append(model)
+        else:
+            print(f"Warning: Unrecognized model name '{model}'. It will be ignored.")
+    
+    if not processed_models:
+        print("Error: No valid models specified after processing abbreviations and full names.")
+        sys.exit(1)
+
+    # Remove duplicates while preserving order
+    seen = set()
+    final_models = []
+    for model in processed_models:
+        if model not in seen:
+            seen.add(model)
+            final_models.append(model)
+
     # Run regression function
-    regression(args.input, args.output_prefix, args.models)
+    regression(args.i, args.p, final_models)
