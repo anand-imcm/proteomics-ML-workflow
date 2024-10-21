@@ -26,7 +26,7 @@ task plot {
         python /scripts/Step3_OverallROC.py \
             -m ~{model} \
             -p ~{output_prefix}
-        python /scripts/Step4_calculate_shap.py \
+        python /scripts/Step4_Classification_SHAP.py \
             -m ~{model} \
             -p ~{output_prefix} \
             -f ~{shap_num_features}
