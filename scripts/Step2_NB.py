@@ -194,4 +194,4 @@ if __name__ == '__main__':
     args = parser.parse_args()
 
     # Run the GaussianNB function
-    gaussian_nb(args.input, args.output_prefix)
+    gaussian_nb(args.i, args.p)

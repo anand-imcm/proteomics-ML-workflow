@@ -201,4 +201,5 @@ if __name__ == '__main__':
     args = parser.parse_args()
 
     # Run the random forest function
-    random_forest(args.input, args.output_prefix)
+    random_forest(args.i, args.p)
+    

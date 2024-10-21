@@ -68,13 +68,13 @@ def regression(inp, prefix, selected_models):
 
     # Prepare regression models with 'reg' suffix in names
     regressors = {
-        'Neural Network reg': MLPRegressor(max_iter=200000, random_state=RANDOM_SEED),
-        'Random Forest reg': RandomForestRegressor(random_state=RANDOM_SEED, n_jobs=-1),
-        'SVM reg': SVR(),
-        'XGBoost reg': XGBRegressor(eval_metric='rmse', random_state=RANDOM_SEED, verbosity=0, n_jobs=-1),
-        'PLS reg': PLSRegression(),
-        'KNN reg': KNeighborsRegressor(n_jobs=-1),
-        'LightGBM reg': LGBMRegressor(random_state=RANDOM_SEED, force_col_wise=True, verbosity=-1, n_jobs=-1)
+        'Neural_Network_reg': MLPRegressor(max_iter=200000, random_state=RANDOM_SEED),
+        'Random_Forest_reg': RandomForestRegressor(random_state=RANDOM_SEED, n_jobs=-1),
+        'SVM_reg': SVR(),
+        'XGBoost_reg': XGBRegressor(eval_metric='rmse', random_state=RANDOM_SEED, verbosity=0, n_jobs=-1),
+        'PLS_reg': PLSRegression(),
+        'KNN_reg': KNeighborsRegressor(n_jobs=-1),
+        'LightGBM_reg': LGBMRegressor(random_state=RANDOM_SEED, force_col_wise=True, verbosity=-1, n_jobs=-1)
     }
 
     # Filter selected models
@@ -84,13 +84,13 @@ def regression(inp, prefix, selected_models):
 
     # Define hyperparameter search spaces for each model
     def get_param_distributions(name, num_features):
-        if name == 'Neural Network reg':
+        if name == 'Neural_Network_reg':
             return {
                 'hidden_layer_sizes': optuna.distributions.IntDistribution(low=10, high=200),
                 'alpha': optuna.distributions.FloatDistribution(low=1e-4, high=1e-1),
                 'learning_rate_init': optuna.distributions.FloatDistribution(low=1e-4, high=1e-1)
             }
-        elif name == 'Random Forest reg':
+        elif name == 'Random_Forest_reg':
             return {
                 'n_estimators': optuna.distributions.IntDistribution(low=100, high=1000),
                 'max_depth': optuna.distributions.IntDistribution(low=5, high=50),
@@ -98,13 +98,13 @@ def regression(inp, prefix, selected_models):
                 'min_samples_split': optuna.distributions.IntDistribution(low=2, high=20),
                 'min_samples_leaf': optuna.distributions.IntDistribution(low=1, high=20)
             }
-        elif name == 'SVM reg':
+        elif name == 'SVM_reg':
             return {
                 'C': optuna.distributions.FloatDistribution(low=1e-3, high=1e3, log=True),
                 'gamma': optuna.distributions.FloatDistribution(low=1e-4, high=1e1, log=True),
                 'epsilon': optuna.distributions.FloatDistribution(low=1e-4, high=1e1, log=True)
             }
-        elif name == 'XGBoost reg':
+        elif name == 'XGBoost_reg':
             return {
                 'n_estimators': optuna.distributions.IntDistribution(low=50, high=500),
                 'max_depth': optuna.distributions.IntDistribution(low=3, high=15),
@@ -112,18 +112,18 @@ def regression(inp, prefix, selected_models):
                 'subsample': optuna.distributions.FloatDistribution(low=0.5, high=1.0),
                 'colsample_bytree': optuna.distributions.FloatDistribution(low=0.5, high=1.0)
             }
-        elif name == 'PLS reg':
+        elif name == 'PLS_reg':
             upper = max(2, (num_features) // 2)
             return {
                 'n_components': optuna.distributions.IntDistribution(low=2, high=upper)
             }
-        elif name == 'KNN reg':
+        elif name == 'KNN_reg':
             return {
                 'n_neighbors': optuna.distributions.IntDistribution(low=1, high=50),
                 'weights': optuna.distributions.CategoricalDistribution(choices=['uniform', 'distance']),
                 'p': optuna.distributions.IntDistribution(low=1, high=3)
             }
-        elif name == 'LightGBM reg':
+        elif name == 'LightGBM_reg':
             return {
                 'n_estimators': optuna.distributions.IntDistribution(low=50, high=500),
                 'max_depth': optuna.distributions.IntDistribution(low=-1, high=50),
@@ -165,7 +165,7 @@ def regression(inp, prefix, selected_models):
                         raise ValueError(f"Unsupported distribution type: {type(distribution)}")
 
                 # Clone model with suggested hyperparameters
-                if name == 'Neural Network reg':
+                if name == 'Neural_Network_reg':
                     model = MLPRegressor(
                         hidden_layer_sizes=(params['hidden_layer_sizes'],),
                         alpha=params['alpha'],
@@ -173,7 +173,7 @@ def regression(inp, prefix, selected_models):
                         max_iter=200000,
                         random_state=RANDOM_SEED
                     )
-                elif name == 'Random Forest reg':
+                elif name == 'Random_Forest_reg':
                     model = RandomForestRegressor(
                         n_estimators=params['n_estimators'],
                         max_depth=params['max_depth'],
@@ -183,13 +183,13 @@ def regression(inp, prefix, selected_models):
                         random_state=RANDOM_SEED,
                         n_jobs=-1
                     )
-                elif name == 'SVM reg':
+                elif name == 'SVM_reg':
                     model = SVR(
                         C=params['C'],
                         gamma=params['gamma'],
                         epsilon=params['epsilon']
                     )
-                elif name == 'XGBoost reg':
+                elif name == 'XGBoost_reg':
                     model = XGBRegressor(
                         n_estimators=params['n_estimators'],
                         max_depth=params['max_depth'],
@@ -201,18 +201,18 @@ def regression(inp, prefix, selected_models):
                         verbosity=0,
                         n_jobs=-1
                     )
-                elif name == 'PLS reg':
+                elif name == 'PLS_reg':
                     model = PLSRegression(
                         n_components=params['n_components']
                     )
-                elif name == 'KNN reg':
+                elif name == 'KNN_reg':
                     model = KNeighborsRegressor(
                         n_neighbors=params['n_neighbors'],
                         weights=params['weights'],
                         p=params['p'],
                         n_jobs=-1
                     )
-                elif name == 'LightGBM reg':
+                elif name == 'LightGBM_reg':
                     model = LGBMRegressor(
                         n_estimators=params['n_estimators'],
                         max_depth=params['max_depth'],
@@ -248,7 +248,7 @@ def regression(inp, prefix, selected_models):
             best_params = study.best_params
 
             # Initialize model with best hyperparameters
-            if name == 'Neural Network reg':
+            if name == 'Neural_Network_reg':
                 best_model = MLPRegressor(
                     hidden_layer_sizes=(best_params['hidden_layer_sizes'],),
                     alpha=best_params['alpha'],
@@ -256,7 +256,7 @@ def regression(inp, prefix, selected_models):
                     max_iter=200000,
                     random_state=RANDOM_SEED
                 )
-            elif name == 'Random Forest reg':
+            elif name == 'Random_Forest_reg':
                 best_model = RandomForestRegressor(
                     n_estimators=best_params['n_estimators'],
                     max_depth=best_params['max_depth'],
@@ -266,13 +266,13 @@ def regression(inp, prefix, selected_models):
                     random_state=RANDOM_SEED,
                     n_jobs=-1
                 )
-            elif name == 'SVM reg':
+            elif name == 'SVM_reg':
                 best_model = SVR(
                     C=best_params['C'],
                     gamma=best_params['gamma'],
                     epsilon=best_params['epsilon']
                 )
-            elif name == 'XGBoost reg':
+            elif name == 'XGBoost_reg':
                 best_model = XGBRegressor(
                     n_estimators=best_params['n_estimators'],
                     max_depth=best_params['max_depth'],
@@ -284,18 +284,18 @@ def regression(inp, prefix, selected_models):
                     verbosity=0,
                     n_jobs=-1
                 )
-            elif name == 'PLS reg':
+            elif name == 'PLS_reg':
                 best_model = PLSRegression(
                     n_components=best_params['n_components']
                 )
-            elif name == 'KNN reg':
+            elif name == 'KNN_reg':
                 best_model = KNeighborsRegressor(
                     n_neighbors=best_params['n_neighbors'],
                     weights=best_params['weights'],
                     p=best_params['p'],
                     n_jobs=-1
                 )
-            elif name == 'LightGBM reg':
+            elif name == 'LightGBM_reg':
                 best_model = LGBMRegressor(
                     n_estimators=best_params['n_estimators'],
                     max_depth=best_params['max_depth'],
@@ -314,37 +314,37 @@ def regression(inp, prefix, selected_models):
         except Exception as e:
             print(f"Optimization failed for model {name}: {e}. Using default parameters.")
             # Initialize model with default parameters
-            if name == 'Neural Network reg':
+            if name == 'Neural_Network_reg':
                 best_model = MLPRegressor(
                     max_iter=200000,
                     random_state=RANDOM_SEED
                 )
-            elif name == 'Random Forest reg':
+            elif name == 'Random_Forest_reg':
                 best_model = RandomForestRegressor(
                     random_state=RANDOM_SEED,
                     n_jobs=-1
                 )
-            elif name == 'SVM reg':
+            elif name == 'SVM_reg':
                 best_model = SVR()
-            elif name == 'XGBoost reg':
+            elif name == 'XGBoost_reg':
                 best_model = XGBRegressor(
                     eval_metric='rmse',
                     random_state=RANDOM_SEED,
                     verbosity=0,
                     n_jobs=-1
                 )
-            elif name == 'PLS reg':
+            elif name == 'PLS_reg':
                 # Set n_components to 2 or floor(n_features / 2)
                 n_components = 2
                 upper = max(2, (num_features) // 2)
                 best_model = PLSRegression(
                     n_components=n_components
                 )
-            elif name == 'KNN reg':
+            elif name == 'KNN_reg':
                 best_model = KNeighborsRegressor(
                     n_jobs=-1
                 )
-            elif name == 'LightGBM reg':
+            elif name == 'LightGBM_reg':
                 best_model = LGBMRegressor(
                     random_state=RANDOM_SEED,
                     force_col_wise=True,
@@ -509,7 +509,7 @@ if __name__ == '__main__':
     parser.add_argument('--i', type=str, required=True, help='Path to the input CSV file.')
     parser.add_argument('--p', type=str, required=True, help='Prefix for output files.')
     parser.add_argument('--m', type=str, nargs='+', default=[
-                        'Neural Network reg', 'Random Forest reg', 'SVM reg', 'XGBoost reg', 'PLS reg', 'KNN reg', 'LightGBM reg'],
+                        'Neural_Network_reg', 'Random_Forest_reg', 'SVM_reg', 'XGBoost_reg', 'PLS_reg', 'KNN_reg', 'LightGBM_reg'],
                         help='List of models to run. Available models: NNR, RFR, SVMR, XGBR, PLSR, KNNR, LGBMR or their full names.')
 
     # Parse arguments
@@ -517,13 +517,13 @@ if __name__ == '__main__':
 
     # Define Model Map for abbreviations
     MODEL_MAP = {
-        'NNR': 'Neural Network reg',
-        'RFR': 'Random Forest reg',
-        'SVMR': 'SVM reg',
-        'XGBR': 'XGBoost reg',
-        'PLSR': 'PLS reg',
-        'KNNR': 'KNN reg',
-        'LGBMR': 'LightGBM reg'
+        'NNR': 'Neural_Network_reg',
+        'RFR': 'Random_Forest_reg',
+        'SVMR': 'SVM_reg',
+        'XGBR': 'XGBoost_reg',
+        'PLSR': 'PLS_reg',
+        'KNNR': 'KNN_reg',
+        'LGBMR': 'LightGBM_reg'
     }
 
     # Process model names to map abbreviations to full names

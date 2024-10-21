@@ -190,13 +190,13 @@ regression_image_types = {
 
 # Regression models with updated names
 regression_models = {
-    'Neural Network reg': 'Neural Network regression model performance analysis.',
-    'Random Forest reg': 'Random Forest regression model performance analysis.',
-    'SVM reg': 'Support Vector Machine (SVM) regression model performance analysis.',
-    'XGBoost reg': 'XGBoost regression model performance analysis.',
-    'PLS reg': 'Partial Least Squares (PLS) regression model performance analysis.',
-    'KNN reg': 'K-Nearest Neighbors (KNN) regression model performance analysis.',
-    'LightGBM reg': 'LightGBM regression model performance analysis.'
+    'Neural_Network_reg': 'Neural Network regression model performance analysis.',
+    'Random_Forest_reg': 'Random Forest regression model performance analysis.',
+    'SVM_reg': 'Support Vector Machine (SVM) regression model performance analysis.',
+    'XGBoost_reg': 'XGBoost regression model performance analysis.',
+    'PLS_reg': 'Partial Least Squares (PLS) regression model performance analysis.',
+    'KNN_reg': 'K-Nearest Neighbors (KNN) regression model performance analysis.',
+    'LightGBM_reg': 'LightGBM regression model performance analysis.'
 }
 
 for model_name, caption in regression_models.items():

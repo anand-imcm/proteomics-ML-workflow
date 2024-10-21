@@ -201,4 +201,4 @@ if __name__ == '__main__':
     args = parser.parse_args()
 
     # Run the XGBoost function
-    xgboost(args.input, args.output_prefix)
+    xgboost(args.i, args.p)

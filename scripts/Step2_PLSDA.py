@@ -233,4 +233,4 @@ if __name__ == '__main__':
     args = parser.parse_args()
 
     # Run the PLSDA function
-    plsda(args.input, args.output_prefix)
+    plsda(args.i, args.p)
