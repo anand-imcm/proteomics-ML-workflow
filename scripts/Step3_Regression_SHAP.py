@@ -123,9 +123,9 @@ def calculate_shap_values(model_name, num_features, output_prefix):
 def main():
     # Define argument parser
     parser = argparse.ArgumentParser(description='Calculate SHAP values for regression models.')
-    parser.add_argument('--output_prefix', type=str, required=True, help='Prefix for the output filenames from regression models.')
-    parser.add_argument('--models', type=str, nargs='+', required=True, help='List of model names to analyze (e.g., "Neural Network reg").')
-    parser.add_argument('--num_features', type=int, default=20, help='Number of top features to display in SHAP plots.')
+    parser.add_argument('--p', type=str, required=True, help='Prefix for the output filenames from regression models.')
+    parser.add_argument('--m', type=str, nargs='+', required=True, help='List of model names to analyze (e.g., "Neural Network reg").')
+    parser.add_argument('--f', type=int, default=20, help='Number of top features to display in SHAP plots.')
 
     # Parse arguments
     args = parser.parse_args()

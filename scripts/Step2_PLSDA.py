@@ -228,8 +228,8 @@ def plsda(inp, prefix):
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Run PLSDA with Optuna hyperparameter optimization.')
-    parser.add_argument('--input', type=str, required=True, help='Path to the input CSV file.')
-    parser.add_argument('--output_prefix', type=str, required=True, help='Prefix for output files.')
+    parser.add_argument('--i', type=str, required=True, help='Path to the input CSV file.')
+    parser.add_argument('--p', type=str, required=True, help='Prefix for output files.')
     args = parser.parse_args()
 
     # Run the PLSDA function

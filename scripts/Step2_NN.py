@@ -213,8 +213,8 @@ def neural_network(inp, prefix):
 if __name__ == '__main__':
     # Define argument parser
     parser = argparse.ArgumentParser(description='Run Neural Network model with Optuna hyperparameter optimization.')
-    parser.add_argument('--input', type=str, required=True, help='Path to the input CSV file.')
-    parser.add_argument('--output_prefix', type=str, required=True, help='Prefix for output files.')
+    parser.add_argument('--i', type=str, required=True, help='Path to the input CSV file.')
+    parser.add_argument('--p', type=str, required=True, help='Prefix for output files.')
     
     # Parse the arguments
     args = parser.parse_args()
