@@ -14,5 +14,5 @@ dependencies:
 - pandas<=2.2.2
 - scikit-learn<=1.5.1
 - seaborn<=0.13.2
-- shap<=0.45.0
+- shap<=0.46.0
 - xgboost<=2.1.0
