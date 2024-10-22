@@ -207,4 +207,4 @@ if __name__ == '__main__':
     args = parser.parse_args()
 
     # Run the LightGBM function
-    lightgbm(args.input, args.output_prefix)
+    lightgbm(args.i, args.p)

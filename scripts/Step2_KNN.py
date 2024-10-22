@@ -203,4 +203,4 @@ if __name__ == '__main__':
     args = parser.parse_args()
     
     # Run the KNN function
-    knn(args.input, args.output_prefix)
+    knn(args.i, args.p)

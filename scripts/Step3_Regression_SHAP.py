@@ -18,7 +18,7 @@ def calculate_shap_values(model_name, num_features, output_prefix):
     Calculate and save SHAP values and plots for a given model.
 
     Parameters:
-    - model_name (str): Name of the model (e.g., 'Neural Network reg').
+    - model_name (str): Name of the model (e.g., 'Neural_Network_reg').
     - num_features (int): Number of top features to display in plots.
     - output_prefix (str): Prefix for the output filenames.
     """
@@ -56,7 +56,7 @@ def calculate_shap_values(model_name, num_features, output_prefix):
             X_df = X_df[model.feature_names_in_]
 
         # Determine the type of explainer to use
-        if model_name.startswith(('Random Forest reg', 'XGBoost reg', 'LightGBM reg')):
+        if model_name.startswith(('Random_Forest_reg', 'XGBoost_reg', 'LightGBM_reg')):
             explainer = shap.TreeExplainer(model)
             # Calculate SHAP values
             shap_values = explainer.shap_values(X_df)
@@ -124,15 +124,15 @@ def main():
     # Define argument parser
     parser = argparse.ArgumentParser(description='Calculate SHAP values for regression models.')
     parser.add_argument('--p', type=str, required=True, help='Prefix for the output filenames from regression models.')
-    parser.add_argument('--m', type=str, nargs='+', required=True, help='List of model names to analyze (e.g., "Neural Network reg").')
+    parser.add_argument('--m', type=str, nargs='+', required=True, help='List of model names to analyze (e.g., "Neural_Network_reg").')
     parser.add_argument('--f', type=int, default=20, help='Number of top features to display in SHAP plots.')
 
     # Parse arguments
     args = parser.parse_args()
 
-    output_prefix = args.output_prefix
-    model_names = args.models
-    num_features = args.num_features
+    output_prefix = args.p
+    model_names = args.m
+    num_features = args.f
 
     # Run SHAP calculations in parallel for each model
     Parallel(n_jobs=-1)(

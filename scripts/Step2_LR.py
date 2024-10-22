@@ -201,4 +201,4 @@ if __name__ == '__main__':
     args = parser.parse_args()
 
     # Run the logistic regression function
-    logistic_regression(args.input, args.output_prefix)
+    logistic_regression(args.i, args.p)

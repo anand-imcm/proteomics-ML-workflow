@@ -220,4 +220,4 @@ if __name__ == '__main__':
     args = parser.parse_args()
     
     # Run the Neural Network function
-    neural_network(args.input, args.output_prefix)
+    neural_network(args.i, args.p)

@@ -199,4 +199,4 @@ if __name__ == '__main__':
     args = parser.parse_args()
 
     # Run the SVM function
-    svm(args.input, args.output_prefix)
+    svm(args.i, args.p)
