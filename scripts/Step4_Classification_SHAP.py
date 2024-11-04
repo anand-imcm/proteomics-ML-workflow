@@ -27,7 +27,7 @@ model_map = {
     "LGBM": "lightgbm",
     "LogisticRegression": "logistic_regression",
     "GaussianNB": "gaussiannb",
-    "MLP-VAE":"vaemlp"
+    "MLP-VAE": "vaemlp"
 }
 
 # Suppress all warnings
@@ -64,7 +64,6 @@ class PLSDAClassifier(BaseEstimator, ClassifierMixin):
             y_pred_proba_sum = y_pred_proba.sum(axis=1, keepdims=True)
             y_pred_proba = y_pred_proba / y_pred_proba_sum
         else:
-            y_pred_proba_sum = y_pred_proba.sum(axis=1, keepdims=True)
             y_pred_proba = np.hstack([1 - y_pred_proba, y_pred_proba])
         return y_pred_proba
 
@@ -85,31 +84,59 @@ def calculate_shap_values(best_model, X, num_classes, model_type, n_jobs_explain
         explainer = shap.PermutationExplainer(best_model.predict_proba, sample_X, n_jobs=n_jobs_explainer)
     else:
         raise ValueError("Unknown model_type")
-    
+
     # Calculate SHAP values
     try:
         shap_values = explainer.shap_values(X)
     except Exception as e:
         print(f"Error in SHAP explainer for model_type {model_type}: {e}")
         return np.zeros(X.shape[1])
-    
-    if num_classes == 2:
-        # For binary classification, use only the positive class SHAP values
-        if isinstance(shap_values, list) and len(shap_values) == 2:
-            shap_values = shap_values[1]
-        shap_values = np.array(shap_values).reshape(-1, X.shape[1])
-        shap_values = np.mean(np.abs(shap_values), axis=0)
+
+    # Debug statements
+    print(f"Type of shap_values: {type(shap_values)}")
+    if isinstance(shap_values, list):
+        print(f"Length of shap_values list: {len(shap_values)}")
     else:
-        # 对于多分类，将每个类别的 SHAP 值并行计算
-        def compute_class_shap(shap_values, class_idx):
-            return np.mean(np.abs(shap_values[class_idx]), axis=0)
-        
-        shap_values = Parallel(n_jobs=n_jobs_explainer)(
-            delayed(compute_class_shap)(shap_values, class_idx) for class_idx in range(num_classes)
-        )
-        shap_values = np.mean(shap_values, axis=0)
-    
-    return shap_values
+        print(f"Shape of shap_values array: {shap_values.shape}")
+
+    if num_classes == 2:
+        # For binary classification
+        n_features = X.shape[1]
+        if isinstance(shap_values, list):
+            if len(shap_values) == 1:
+                # Use the single array
+                shap_values = shap_values[0]
+            elif len(shap_values) == 2:
+                # Use the positive class
+                shap_values = shap_values[1]
+            else:
+                raise ValueError(f"Unexpected shap_values list length for binary classification: {len(shap_values)}")
+        else:
+            # shap_values is already an array
+            pass
+        shap_values = np.array(shap_values).reshape(-1, n_features)
+        shap_values_mean = np.mean(np.abs(shap_values), axis=0)
+    else:
+        # For multi-class classification
+        n_features = X.shape[1]
+        shap_values_mean = np.zeros(n_features)
+        if isinstance(shap_values, list):
+            num_shap_classes = len(shap_values)
+            for class_idx in range(num_shap_classes):
+                class_shap_values = np.array(shap_values[class_idx]).reshape(-1, n_features)
+                shap_values_mean += np.mean(np.abs(class_shap_values), axis=0)
+            shap_values_mean = shap_values_mean / num_shap_classes
+        else:
+            # shap_values is an array
+            shap_values = np.array(shap_values).reshape(-1, n_features)
+            shap_values_mean = np.mean(np.abs(shap_values), axis=0)
+
+    # Print shapes for debugging
+    print(f"SHAP input X shape: {X.shape}")
+    print(f"Expected SHAP values shape: ({X.shape[0]}, {X.shape[1]})")
+    print(f"Computed SHAP values mean shape: {shap_values_mean.shape}")
+
+    return shap_values_mean
 
 def load_model_and_data(model_name, prefix):
     """
@@ -117,7 +144,7 @@ def load_model_and_data(model_name, prefix):
     """
     model_path = f"{prefix}_{model_name}_model.pkl"
     data_path = f"{prefix}_{model_name}_data.pkl"
-    
+
     if model_name == "neural_network":
         # Use pickle to load neural_network model
         with open(model_path, 'rb') as f:
@@ -128,7 +155,7 @@ def load_model_and_data(model_name, prefix):
         # For other models, use joblib
         best_model = joblib.load(model_path)
         X, y_encoded, le = joblib.load(data_path)
-    
+
     if isinstance(X, pd.DataFrame):
         feature_names = X.columns.tolist()
         X = X.to_numpy()
@@ -137,11 +164,14 @@ def load_model_and_data(model_name, prefix):
         X = X.values
     else:
         # If X is a NumPy array without feature names
-        feature_names = [f"Feature_{i}" for i in range(X.shape[1])]
-    
+        if X.ndim == 1:
+            X = X.reshape(-1, 1)
+        n_features = X.shape[1]
+        feature_names = [f"Feature_{i}" for i in range(n_features)]
+
     # Ensure X is a C-contiguous NumPy array
     X = np.ascontiguousarray(X)
-    
+
     num_classes = len(np.unique(y_encoded))
     return best_model, X, y_encoded, num_classes, feature_names
 
@@ -171,7 +201,7 @@ def plot_shap_radar(model, shap_values_mean, feature_names, num_features, prefix
     ax.set_xticklabels(labels, fontsize=12)
 
     plt.title(f'SHAP Values for {model}', size=20, color='black', weight='bold')
-    plt.savefig(f"{prefix}_{model}_shap_radar.png",dpi=300)
+    plt.savefig(f"{prefix}_{model}_shap_radar.png", dpi=300)
     plt.close()
 
 def get_model_type(model_name):
@@ -206,9 +236,18 @@ def process_model(model_name, prefix, num_features, n_jobs_explainer):
         else:
             print(f"Processing {model_name}...")
             best_model, X, y_encoded, num_classes, feature_names = load_model_and_data(model_name, prefix)
-        
+
             model_type = get_model_type(model_name)
             shap_values_mean = calculate_shap_values(best_model, X, num_classes, model_type, n_jobs_explainer)
+
+            # Ensure feature_names and shap_values_mean have the same length
+            if len(feature_names) != len(shap_values_mean):
+                print(f"Error: feature_names length ({len(feature_names)}) does not match shap_values_mean length ({len(shap_values_mean)}).")
+                return
+
+            # Print shapes for debugging
+            print(f"Feature names length: {len(feature_names)}")
+            print(f"SHAP values mean length: {len(shap_values_mean)}")
 
             # Save SHAP values
             shap_df = pd.DataFrame({
@@ -221,7 +260,7 @@ def process_model(model_name, prefix, num_features, n_jobs_explainer):
 
         # Plot radar chart
         plot_shap_radar(model_name, shap_values_mean, feature_names, num_features, prefix)
-        print(f"SHAP radar plot saved to {prefix}_{model_name}_shap_radar.png",dpi=300)
+        print(f"SHAP radar plot saved to {prefix}_{model_name}_shap_radar.png")
     except Exception as e:
         print(f"Error processing model {model_name}: {e}")
 

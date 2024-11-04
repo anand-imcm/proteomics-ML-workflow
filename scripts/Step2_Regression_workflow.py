@@ -86,7 +86,8 @@ def regression(inp, prefix, selected_models):
     def get_param_distributions(name, num_features):
         if name == 'Neural_Network_reg':
             return {
-                'hidden_layer_sizes': optuna.distributions.IntDistribution(low=10, high=200),
+                'n_layers': optuna.distributions.IntDistribution(low=1, high=15),
+                'hidden_layer_size': optuna.distributions.IntDistribution(low=10, high=200),
                 'alpha': optuna.distributions.FloatDistribution(low=1e-4, high=1e-1),
                 'learning_rate_init': optuna.distributions.FloatDistribution(low=1e-4, high=1e-1)
             }
@@ -152,22 +153,33 @@ def regression(inp, prefix, selected_models):
 
         try:
             def objective(trial):
-                # Suggest hyperparameters
                 params = {}
-                for param, distribution in param_distributions.items():
-                    if isinstance(distribution, optuna.distributions.IntDistribution):
-                        params[param] = trial.suggest_int(param, distribution.low, distribution.high)
-                    elif isinstance(distribution, optuna.distributions.FloatDistribution):
-                        params[param] = trial.suggest_float(param, distribution.low, distribution.high, log=distribution.log)
-                    elif isinstance(distribution, optuna.distributions.CategoricalDistribution):
-                        params[param] = trial.suggest_categorical(param, distribution.choices)
-                    else:
-                        raise ValueError(f"Unsupported distribution type: {type(distribution)}")
+                if name == 'Neural_Network_reg':
+                    # Suggest number of layers
+                    n_layers = trial.suggest_int('n_layers', 1, 15)
+                    # Suggest hidden layer size
+                    hidden_layer_size = trial.suggest_int('hidden_layer_size', 10, 200)
+                    params['n_layers'] = n_layers
+                    params['hidden_layer_size'] = hidden_layer_size
+                    # Suggest other hyperparameters
+                    params['alpha'] = trial.suggest_float('alpha', 1e-4, 1e-1, log=True)
+                    params['learning_rate_init'] = trial.suggest_float('learning_rate_init', 1e-4, 1e-1, log=True)
+                else:
+                    for param, distribution in param_distributions.items():
+                        if isinstance(distribution, optuna.distributions.IntDistribution):
+                            params[param] = trial.suggest_int(param, distribution.low, distribution.high)
+                        elif isinstance(distribution, optuna.distributions.FloatDistribution):
+                            params[param] = trial.suggest_float(param, distribution.low, distribution.high, log=distribution.log)
+                        elif isinstance(distribution, optuna.distributions.CategoricalDistribution):
+                            params[param] = trial.suggest_categorical(param, distribution.choices)
+                        else:
+                            raise ValueError(f"Unsupported distribution type: {type(distribution)}")
 
                 # Clone model with suggested hyperparameters
                 if name == 'Neural_Network_reg':
+                    hidden_layer_sizes = tuple([params['hidden_layer_size']] * params['n_layers'])
                     model = MLPRegressor(
-                        hidden_layer_sizes=(params['hidden_layer_sizes'],),
+                        hidden_layer_sizes=hidden_layer_sizes,
                         alpha=params['alpha'],
                         learning_rate_init=params['learning_rate_init'],
                         max_iter=200000,
@@ -249,8 +261,9 @@ def regression(inp, prefix, selected_models):
 
             # Initialize model with best hyperparameters
             if name == 'Neural_Network_reg':
+                hidden_layer_sizes = tuple([best_params['hidden_layer_size']] * best_params['n_layers'])
                 best_model = MLPRegressor(
-                    hidden_layer_sizes=(best_params['hidden_layer_sizes'],),
+                    hidden_layer_sizes=hidden_layer_sizes,
                     alpha=best_params['alpha'],
                     learning_rate_init=best_params['learning_rate_init'],
                     max_iter=200000,
@@ -316,6 +329,7 @@ def regression(inp, prefix, selected_models):
             # Initialize model with default parameters
             if name == 'Neural_Network_reg':
                 best_model = MLPRegressor(
+                    hidden_layer_sizes=(100,),
                     max_iter=200000,
                     random_state=RANDOM_SEED
                 )
@@ -380,7 +394,11 @@ def regression(inp, prefix, selected_models):
 
         # Save model parameters
         with open(f"{prefix}_{name}_model_params.json", 'w') as f:
-            json.dump(best_model.get_params(), f, indent=4)
+            try:
+                params_to_save = best_model.get_params()
+            except:
+                params_to_save = {}
+            json.dump(params_to_save, f, indent=4)
 
         # Plot and save Actual vs Predicted with 300 DPI
         plt.figure(figsize=(10, 6))
