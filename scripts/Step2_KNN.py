@@ -56,8 +56,13 @@ def knn(inp, prefix):
     
     # Define the objective function for Optuna
     def objective(trial):
-        # Suggest a value for n_neighbors
-        n_neighbors = trial.suggest_int('n_neighbors', 1, 30)
+        # Determine the maximum allowed n_neighbors
+        max_n_neighbors = min(30, len(X) - 1)
+        if max_n_neighbors < 1:
+            raise ValueError("Not enough samples to perform KNN.")
+        
+        # Suggest a value for n_neighbors within the valid range
+        n_neighbors = trial.suggest_int('n_neighbors', 1, max_n_neighbors)
         
         # Initialize KNN with suggested hyperparameter
         clf = KNeighborsClassifier(n_neighbors=n_neighbors)
@@ -68,6 +73,13 @@ def knn(inp, prefix):
             for train_idx, valid_idx in cv_outer.split(X, y_encoded):
                 X_train, X_valid = X[train_idx], X[valid_idx]
                 y_train, y_valid = y_encoded[train_idx], y_encoded[valid_idx]
+                
+                # Ensure n_neighbors does not exceed the number of training samples
+                effective_max_n = min(n_neighbors, len(X_train))
+                if effective_max_n < n_neighbors:
+                    # Adjust n_neighbors if necessary
+                    clf.set_params(n_neighbors=effective_max_n)
+                
                 clf.fit(X_train, y_train)
                 y_pred = clf.predict(X_valid)
                 f1 = f1_score(y_valid, y_pred, average='weighted')
@@ -107,9 +119,14 @@ def knn(inp, prefix):
     
     # Compute sensitivity and specificity
     if num_classes == 2:
-        tn, fp, fn, tp = cm.ravel()
-        sensitivity = tp / (tp + fn) if (tp + fn) > 0 else 0
-        specificity = tn / (tn + fp) if (tn + fp) > 0 else 0
+        if cm.shape == (2, 2):
+            tn, fp, fn, tp = cm.ravel()
+            sensitivity = tp / (tp + fn) if (tp + fn) > 0 else 0
+            specificity = tn / (tn + fp) if (tn + fp) > 0 else 0
+        else:
+            # Handle cases where one class might be missing in predictions
+            sensitivity = 0
+            specificity = 0
     else:
         sensitivity = np.mean(np.diag(cm) / np.sum(cm, axis=1))
         specificity = np.mean(np.diag(cm) / np.sum(cm, axis=0))
