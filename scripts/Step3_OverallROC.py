@@ -18,7 +18,7 @@ model_map = {
     "LR": "logistic_regression",     # Logistic Regression
     "GNB": "gaussiannb",             # Gaussian Naive Bayes
     "LGBM": "lightgbm",               # LightGBM
-    "MLP-VAE":"vaemlp"
+    "MLP-VAE": "vaemlp"
 }
 
 def parse_arguments():
@@ -79,28 +79,38 @@ def plot_roc(model_abbrs, file_prefix):
     
     for model_abbr, color in zip(model_abbrs, colors):
         model_roc = roc_data[model_abbr]
-        # Determine if it's binary or multi-class
+        # Determine if it's binary or multi-class by checking the number of classes
         if isinstance(model_roc['fpr'], dict):
-            # Multi-class case: compute macro-average ROC
-            fpr_dict = model_roc['fpr']
-            tpr_dict = model_roc['tpr']
-            roc_auc_dict = model_roc['roc_auc']
-            print(f"Model '{model_abbr}' has classes: {list(fpr_dict.keys())}")  # Debugging output
-            fpr_macro, tpr_macro, roc_auc_macro = compute_macro_average_roc(fpr_dict, tpr_dict)
-            
-            # Plot macro-average ROC
-            plt.plot(fpr_macro, tpr_macro, color=color, linestyle='-', linewidth=2,
-                     label=f'{model_abbr} Macro AUC = {roc_auc_macro:.2f}')
-            
-            # Plot micro-average ROC if exists
-            if 'micro' in model_roc['fpr']:
-                fpr_micro = model_roc['fpr']['micro']
-                tpr_micro = model_roc['tpr']['micro']
-                roc_auc_micro = model_roc['roc_auc']['micro']
-                plt.plot(fpr_micro, tpr_micro, color=color, linestyle='--', linewidth=2,
-                         label=f'{model_abbr} Micro AUC = {roc_auc_micro:.2f}')
+            num_classes = len(model_roc['fpr'])
+            if num_classes > 1:
+                # Multi-class case: compute macro-average ROC
+                fpr_dict = model_roc['fpr']
+                tpr_dict = model_roc['tpr']
+                roc_auc_dict = model_roc['roc_auc']
+                print(f"Model '{model_abbr}' has {num_classes} classes: {list(fpr_dict.keys())}")  # Debugging output
+                fpr_macro, tpr_macro, roc_auc_macro = compute_macro_average_roc(fpr_dict, tpr_dict)
+                
+                # Plot macro-average ROC
+                plt.plot(fpr_macro, tpr_macro, color=color, linestyle='-', linewidth=2,
+                         label=f'{model_abbr} Macro AUC = {roc_auc_macro:.2f}')
+                
+                # Plot micro-average ROC if exists
+                if 'micro' in model_roc['fpr']:
+                    fpr_micro = model_roc['fpr']['micro']
+                    tpr_micro = model_roc['tpr']['micro']
+                    roc_auc_micro = model_roc['roc_auc']['micro']
+                    plt.plot(fpr_micro, tpr_micro, color=color, linestyle='--', linewidth=2,
+                             label=f'{model_abbr} Micro AUC = {roc_auc_micro:.2f}')
+            else:
+                # Binary case stored as a dict with single key
+                key = list(model_roc['fpr'].keys())[0]
+                fpr = model_roc['fpr'][key]
+                tpr = model_roc['tpr'][key]
+                roc_auc = model_roc['roc_auc'][key]
+                plt.plot(fpr, tpr, color=color, linestyle='-', linewidth=2,
+                         label=f'{model_abbr} AUC = {roc_auc:.2f}')
         else:
-            # Binary case
+            # Binary case stored as arrays
             fpr = model_roc['fpr']
             tpr = model_roc['tpr']
             roc_auc = model_roc['roc_auc']
