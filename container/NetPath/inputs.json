@@ -1,0 +1,12 @@
+{ 
+  "ProteinNetwork_Visualisation.score_thresholdHere": 400,
+  "ProteinNetwork_Visualisation.combined_score_thresholdHere": 500,
+  "ProteinNetwork_Visualisation.RFedge_threshold_here": 0.04,
+  "ProteinNetwork_Visualisation.KnodeHere": 5,
+  "ProteinNetwork_Visualisation.nTreeHere":  3,
+  "ProteinNetwork_Visualisation.titleMessage": "",
+  "ProteinNetwork_Visualisation.proteinImportanceFile": "/Users/ydeng/Documents/IMCMCode/input/SVM_shap_values.csv",
+  "ProteinNetwork_Visualisation.proteinExpFile": "/Users/ydeng/Documents/IMCMCode/input/proDFhere.csv",
+  "ProteinNetwork_Visualisation.ProteinNetR": "/Users/ydeng/Documents/IMCMCode/Module_ProteinNetwork_WDL.R"
+}
+ 
