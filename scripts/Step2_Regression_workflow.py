@@ -38,8 +38,6 @@ class SuppressOutput(contextlib.AbstractContextManager):
         sys.stderr = self._stderr
 
 def regression(inp, prefix, selected_models):
-    # Remove directory creation since we are saving files locally with prefix
-
     # Load data
     data = pd.read_csv(inp)
 
@@ -88,8 +86,8 @@ def regression(inp, prefix, selected_models):
             return {
                 'n_layers': optuna.distributions.IntDistribution(low=1, high=15),
                 'hidden_layer_size': optuna.distributions.IntDistribution(low=10, high=200),
-                'alpha': optuna.distributions.FloatDistribution(low=1e-4, high=1e-1),
-                'learning_rate_init': optuna.distributions.FloatDistribution(low=1e-4, high=1e-1)
+                'alpha': optuna.distributions.FloatDistribution(low=1e-4, high=1e-1, log=True),
+                'learning_rate_init': optuna.distributions.FloatDistribution(low=1e-4, high=1e-1, log=True)
             }
         elif name == 'Random_Forest_reg':
             return {
@@ -111,7 +109,9 @@ def regression(inp, prefix, selected_models):
                 'max_depth': optuna.distributions.IntDistribution(low=3, high=15),
                 'learning_rate': optuna.distributions.FloatDistribution(low=1e-3, high=1e-1, log=True),
                 'subsample': optuna.distributions.FloatDistribution(low=0.5, high=1.0),
-                'colsample_bytree': optuna.distributions.FloatDistribution(low=0.5, high=1.0)
+                'colsample_bytree': optuna.distributions.FloatDistribution(low=0.5, high=1.0),
+                'reg_alpha': optuna.distributions.FloatDistribution(low=0.0, high=1.0),
+                'reg_lambda': optuna.distributions.FloatDistribution(low=0.0, high=1.0)
             }
         elif name == 'PLS_reg':
             upper = max(2, (num_features) // 2)
@@ -131,7 +131,9 @@ def regression(inp, prefix, selected_models):
                 'learning_rate': optuna.distributions.FloatDistribution(low=1e-3, high=1e-1, log=True),
                 'num_leaves': optuna.distributions.IntDistribution(low=20, high=150),
                 'subsample': optuna.distributions.FloatDistribution(low=0.5, high=1.0),
-                'colsample_bytree': optuna.distributions.FloatDistribution(low=0.5, high=1.0)
+                'colsample_bytree': optuna.distributions.FloatDistribution(low=0.5, high=1.0),
+                'reg_alpha': optuna.distributions.FloatDistribution(low=0.0, high=1.0),
+                'reg_lambda': optuna.distributions.FloatDistribution(low=0.0, high=1.0)
             }
         else:
             return {}
@@ -208,6 +210,8 @@ def regression(inp, prefix, selected_models):
                         learning_rate=params['learning_rate'],
                         subsample=params['subsample'],
                         colsample_bytree=params['colsample_bytree'],
+                        reg_alpha=params['reg_alpha'],
+                        reg_lambda=params['reg_lambda'],
                         eval_metric='rmse',
                         random_state=RANDOM_SEED,
                         verbosity=0,
@@ -232,6 +236,8 @@ def regression(inp, prefix, selected_models):
                         num_leaves=params['num_leaves'],
                         subsample=params['subsample'],
                         colsample_bytree=params['colsample_bytree'],
+                        reg_alpha=params['reg_alpha'],
+                        reg_lambda=params['reg_lambda'],
                         random_state=RANDOM_SEED,
                         force_col_wise=True,
                         verbosity=-1,
@@ -292,6 +298,8 @@ def regression(inp, prefix, selected_models):
                     learning_rate=best_params['learning_rate'],
                     subsample=best_params['subsample'],
                     colsample_bytree=best_params['colsample_bytree'],
+                    reg_alpha=best_params['reg_alpha'],
+                    reg_lambda=best_params['reg_lambda'],
                     eval_metric='rmse',
                     random_state=RANDOM_SEED,
                     verbosity=0,
@@ -316,6 +324,8 @@ def regression(inp, prefix, selected_models):
                     num_leaves=best_params['num_leaves'],
                     subsample=best_params['subsample'],
                     colsample_bytree=best_params['colsample_bytree'],
+                    reg_alpha=best_params['reg_alpha'],
+                    reg_lambda=best_params['reg_lambda'],
                     random_state=RANDOM_SEED,
                     force_col_wise=True,
                     verbosity=-1,
@@ -348,9 +358,7 @@ def regression(inp, prefix, selected_models):
                     n_jobs=-1
                 )
             elif name == 'PLS_reg':
-                # Set n_components to 2 or floor(n_features / 2)
                 n_components = 2
-                upper = max(2, (num_features) // 2)
                 best_model = PLSRegression(
                     n_components=n_components
                 )
@@ -553,7 +561,7 @@ if __name__ == '__main__':
             processed_models.append(model)
         else:
             print(f"Warning: Unrecognized model name '{model}'. It will be ignored.")
-    
+
     if not processed_models:
         print("Error: No valid models specified after processing abbreviations and full names.")
         sys.exit(1)

@@ -135,7 +135,7 @@ def knn(inp, prefix):
     disp = ConfusionMatrixDisplay(confusion_matrix=cm, display_labels=le.classes_)
     disp.plot(cmap=plt.cm.Blues)
     plt.title('Confusion Matrix for KNN')
-    plt.savefig(f"{prefix}_knn_confusion_matrix.png")
+    plt.savefig(f"{prefix}_knn_confusion_matrix.png",dpi=300)
     plt.close()
     
     # ROC and AUC
@@ -181,7 +181,7 @@ def knn(inp, prefix):
     plt.ylabel('True Positive Rate')
     plt.title('ROC Curves for KNN')
     plt.legend(loc="lower right")
-    plt.savefig(f"{prefix}_knn_roc_curve.png")
+    plt.savefig(f"{prefix}_knn_roc_curve.png",dpi=300)
     plt.close()
     
     # Output performance metrics as a bar chart
@@ -195,7 +195,7 @@ def knn(inp, prefix):
         ax.bar_label(container, fmt='%.2f')
     plt.xticks(rotation=45, ha='right')
     plt.tight_layout()
-    plt.savefig(f"{prefix}_knn_metrics.png")
+    plt.savefig(f"{prefix}_knn_metrics.png",dpi=300)
     plt.close()
     
     # Create a DataFrame for predictions
