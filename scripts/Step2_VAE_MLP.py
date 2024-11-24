@@ -698,51 +698,49 @@ def vae(inp, prefix):
 
         # Ensure shap_values is in (samples, features, classes) format
         if isinstance(shap_values, list):
-            shap_values = np.stack(shap_values, axis=0)  # (classes, samples, features)
+            # For multi-class, shap_values is a list of arrays, one per class
+            shap_values = np.stack(shap_values, axis=-1)  # Now (samples, features, classes)
 
-        # Transpose to (samples, features, classes) if necessary
-        if shap_values.ndim == 3 and shap_values.shape[0] == num_classes:
-            shap_values = np.transpose(shap_values, (1, 2, 0))  # Now (samples, features, classes)
+        # Now shap_values should be (samples, features, num_classes)
 
-        # Prepare all (class, feature) combinations
-        class_feature_tuples = [(class_idx, feature_idx) for class_idx in range(num_classes) for feature_idx in range(len(feature_names))]
+        if num_classes == 2:
+            # Binary classification
+            # Use the SHAP values for the positive class
+            shap_class = 1
+            shap_values_binary = shap_values[:, :, shap_class]
+            # Compute mean absolute SHAP values per feature
+            mean_shap_across_classes = np.mean(np.abs(shap_values_binary), axis=0)
+            shap_df = pd.DataFrame({
+                'Feature': feature_names,
+                'Mean SHAP Value': mean_shap_across_classes
+            })
+            shap_df.to_csv(f"{prefix}_vae_shap_values.csv", index=False)
+            print(f"SHAP values have been saved to {prefix}_vae_shap_values.csv")
+        else:
+            # Multi-class classification
+            # Compute mean absolute SHAP values per feature per class
+            mean_shap_values_per_class = {}
+            for class_idx in range(num_classes):
+                class_name = le.inverse_transform([class_idx])[0]
+                # shap_values[:, :, class_idx] is (samples, features)
+                mean_shap = np.mean(np.abs(shap_values[:, :, class_idx]), axis=0)
+                mean_shap_values_per_class[class_name] = mean_shap
 
-        # Define function to compute mean SHAP value for each (class, feature) pair
-        def compute_mean_shap(shap_values, class_idx, feature_idx, num_classes, feature_names):
-            if num_classes == 2:
-                # Binary classification, use positive class SHAP values
-                shap_val = shap_values[:, feature_idx, 1]  # Shape: (samples,)
-            else:
-                # Multi-class classification, use specific class SHAP values
-                shap_val = shap_values[:, feature_idx, class_idx]  # Shape: (samples,)
-            mean_shap = np.mean(np.abs(shap_val))
-            return (feature_names[feature_idx], mean_shap)
+            # Create DataFrame for per-class SHAP values
+            shap_per_class_df = pd.DataFrame(mean_shap_values_per_class, index=feature_names)
+            shap_per_class_df.index.name = 'Feature'
+            shap_per_class_df.reset_index(inplace=True)
+            shap_per_class_df.to_csv(f"{prefix}_vae_shap_values.csv", index=False)
 
-        # Use joblib's Parallel and delayed to compute SHAP values in parallel
-        mean_shap_results = Parallel(n_jobs=-1)(
-            delayed(compute_mean_shap)(shap_values, class_idx, feature_idx, num_classes, feature_names)
-            for class_idx, feature_idx in class_feature_tuples
-        )
+            # Also, compute overall mean SHAP values across classes
+            mean_shap_across_classes = np.mean([mean_shap_values_per_class[class_name] for class_name in mean_shap_values_per_class], axis=0)
+            shap_df = pd.DataFrame({
+                'Feature': feature_names,
+                'Mean SHAP Value': mean_shap_across_classes
+            })
+            shap_df.to_csv(f"{prefix}_vae_shap_values_mean.csv", index=False)
 
-        # Aggregate mean SHAP values for each feature across all classes
-        shap_dict = {}
-        for feature, mean_shap in mean_shap_results:
-            if feature in shap_dict:
-                shap_dict[feature].append(mean_shap)
-            else:
-                shap_dict[feature] = [mean_shap]
-
-        # Compute the final mean SHAP value for each feature (averaged across classes)
-        final_mean_shap = {feature: np.mean(shaps) for feature, shaps in shap_dict.items()}
-
-        # Convert to DataFrame
-        shap_df = pd.DataFrame({
-            'Feature': list(final_mean_shap.keys()),
-            'Mean SHAP Value': list(final_mean_shap.values())
-        })
-        shap_df.to_csv(f"{prefix}_vae_shap_values.csv", index=False)
-
-        print(f"SHAP values have been saved to {prefix}_vae_shap_values.csv")
+            print(f"SHAP values have been saved to {prefix}_vae_shap_values_mean.csv and {prefix}_vae_shap_values.csv")
 
     except Exception as e:
         print(f"SHAP computation failed: {e}")

@@ -41,8 +41,10 @@ def knn(inp, prefix):
     sample_ids = data['SampleID']
     
     # Data processing
-    # Convert features to NumPy array to ensure C-contiguous memory layout
-    X = data.drop(columns=['SampleID', 'Label']).to_numpy()
+    # Extract feature names
+    feature_names = data.drop(columns=['SampleID', 'Label']).columns.tolist()
+    # Convert features to pandas DataFrame to preserve feature names
+    X = data.drop(columns=['SampleID', 'Label']).copy()
     y = data['Label']
     
     # Convert target variable to categorical
@@ -71,7 +73,7 @@ def knn(inp, prefix):
         with SuppressOutput():
             scores = []
             for train_idx, valid_idx in cv_outer.split(X, y_encoded):
-                X_train, X_valid = X[train_idx], X[valid_idx]
+                X_train, X_valid = X.iloc[train_idx], X.iloc[valid_idx]
                 y_train, y_valid = y_encoded[train_idx], y_encoded[valid_idx]
                 
                 # Ensure n_neighbors does not exceed the number of training samples
@@ -101,9 +103,9 @@ def knn(inp, prefix):
     with SuppressOutput():
         best_model.fit(X, y_encoded)
     
-    # Save the best model and data
+    # Save the best model and data along with feature names
     joblib.dump(best_model, f"{prefix}_knn_model.pkl")
-    joblib.dump((X, y_encoded, le), f"{prefix}_knn_data.pkl")
+    joblib.dump((X, y_encoded, le, feature_names), f"{prefix}_knn_data.pkl")
     
     # Output the best parameters
     print(f"Best parameters for KNN: {best_params}")

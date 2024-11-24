@@ -370,16 +370,6 @@ class VAE_MLP(BaseEstimator, ClassifierMixin):
             y_proba = torch.cat(y_proba, dim=0).numpy()
         return y_proba
 
-def calculate_shap_for_class_feature(shap_values, class_idx, feature_idx, num_classes, feature_names):
-    if num_classes == 2:
-        # Binary classification, use positive class SHAP values
-        shap_value = shap_values[:, feature_idx, 1]  # Shape: (samples,)
-    else:
-        # Multiclass classification, use specific class SHAP values
-        shap_value = shap_values[:, feature_idx, class_idx]  # Shape: (samples,)
-    mean_shap = np.mean(np.abs(shap_value))
-    return (feature_names[feature_idx], mean_shap)
-
 def vae(inp, prefix):
     # Load and preprocess data
     data = pd.read_csv(inp)
@@ -637,7 +627,7 @@ def vae(inp, prefix):
     # Ensure tick labels are not in scientific notation
     ax.ticklabel_format(style='plain', axis='both')
     plt.title('Confusion Matrix for VAE_MLP')
-    plt.savefig(f"{prefix}_vaemlp_confusion_matrix.png",dpi=300)
+    plt.savefig(f"{prefix}_vaemlp_confusion_matrix.png", dpi=300)
     plt.close()
 
     # Aggregate all predictions and true labels
@@ -647,24 +637,21 @@ def vae(inp, prefix):
         y_all_pred = np.hstack(all_y_pred)
         y_all_pred_proba = np.vstack(all_y_pred_proba)
     else:
-        X_all = np.array([])
-        y_all_true = np.array([])
-        y_all_pred = np.array([])
-        y_all_pred_proba = np.array([])
+        print("No predictions were made. The predictions DataFrame will not be created.")
 
-    if X_all.size > 0:
+    if 'X_all' in locals() and X_all.size > 0:
         # Create a DataFrame with SampleID, Original Label, and Predicted Label
         # To ensure correct mapping, we map predictions back to the original SampleIDs
         # Here, we assume that each sample appears exactly once across all folds
         # If this is not the case, additional handling is required
-        # Create a mask for the test indices to map predictions back
+        # Create a list of test indices in the order they were evaluated
         test_indices = []
         for _, (train_idx, test_idx) in enumerate(skf.split(X, y)):
             test_indices.extend(test_idx)
-        # Sort test_indices to align with sample_ids
-        sorted_indices = np.argsort(test_indices)
-        sorted_test_indices = np.array(test_indices)[sorted_indices]
-        sorted_pred = y_all_pred[sorted_indices]
+        test_indices = np.array(test_indices)
+        sorted_order = np.argsort(test_indices)
+        sorted_test_indices = test_indices[sorted_order]
+        sorted_pred = y_all_pred[sorted_order]
         results_df = pd.DataFrame({
             'SampleID': sample_ids[sorted_test_indices],
             'Original Label': data['Label'].values[sorted_test_indices],
@@ -729,7 +716,7 @@ def vae(inp, prefix):
 
     plt.title('Evaluation Metrics for VAE_MLP')
     plt.ylabel('Score')
-    plt.savefig(f"{prefix}_vaemlp_metrics.png",dpi=300)
+    plt.savefig(f"{prefix}_vaemlp_metrics.png", dpi=300)
     plt.close()
 
     # Plot ROC curves
@@ -756,75 +743,108 @@ def vae(inp, prefix):
     ax.yaxis.set_major_formatter(mticker.ScalarFormatter())  # Ensure y-axis uses ScalarFormatter
     plt.ticklabel_format(style='plain', axis='both')  # Ensure tick labels are in plain format
 
-    plt.savefig(f"{prefix}_vaemlp_roc_curve.png",dpi=300)
+    plt.savefig(f"{prefix}_vaemlp_roc_curve.png", dpi=300)
     plt.close()
 
     # Calculate SHAP feature importance using PermutationExplainer with parallel processing
-    try:
-        # Set a reasonable background data size to speed up computation
-        background_size = 100
-        background_indices = np.random.choice(X.shape[0], min(background_size, X.shape[0]), replace=False)
-        background = X[background_indices]
+    if num_classes > 2:
+        try:
+            # Set a reasonable background data size to speed up computation
+            background_size = 100
+            background_indices = np.random.choice(X.shape[0], min(background_size, X.shape[0]), replace=False)
+            background = X[background_indices]
 
-        # Create and train a final model on the entire dataset for SHAP
-        final_model = create_best_model()
-        final_model.fit(X, y)
+            # Create and train a final model on the entire dataset for SHAP
+            final_model = create_best_model()
+            final_model.fit(X, y)
 
-        # Define a prediction probability function based on original features
-        def model_predict_proba(X_input):
-            return final_model.predict_proba(X_input)
+            # Define a prediction probability function based on original features
+            def model_predict_proba(X_input):
+                return final_model.predict_proba(X_input)
 
-        # Initialize PermutationExplainer with n_jobs=-1 to use all available CPU cores
-        explainer = shap.PermutationExplainer(model_predict_proba, background, n_repeats=10, random_state=42, n_jobs=-1)
+            # Initialize PermutationExplainer with n_jobs=-1 to use all available CPU cores
+            explainer = shap.PermutationExplainer(model_predict_proba, background, n_repeats=10, random_state=42, n_jobs=-1)
 
-        # Calculate SHAP values
-        shap_values = explainer.shap_values(X)  # Shape: (samples, features, classes) or (classes, samples, features) depending on SHAP version
+            # Calculate SHAP values
+            shap_values = explainer.shap_values(X)  # Shape: (classes, samples, features) or (samples, features, classes) depending on SHAP version
 
-        # Ensure shap_values is in (samples, features, classes) format
-        if isinstance(shap_values, list):
-            shap_values = np.stack(shap_values, axis=-1)  # Convert list to numpy array
+            # Ensure shap_values is in (samples, features, classes) format
+            if isinstance(shap_values, list):
+                shap_values = np.stack(shap_values, axis=-1)  # Convert list to numpy array
 
-        # Prepare all (class, feature) combinations
-        class_feature_tuples = [(class_idx, feature_idx) for class_idx in range(num_classes) for feature_idx in range(len(feature_names))]
+            # Prepare all (class, feature) combinations
+            class_feature_tuples = [(class_idx, feature_idx) for class_idx in range(num_classes) for feature_idx in range(len(feature_names))]
 
-        # Define function to compute mean SHAP value for each (class, feature) combination
-        def compute_mean_shap(shap_values, class_idx, feature_idx):
-            if num_classes == 2:
-                shap_val = shap_values[:, feature_idx, 1]  # Shape: (samples,)
-            else:
+            # Define function to compute mean SHAP value for each (class, feature) combination
+            def compute_mean_shap(shap_values, class_idx, feature_idx):
                 shap_val = shap_values[:, feature_idx, class_idx]  # Shape: (samples,)
-            mean_shap = np.mean(np.abs(shap_val))
-            return (feature_names[feature_idx], mean_shap)
+                mean_shap = np.mean(np.abs(shap_val))
+                return (class_idx, feature_names[feature_idx], mean_shap)
 
-        # Parallelize the computation of mean SHAP values for each (class, feature) combination
-        mean_shap_results = Parallel(n_jobs=-1)(
-            delayed(compute_mean_shap)(shap_values, class_idx, feature_idx)
-            for class_idx, feature_idx in class_feature_tuples
-        )
+            # Parallelize the computation of mean SHAP values for each (class, feature) combination
+            mean_shap_results = Parallel(n_jobs=-1)(
+                delayed(compute_mean_shap)(shap_values, class_idx, feature_idx)
+                for class_idx, feature_idx in class_feature_tuples
+            )
 
-        # Aggregate SHAP values for each feature across all classes
-        shap_dict = {}
-        for feature, mean_shap in mean_shap_results:
-            if feature in shap_dict:
-                shap_dict[feature].append(mean_shap)
-            else:
-                shap_dict[feature] = [mean_shap]
+            # Create a dictionary to store SHAP values per feature per class
+            shap_dict = {feature: {} for feature in feature_names}
+            for class_idx, feature_name, mean_shap in mean_shap_results:
+                class_name = le.inverse_transform([class_idx])[0]
+                shap_dict[feature_name][class_name] = mean_shap
 
-        # Compute the final average SHAP value for each feature across all classes
-        final_mean_shap = {feature: np.mean(shaps) for feature, shaps in shap_dict.items()}
+            # Create a DataFrame from the dictionary
+            shap_df = pd.DataFrame(shap_dict).T.reset_index().rename(columns={'index': 'Feature'})
+            shap_df = shap_df[['Feature'] + list(le.classes_)]
 
-        # Convert to DataFrame and save
-        shap_df = pd.DataFrame({
-            'Feature': list(final_mean_shap.keys()),
-            'Mean SHAP Value': list(final_mean_shap.values())
-        })
-        shap_df.to_csv(f"{prefix}_vaemlp_shap_values.csv", index=False)
+            shap_df.to_csv(f"{prefix}_vaemlp_shap_values.csv", index=False)
 
-        print(f"SHAP values have been saved to {prefix}_vaemlp_shap_values.csv")
+            print(f"SHAP values per class have been saved to {prefix}_vaemlp_shap_values.csv")
 
-    except Exception as e:
-        print(f"SHAP computation was skipped due to an error: {e}")
-        # Continue execution to ensure other results are still output
+        except Exception as e:
+            print(f"SHAP computation was skipped due to an error: {e}")
+            # Continue execution to ensure other results are still output
+    else:
+        try:
+            # Set a reasonable background data size to speed up computation
+            background_size = 100
+            background_indices = np.random.choice(X.shape[0], min(background_size, X.shape[0]), replace=False)
+            background = X[background_indices]
+
+            # Create and train a final model on the entire dataset for SHAP
+            final_model = create_best_model()
+            final_model.fit(X, y)
+
+            # Define a prediction probability function based on original features
+            def model_predict_proba(X_input):
+                return final_model.predict_proba(X_input)
+
+            # Initialize PermutationExplainer with n_jobs=-1 to use all available CPU cores
+            explainer = shap.PermutationExplainer(model_predict_proba, background, n_repeats=10, random_state=42, n_jobs=-1)
+
+            # Calculate SHAP values
+            shap_values = explainer.shap_values(X)  # Shape: (samples, features, classes)
+
+            # Ensure shap_values is in (samples, features, classes) format
+            if isinstance(shap_values, list):
+                shap_values = np.stack(shap_values, axis=-1)  # Convert list to numpy array
+
+            # Compute mean SHAP values for the positive class
+            shap_val = shap_values[:, :, 1]  # Shape: (samples, features)
+            mean_shap = np.mean(np.abs(shap_val), axis=0)  # Shape: (features,)
+
+            # Create a DataFrame to store SHAP values per feature
+            shap_df = pd.DataFrame({
+                'Feature': feature_names,
+                'Mean SHAP Value': mean_shap
+            })
+            shap_df.to_csv(f"{prefix}_vaemlp_shap_values.csv", index=False)
+
+            print(f"SHAP values have been saved to {prefix}_vaemlp_shap_values.csv")
+
+        except Exception as e:
+            print(f"SHAP computation was skipped due to an error: {e}")
+            # Continue execution to ensure other results are still output
 
 if __name__ == "__main__":
     args = parse_arguments()
