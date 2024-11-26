@@ -221,9 +221,11 @@ def load_model_and_data(model_name, prefix):
 
     # Get actual class names
     if model_name == "knn":
-        class_names = le.classes_
+        class_names = le.inverse_transform(np.unique(y_encoded))
     elif hasattr(best_model, 'classes_'):
         class_names = best_model.classes_
+        if hasattr(le, 'inverse_transform'):
+            class_names = le.inverse_transform(class_names)
     else:
         class_names = [str(i) for i in range(num_classes)]
     
@@ -372,7 +374,7 @@ def process_model(model_name, prefix, num_features, n_jobs_explainer):
                 # Save SHAP values
                 shap_df = pd.DataFrame({
                     'Feature': feature_names,
-                    'Mean SHAP Value': shap_values_mean
+                    f'Mean SHAP Value for {class_names[1]}': shap_values_mean
                 })
             elif shap_values_mean.ndim == 2:
                 # Multi-class classification
@@ -383,7 +385,7 @@ def process_model(model_name, prefix, num_features, n_jobs_explainer):
                 # Create DataFrame
                 shap_df = pd.DataFrame({'Feature': feature_names})
                 for idx, class_name in enumerate(class_names):
-                    shap_df[f'Mean SHAP Value Class {class_name}'] = shap_values_mean[idx, :]
+                    shap_df[f'Mean SHAP Value for {class_name}'] = shap_values_mean[idx, :]
             else:
                 print(f"Unexpected shap_values_mean dimensions: {shap_values_mean.ndim}")
                 return
