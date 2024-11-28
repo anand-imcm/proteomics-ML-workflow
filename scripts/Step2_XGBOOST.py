@@ -58,9 +58,21 @@ def xgboost(inp, prefix):
         n_estimators = trial.suggest_int('n_estimators', 10, 300)
         max_depth = trial.suggest_int('max_depth', 3, 15)
         learning_rate = trial.suggest_loguniform('learning_rate', 1e-4, 0.1)
+        reg_alpha = trial.suggest_loguniform('reg_alpha', 1e-8, 10.0)
+        reg_lambda = trial.suggest_loguniform('reg_lambda', 1e-8, 10.0)
+        gamma = trial.suggest_loguniform('gamma', 1e-8, 10.0)
         
         # Initialize XGBClassifier with suggested hyperparameters
-        clf = XGBClassifier(n_estimators=n_estimators, max_depth=max_depth, learning_rate=learning_rate, eval_metric='mlogloss', random_state=1234)
+        clf = XGBClassifier(
+            n_estimators=n_estimators,
+            max_depth=max_depth,
+            learning_rate=learning_rate,
+            reg_alpha=reg_alpha,
+            reg_lambda=reg_lambda,
+            gamma=gamma,
+            eval_metric='mlogloss',
+            random_state=1234
+        )
         
         # Perform cross-validation
         with SuppressOutput():
@@ -83,9 +95,21 @@ def xgboost(inp, prefix):
     best_n_estimators = best_params['n_estimators']
     best_max_depth = best_params['max_depth']
     best_learning_rate = best_params['learning_rate']
+    best_reg_alpha = best_params['reg_alpha']
+    best_reg_lambda = best_params['reg_lambda']
+    best_gamma = best_params['gamma']
 
     # Initialize the best model
-    best_model = XGBClassifier(n_estimators=best_n_estimators, max_depth=best_max_depth, learning_rate=best_learning_rate, eval_metric='mlogloss', random_state=1234)
+    best_model = XGBClassifier(
+        n_estimators=best_n_estimators,
+        max_depth=best_max_depth,
+        learning_rate=best_learning_rate,
+        reg_alpha=best_reg_alpha,
+        reg_lambda=best_reg_lambda,
+        gamma=best_gamma,
+        eval_metric='mlogloss',
+        random_state=1234
+    )
 
     # Fit the model on the entire dataset
     with SuppressOutput():

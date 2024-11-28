@@ -41,8 +41,10 @@ def knn(inp, prefix):
     sample_ids = data['SampleID']
     
     # Data processing
-    # Convert features to NumPy array to ensure C-contiguous memory layout
-    X = data.drop(columns=['SampleID', 'Label']).to_numpy()
+    # Extract feature names
+    feature_names = data.drop(columns=['SampleID', 'Label']).columns.tolist()
+    # Convert features to pandas DataFrame to preserve feature names
+    X = data.drop(columns=['SampleID', 'Label']).copy()
     y = data['Label']
     
     # Convert target variable to categorical
@@ -56,8 +58,13 @@ def knn(inp, prefix):
     
     # Define the objective function for Optuna
     def objective(trial):
-        # Suggest a value for n_neighbors
-        n_neighbors = trial.suggest_int('n_neighbors', 1, 30)
+        # Determine the maximum allowed n_neighbors
+        max_n_neighbors = min(30, len(X) - 1)
+        if max_n_neighbors < 1:
+            raise ValueError("Not enough samples to perform KNN.")
+        
+        # Suggest a value for n_neighbors within the valid range
+        n_neighbors = trial.suggest_int('n_neighbors', 1, max_n_neighbors)
         
         # Initialize KNN with suggested hyperparameter
         clf = KNeighborsClassifier(n_neighbors=n_neighbors)
@@ -66,8 +73,15 @@ def knn(inp, prefix):
         with SuppressOutput():
             scores = []
             for train_idx, valid_idx in cv_outer.split(X, y_encoded):
-                X_train, X_valid = X[train_idx], X[valid_idx]
+                X_train, X_valid = X.iloc[train_idx], X.iloc[valid_idx]
                 y_train, y_valid = y_encoded[train_idx], y_encoded[valid_idx]
+                
+                # Ensure n_neighbors does not exceed the number of training samples
+                effective_max_n = min(n_neighbors, len(X_train))
+                if effective_max_n < n_neighbors:
+                    # Adjust n_neighbors if necessary
+                    clf.set_params(n_neighbors=effective_max_n)
+                
                 clf.fit(X_train, y_train)
                 y_pred = clf.predict(X_valid)
                 f1 = f1_score(y_valid, y_pred, average='weighted')
@@ -89,9 +103,9 @@ def knn(inp, prefix):
     with SuppressOutput():
         best_model.fit(X, y_encoded)
     
-    # Save the best model and data
+    # Save the best model and data along with feature names
     joblib.dump(best_model, f"{prefix}_knn_model.pkl")
-    joblib.dump((X, y_encoded, le), f"{prefix}_knn_data.pkl")
+    joblib.dump((X, y_encoded, le, feature_names), f"{prefix}_knn_data.pkl")
     
     # Output the best parameters
     print(f"Best parameters for KNN: {best_params}")
@@ -107,9 +121,14 @@ def knn(inp, prefix):
     
     # Compute sensitivity and specificity
     if num_classes == 2:
-        tn, fp, fn, tp = cm.ravel()
-        sensitivity = tp / (tp + fn) if (tp + fn) > 0 else 0
-        specificity = tn / (tn + fp) if (tn + fp) > 0 else 0
+        if cm.shape == (2, 2):
+            tn, fp, fn, tp = cm.ravel()
+            sensitivity = tp / (tp + fn) if (tp + fn) > 0 else 0
+            specificity = tn / (tn + fp) if (tn + fp) > 0 else 0
+        else:
+            # Handle cases where one class might be missing in predictions
+            sensitivity = 0
+            specificity = 0
     else:
         sensitivity = np.mean(np.diag(cm) / np.sum(cm, axis=1))
         specificity = np.mean(np.diag(cm) / np.sum(cm, axis=0))
@@ -118,7 +137,7 @@ def knn(inp, prefix):
     disp = ConfusionMatrixDisplay(confusion_matrix=cm, display_labels=le.classes_)
     disp.plot(cmap=plt.cm.Blues)
     plt.title('Confusion Matrix for KNN')
-    plt.savefig(f"{prefix}_knn_confusion_matrix.png")
+    plt.savefig(f"{prefix}_knn_confusion_matrix.png",dpi=300)
     plt.close()
     
     # ROC and AUC
@@ -164,7 +183,7 @@ def knn(inp, prefix):
     plt.ylabel('True Positive Rate')
     plt.title('ROC Curves for KNN')
     plt.legend(loc="lower right")
-    plt.savefig(f"{prefix}_knn_roc_curve.png")
+    plt.savefig(f"{prefix}_knn_roc_curve.png",dpi=300)
     plt.close()
     
     # Output performance metrics as a bar chart
@@ -178,7 +197,7 @@ def knn(inp, prefix):
         ax.bar_label(container, fmt='%.2f')
     plt.xticks(rotation=45, ha='right')
     plt.tight_layout()
-    plt.savefig(f"{prefix}_knn_metrics.png")
+    plt.savefig(f"{prefix}_knn_metrics.png",dpi=300)
     plt.close()
     
     # Create a DataFrame for predictions

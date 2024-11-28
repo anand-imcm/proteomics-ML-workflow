@@ -56,11 +56,24 @@ def random_forest(inp, prefix):
     def objective(trial):
         # Suggest hyperparameters
         n_estimators = trial.suggest_int('n_estimators', 100, 1000, step=100)
-        max_depth = trial.suggest_int('max_depth', 5, 50, step=5)
-        max_features = trial.suggest_categorical('max_features', ['sqrt', 'log2'])
+        max_depth = trial.suggest_categorical('max_depth', [None] + list(range(5, 51, 5)))
+        max_features = trial.suggest_categorical('max_features', ['sqrt', 'log2', None])
+        min_samples_split = trial.suggest_int('min_samples_split', 2, 10)
+        min_samples_leaf = trial.suggest_int('min_samples_leaf', 1, 10)
+        max_leaf_nodes = trial.suggest_categorical('max_leaf_nodes', [None] + list(range(10, 1001, 50)))
+        min_impurity_decrease = trial.suggest_float('min_impurity_decrease', 0.0, 0.1, step=0.01)
         
         # Initialize RandomForest with suggested hyperparameters
-        clf = RandomForestClassifier(n_estimators=n_estimators, max_depth=max_depth, max_features=max_features, random_state=1234)
+        clf = RandomForestClassifier(
+            n_estimators=n_estimators,
+            max_depth=max_depth,
+            max_features=max_features,
+            min_samples_split=min_samples_split,
+            min_samples_leaf=min_samples_leaf,
+            max_leaf_nodes=max_leaf_nodes,
+            min_impurity_decrease=min_impurity_decrease,
+            random_state=1234
+        )
         
         # Perform cross-validation
         with SuppressOutput():
@@ -83,9 +96,22 @@ def random_forest(inp, prefix):
     best_n_estimators = best_params['n_estimators']
     best_max_depth = best_params['max_depth']
     best_max_features = best_params['max_features']
+    best_min_samples_split = best_params['min_samples_split']
+    best_min_samples_leaf = best_params['min_samples_leaf']
+    best_max_leaf_nodes = best_params['max_leaf_nodes']
+    best_min_impurity_decrease = best_params['min_impurity_decrease']
 
     # Initialize the best model
-    best_model = RandomForestClassifier(n_estimators=best_n_estimators, max_depth=best_max_depth, max_features=best_max_features, random_state=1234)
+    best_model = RandomForestClassifier(
+        n_estimators=best_n_estimators,
+        max_depth=best_max_depth,
+        max_features=best_max_features,
+        min_samples_split=best_min_samples_split,
+        min_samples_leaf=best_min_samples_leaf,
+        max_leaf_nodes=best_max_leaf_nodes,
+        min_impurity_decrease=best_min_impurity_decrease,
+        random_state=1234
+    )
 
     # Fit the model on the entire dataset
     with SuppressOutput():
@@ -202,4 +228,3 @@ if __name__ == '__main__':
 
     # Run the random forest function
     random_forest(args.i, args.p)
-    
