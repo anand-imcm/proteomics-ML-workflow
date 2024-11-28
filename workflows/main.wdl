@@ -1,205 +1,265 @@
 version 1.0
 
-import "./tasks/preprocessing.wdl" as pre
-import "./tasks/summary.wdl" as report
-import "./dim_reduction.wdl" as drwf
-import "./standard_ml.wdl" as mlwf
-
 workflow main {
-    
     input {
         File input_csv
-        String output_prefix
+        String? dimensionality_reduction_choices
         String model_choices = "RF"
-        String dimensionality_reduction_choices = "PCA"
-        Boolean use_dimensionality_reduction = false
-        Boolean skip_ML_models = false
-        Int shap_radar_num_features = 10
-        Int num_of_dimensions = 3
-        Int memory_gb_preprocessing = 128
-        Int cpu_preprocessing = 64
-        Int memory_gb_ML = 128
-        Int cpu_ML = 64
-        Int memory_gb_SHAP_summary = 128
-        Int cpu_SHAP_summary = 64
+        String regression_choices = "NNR"
+        String mode = "Classification" # choices: Classification, Regression, Summary
+        Boolean calculate_shap = false
     }
-    
-    parameter_meta {
-        input_csv : "Input file in `.csv` format, includes a `Label` column, with each row representing a sample and each column representing a feature."
-        output_prefix : "Analysis ID. This will be used as prefix for all the output files."
-        model_choices : "Specify the model name(s) to use. Options include `KNN`, `RF`, `NN`, `XGB`, `PLSDA`, `VAE`, and `SVM`. Multiple model names can be entered together, separated by a space."
-        dimensionality_reduction_choices : "Specify the dimensionality method name(s) to use. Options include `PCA`, `UMAP`, `t-SNE`, `KPCA` and `PLS`. Multiple methods can be entered together, separated by a space."
-        use_dimensionality_reduction : "Use this option to apply dimensionality reduction to the input data."
-        skip_ML_models : "Use this option to skip running ML models."
-        shap_radar_num_features : "Top features to display on the radar chart."
-        num_of_dimensions : "Total number of expected dimensions after applying dimensionality reduction."
-        memory_gb_preprocessing : "Amount of memory in GB needed to execute the preprocessing task."
-        cpu_preprocessing : "Number of CPUs needed to execute the preprocessing task."
-        memory_gb_ML : "Amount of memory in GB needed to execute the ML task."
-        cpu_ML : "Number of CPUs needed to execute the ML task."
-        memory_gb_SHAP_summary : "Amount of memory in GB needed to execute the summary task."
-        cpu_SHAP_summary : "Number of CPUs needed to execute the summary task."
-    }
-    
-    String pipeline_version = "1.0.1"
-    String container_gen = "ghcr.io/anand-imcm/proteomics-ml-workflow-gen:~{pipeline_version}"
-    String container_vae = "ghcr.io/anand-imcm/proteomics-ml-workflow-vae:~{pipeline_version}"
     Array[File] default_arr = []
-    
-    if (use_dimensionality_reduction && skip_ML_models)  {
-        
-        call drwf.dim_reduction_wf as dim_reduction {
-            input:
-                input_csv = input_csv,
-                output_prefix = output_prefix,
-                docker = container_gen,
-                method_name = dimensionality_reduction_choices,
-                num_of_dimensions = num_of_dimensions,
-                memory_gb_preprocessing = memory_gb_preprocessing,
-                cpu_preprocessing = cpu_preprocessing,
-                memory_gb_SHAP_summary = memory_gb_SHAP_summary,
-                cpu_SHAP_summary = cpu_SHAP_summary
-        } 
+    call run_plan {
+        input: model_choices = model_choices,
+            dimensionality_reduction_choices = dimensionality_reduction_choices,
+            regression_choices = regression_choices,
+            mode = mode,
+            shap = calculate_shap
     }
-    
-    if (use_dimensionality_reduction && !skip_ML_models) {
-        
-        call drwf.dim_reduction_wf as dim_reduction_ml {
-            input:
-                input_csv = input_csv,
-                output_prefix = output_prefix,
-                docker = container_gen,
-                method_name = dimensionality_reduction_choices,
-                num_of_dimensions = num_of_dimensions,
-                memory_gb_preprocessing = memory_gb_preprocessing,
-                cpu_preprocessing = cpu_preprocessing,
-                memory_gb_SHAP_summary = memory_gb_SHAP_summary,
-                cpu_SHAP_summary = cpu_SHAP_summary
-        } 
-        
-        call mlwf.standard_ml_wf as ml_dim {
-            input:
-                input_csv = dim_reduction_ml.csv,
-                output_prefix = output_prefix,
-                container_gen = container_gen,
-                container_vae = container_vae,
-                model_choices = model_choices,
-                shap_num_features = shap_radar_num_features,
-                memory_gb_ML = memory_gb_ML,
-                cpu_ML = cpu_ML,
-                memory_gb_SHAP_summary = memory_gb_SHAP_summary,
-                cpu_SHAP_summary = cpu_SHAP_summary
-                
+    if (!run_plan.use_dim){
+        call std_preprocessing {
+            input: prefix = "std", inp = input_csv
         }
     }
-    
-    if (!use_dimensionality_reduction && skip_ML_models) {
-        
-        call pre.preprocessing_std as std_csv_def {
-            input: 
-                input_csv = input_csv,
-                output_prefix = output_prefix,
-                docker = container_gen,
-                memory_gb = memory_gb_preprocessing,
-                cpu = cpu_preprocessing
+    if (run_plan.use_dim){
+        scatter (dim_method in run_plan.dim_opt) {
+            call dim_reduction {
+                input: prefix = dim_method, inp = input_csv
+            }
         }
     }
-    
-    if (!use_dimensionality_reduction && !skip_ML_models) {
-        
-        call pre.preprocessing_std as std_csv {
-            input: 
-                input_csv = input_csv,
-                output_prefix = output_prefix,
-                docker = container_gen,
-                memory_gb = memory_gb_preprocessing,
-                cpu = cpu_preprocessing
-        }
-        
-        call mlwf.standard_ml_wf as ml_std {
-            input:
-                input_csv = std_csv.csv,
-                output_prefix = output_prefix,
-                container_gen = container_gen,
-                container_vae = container_vae,
-                model_choices = model_choices,
-                shap_num_features = shap_radar_num_features,
-                memory_gb_ML = memory_gb_ML,
-                cpu_ML = cpu_ML,
-                memory_gb_SHAP_summary = memory_gb_SHAP_summary,
-                cpu_SHAP_summary = cpu_SHAP_summary
+    Array[File] std_out = if (!run_plan.use_dim) then flatten(select_all([std_preprocessing.out])) else default_arr
+    Array[File] dim_out = if (run_plan.use_dim) then flatten(select_all([dim_reduction.out])) else default_arr
+    Array[File] processed_csv = flatten([std_out, dim_out])
+    if (run_plan.use_gen) {
+        scatter (gen_method in run_plan.gen_opt) {
+            call ml_gen {
+                input: model = gen_method, data = processed_csv[0]
+            }
         }
     }
-    
-    File overall_roc_plots = if (!skip_ML_models) then select_first([
-        ml_std.out_all_roc_curves,
-        ml_dim.out_all_roc_curves,
-    ]) else input_csv
-    
-    Array[File] dim_reduct_plots = if (use_dimensionality_reduction) then flatten(select_all([
-        dim_reduction.png_list,
-        dim_reduction_ml.png_list
-    ])) else default_arr
-    
-    Array[File] confusion_matrix_plots = if (!skip_ML_models) then flatten(select_all([
-        ml_std.out_cls_confusion_matrix_plot,
-        ml_dim.out_cls_confusion_matrix_plot,
-    ])) else default_arr
-    
-    Array[File] eval_matrix_plots = if (!skip_ML_models) then flatten(select_all([
-        ml_std.out_cls_metrics_plot,
-        ml_dim.out_cls_metrics_plot,
-    ])) else default_arr
-    
-    Array[File] roc_curve_plots = if (!skip_ML_models) then flatten(select_all([
-        ml_std.out_cls_roc_curve_plot,
-        ml_dim.out_cls_roc_curve_plot,
-    ])) else default_arr
-    
-    Array[File] shap_radar_plots = if (!skip_ML_models) then flatten(select_all([
-        ml_std.out_radar_plot,
-        ml_dim.out_radar_plot,
-    ])) else default_arr
-    
-    Array[File] shap_csv_out = if (!skip_ML_models) then flatten(select_all([
-        ml_std.out_shap_values,
-        ml_dim.out_shap_values
-    ])) else default_arr
-    
-    Array[File] all_valid_files = flatten([
-        [overall_roc_plots],
-        dim_reduct_plots,
-        confusion_matrix_plots,
-        eval_matrix_plots,
-        roc_curve_plots,
-        shap_radar_plots
-    ])
-    
-    Array[File] dim_csv_output = if (use_dimensionality_reduction) then flatten(select_all([
-        dim_reduction.csv_list,
-        dim_reduction_ml.csv_list
-        ])) else default_arr
-    
-    File std_csv_output =  if (!use_dimensionality_reduction) then select_first([
-        std_csv_def.csv,
-        std_csv.csv
-        ]) else input_csv
-    
-    call report.summary as analysis_report {
-        input:
-            summary_data = all_valid_files,
-            output_prefix = output_prefix,
-            docker = container_gen,
-            memory_gb = memory_gb_SHAP_summary,
-            cpu = cpu_SHAP_summary
+    if (run_plan.use_vae) {
+        scatter (vae_method in run_plan.vae_opt) {
+            call ml_vae {
+                input: model = vae_method, data = processed_csv[0]
+            }
+        }
     }
-    
+    Array[File] gen_ml_out = if (run_plan.use_gen) then flatten(select_all([ml_gen.out])) else default_arr
+    Array[File] vae_ml_out = if (run_plan.use_vae) then flatten(select_all([ml_vae.out])) else default_arr
+    Array[File] classification_out = flatten([gen_ml_out, vae_ml_out])
+    if (run_plan.use_reg) {
+        scatter (vae_method in run_plan.reg_opt) {
+            call reg {
+                input: model = vae_method, data = processed_csv[0]
+            }
+        }
+    }
+    Array[File] reg_out = if (run_plan.use_reg) then flatten(select_all([reg.out])) else default_arr
+
+    Array[File] all_results = flatten([dim_out, classification_out, reg_out])
+
+    call pdf_report {
+        input: prefix = "test", inp = processed_csv[0], summary_set = all_results
+    }
+
     output {
-        Array[File] dimensionality_reduction_csv = dim_csv_output
-        Array[File] dimensionality_reduction_plots = dim_reduct_plots
-        File std_preprocessing_csv = std_csv_output
-        Array[File] shap_csv = shap_csv_out
-        File report = analysis_report.report
-        File plots = analysis_report.plots
+        Array[File] std_preprocessing_out = std_out
+        Array[File] dim_reduction_out = dim_out
+        Array[String] dim_plan = run_plan.dim_opt
+        Array[String] vae_plan = run_plan.vae_opt
+        Array[String] gen_plan = run_plan.gen_opt
+        Array[String] reg_plan = run_plan.reg_opt
+        Boolean use_dim = run_plan.use_dim
+        Boolean use_vae = run_plan.use_vae
+        Boolean use_gen = run_plan.use_gen
+        Boolean use_reg = run_plan.use_reg
+        Boolean use_shap = run_plan.use_shap
+        File report = pdf_report.out
+        Array[File] ml_classification_out = classification_out
+        Array[File] regression_out = reg_out
+    }
+}
+
+task run_plan {
+    input {
+        String model_choices
+        String regression_choices
+        String? dimensionality_reduction_choices
+        String mode
+        Boolean shap
+    }
+    command <<<
+        python3 <<EOF
+        import re
+        usr_models = "~{model_choices}"
+        usr_dim = "~{dimensionality_reduction_choices}"
+        usr_reg = "~{regression_choices}"
+        run_mode = "~{mode}"
+        usr_shap = "~{shap}"
+        dim_options = re.split(r'\s+|,', usr_dim)
+        ml_options = re.split(r'\s+|,', usr_models)
+        reg_options = re.split(r'\s+|,', usr_reg)
+        vae_choices = [opt for opt in ml_options if "VAE" in opt]
+        gen_choices = [opt for opt in ml_options if "VAE" not in opt]
+        with open("use_gen.txt", "w") as gen_opt, open("use_reg.txt", "w") as reg_opt, open("use_vae.txt", "w") as vae_opt, open("use_shap.txt", "w") as shap_opt,  open("use_dim.txt", "w") as dim_opt, open("dim_options.txt", "w") as dim_plan, open("cl_options.txt", "w") as cl_plan, open("vae_options.txt", "w") as vae_plan, open("reg_options.txt", "w") as reg_plan:
+            if run_mode.lower() != "regression" and run_mode.lower() != "classification":
+                run_mode = "summary"
+                if any(dim_options):
+                    dim_opt.write("true")
+                    for dim in dim_options:
+                        dim_plan.write(dim + "\n")
+                else:
+                    dim_opt.write("false")
+                gen_opt.write("false")
+                vae_opt.write("false")
+                reg_opt.write("false")
+                shap_opt.write("false")
+            if run_mode.lower() == "regression":
+                run_mode = "regression"
+                if any(dim_options):
+                    dim_opt.write("true")
+                    dim_plan.write(dim_options[0])
+                else:
+                    dim_opt.write("false")
+                gen_opt.write("false")
+                vae_opt.write("false")
+                if any(reg_options):
+                    reg_opt.write("true")
+                    for reg in reg_options:
+                        reg_plan.write(reg + "\n")
+                    if usr_shap.lower() == "true":
+                        shap_opt.write("true")
+                else:
+                    reg_opt.write("false")
+                    shap_opt.write("false")
+            if run_mode.lower() == "classification":
+                run_mode = "classification"
+                shap_opt.write("false")
+                reg_opt.write("false")
+                if any(dim_options):
+                    dim_opt.write("true")
+                    dim_plan.write(dim_options[0])
+                else:
+                    dim_opt.write("false")
+                if any(gen_choices):
+                    gen_opt.write("true")
+                    for ml in gen_choices:
+                        cl_plan.write(ml + "\n")
+                    if usr_shap.lower() == "true":
+                        shap_opt.seek(0)
+                        shap_opt.truncate()
+                        shap_opt.write("true")
+                else:
+                    gen_opt.write("false")
+                if any(vae_choices):
+                    vae_opt.write("true")
+                    for ml in vae_choices:
+                        vae_plan.write(ml + "\n")
+                    if usr_shap.lower() == "true":
+                        shap_opt.seek(0)
+                        shap_opt.truncate()
+                        shap_opt.write("true")
+                else:
+                    vae_opt.write("false")
+        EOF
+    >>>
+    output {
+        Boolean use_dim = read_boolean("use_dim.txt")
+        Array[String] dim_opt = read_lines("dim_options.txt")
+        Boolean use_gen = read_boolean("use_gen.txt")
+        Array[String] gen_opt = read_lines("cl_options.txt")
+        Boolean use_vae = read_boolean("use_vae.txt")
+        Array[String] vae_opt = read_lines("vae_options.txt")
+        Boolean use_reg = read_boolean("use_reg.txt")
+        Array[String] reg_opt = read_lines("reg_options.txt")
+        Boolean use_shap = read_boolean("use_shap.txt")
+    }
+}
+
+task ml_gen {
+    input {
+        String model
+        File data
+    }
+    command <<<
+        wc -l ~{data}
+        echo "running ML task with ~{model}" > ~{model}.txt
+    >>>
+    output {
+        File out = "~{model}.txt"
+    }
+}
+task ml_vae {
+    input {
+        String model
+        File data
+    }
+    command <<<
+        wc -l ~{data}
+        echo "running ML task with ~{model}" > ~{model}.txt
+    >>>
+    output {
+        File out = "~{model}.txt"
+    }
+}
+
+task reg {
+    input {
+        String model
+        File data
+    }
+    command <<<
+        wc -l ~{data}
+        echo "running REG task with ~{model}" > ~{model}.txt
+    >>>
+    output {
+        File out = "~{model}.txt"
+    }
+}
+
+task std_preprocessing {
+    input {
+        String prefix
+        File inp
+    }
+    command <<<
+        cat ~{inp} > ~{prefix}.txt
+    >>>
+    output {
+        Array[File] out = glob("*.txt")
+    }
+}
+
+task dim_reduction {
+    input {
+        String prefix
+        File inp
+    }
+    command <<<
+        cat ~{inp} > ~{prefix}.txt
+    >>>
+    output {
+        File out = prefix + ".txt"
+    }
+}
+
+task pdf_report {
+    input {
+        String prefix
+        File inp
+        Array[File] summary_set
+    }
+    Array[File] all_data = flatten([summary_set])
+    command <<<
+        wc -l ~{inp}
+        for file_name in ~{sep=' ' all_data}; do
+            cp $file_name $(basename $file_name)
+        done
+        touch ~{prefix}_report.pdf
+    >>>
+    output {
+        File out = prefix + "_report.pdf"
     }
 }
