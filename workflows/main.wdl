@@ -277,11 +277,17 @@ task ml_gen {
             -i ~{input_csv} \
             -p ~{output_prefix} \
             -m ~{model}
+        tar -czvf ~{output_prefix}_~{model}_results.tar.gz *.{png,pkl,npy,csv}
     >>>
     output {
-        # File plot = "*_confusion_matrix.png"
-        # File out = "*_predictions.csv"
+        File confusion_matrix_plot = glob("*_confusion_matrix.png")[0]
+        File data_pkl = glob("*_data.pkl")[0]
+        File metrics_plot = glob("*_metrics.png")[0]
+        File model_pkl = glob("*_model.pkl")[0]
         File out = glob("*_predictions.csv")[0]
+        File roc_curve_plot = glob("*_roc_curve.png")[0]
+        File roc_data = glob("*_roc_data.npy")[0]
+        File data = output_prefix + "_" + model + "_results.tar.gz"
     }
     runtime {
         docker: "~{docker}"
@@ -307,9 +313,18 @@ task ml_vae {
             -i ~{input_csv} \
             -p ~{output_prefix} \
             -m ~{model}
+        tar -czvf ~{output_prefix}_~{model}_results.tar.gz *.{png,pkl,npy,csv}
     >>>
     output {
-        File out = "~{model}.txt"
+        File confusion_matrix_plot = glob("*_confusion_matrix.png")[0]
+        File data_pkl = glob("*_data.pkl")[0]
+        File metrics_plot = glob("*_metrics.png")[0]
+        File model_pkl = glob("*_model.pkl")[0]
+        File out = glob("*_predictions.csv")[0]
+        File roc_curve_plot = glob("*_roc_curve.png")[0]
+        File roc_data = glob("*_roc_data.npy")[0]
+        File shap = glob("*_shap_values.csv")[0]
+        File data = output_prefix + "_" + model + "_results.tar.gz"
     }
     runtime {
         docker: "~{docker}"
