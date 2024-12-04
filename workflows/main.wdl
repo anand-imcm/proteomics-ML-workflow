@@ -47,14 +47,22 @@ workflow main {
     if (run_plan.use_gen) {
         scatter (gen_method in run_plan.gen_opt) {
             call ml_gen {
-                input: model = gen_method, data = processed_csv[0]
+                input:
+                    model = gen_method,
+                    input_csv = processed_csv[0],
+                    output_prefix = output_prefix,
+                    docker = container_gen
             }
         }
     }
     if (run_plan.use_vae) {
         scatter (vae_method in run_plan.vae_opt) {
             call ml_vae {
-                input: model = vae_method, data = processed_csv[0]
+                input:
+                    model = vae_method,
+                    input_csv = processed_csv[0],
+                    output_prefix = output_prefix,
+                    docker = container_gen
             }
         }
     }
@@ -255,27 +263,59 @@ task dim_reduction {
 task ml_gen {
     input {
         String model
-        File data
+        File input_csv
+        String output_prefix
+        String docker
+        Int memory_gb = 24
+        Int cpu = 16
     }
+    Int disk_size_gb = ceil(size(input_csv, "GB")) + 5
     command <<<
-        wc -l ~{data}
+        set -euo pipefail
         echo "running ML task with ~{model}" > ~{model}.txt
+        python /scripts/classification.py \
+            -i ~{input_csv} \
+            -p ~{output_prefix} \
+            -m ~{model}
     >>>
     output {
-        File out = "~{model}.txt"
+        # File plot = "*_confusion_matrix.png"
+        # File out = "*_predictions.csv"
+        File out = glob("*_predictions.csv")[0]
+    }
+    runtime {
+        docker: "~{docker}"
+        cpu: "~{cpu}"
+        memory: "~{memory_gb}GB"
+        disks: "local-disk ~{disk_size_gb} HDD"
     }
 }
 task ml_vae {
     input {
         String model
-        File data
+        File input_csv
+        String output_prefix
+        String docker
+        Int memory_gb = 24
+        Int cpu = 16
     }
+    Int disk_size_gb = ceil(size(input_csv, "GB")) + 5
     command <<<
-        wc -l ~{data}
+        set -euo pipefail
         echo "running ML task with ~{model}" > ~{model}.txt
+        python /scripts/classification.py \
+            -i ~{input_csv} \
+            -p ~{output_prefix} \
+            -m ~{model}
     >>>
     output {
         File out = "~{model}.txt"
+    }
+    runtime {
+        docker: "~{docker}"
+        cpu: "~{cpu}"
+        memory: "~{memory_gb}GB"
+        disks: "local-disk ~{disk_size_gb} HDD"
     }
 }
 
@@ -304,6 +344,7 @@ task pdf_report {
     Array[File] all_data = flatten([summary_set])
     Int disk_size_gb = ceil(size(all_data, "GB")) + 2
     command <<<
+        set -euo pipefail
         for file_name in ~{sep=' ' all_data}; do
             cp $file_name $(basename $file_name)
         done
