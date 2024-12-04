@@ -223,9 +223,11 @@ def load_model_and_data(model_name, prefix):
     if model_name == "knn":
         class_names = le.inverse_transform(np.unique(y_encoded))
     elif hasattr(best_model, 'classes_'):
-        class_names = best_model.classes_
+        class_labels = best_model.classes_
         if hasattr(le, 'inverse_transform'):
-            class_names = le.inverse_transform(class_names)
+            class_names = le.inverse_transform(class_labels)
+        else:
+            class_names = class_labels
     else:
         class_names = [str(i) for i in range(num_classes)]
     
@@ -323,6 +325,38 @@ def plot_shap_radar(model, shap_df, num_features, prefix, class_names):
         plt.savefig(f"{prefix}_{model}_shap_radar.png", dpi=300, bbox_inches='tight')
         plt.close()
 
+def plot_shap_bar(model, shap_df, num_features, prefix, class_names):
+    """
+    Plot SHAP bar chart for the top features in multi-class classification.
+    """
+    feature_names = shap_df['Feature'].tolist()
+    value_columns = [col for col in shap_df.columns if col != 'Feature' and col != 'Total Mean SHAP Value']
+
+    # Compute total mean SHAP value across classes for each feature to select top features
+    shap_df['Total Mean SHAP Value'] = shap_df[value_columns].abs().sum(axis=1)
+    shap_df_top = shap_df.sort_values(by='Total Mean SHAP Value', ascending=False).head(num_features)
+
+    labels = shap_df_top['Feature'].values
+    x = np.arange(len(labels))  # the label locations
+    width = 0.8 / len(value_columns)  # the width of the bars
+
+    fig, ax = plt.subplots(figsize=(10, 8))
+
+    # Plot bars for each class
+    for idx, class_name in enumerate(value_columns):
+        values = shap_df_top[class_name].values
+        ax.bar(x + idx * width, values, width, label=class_name)
+
+    ax.set_xticks(x + width * (len(value_columns) - 1) / 2)
+    ax.set_xticklabels(labels, rotation=45, ha='right')
+    ax.set_ylabel('Mean SHAP Value')
+    ax.set_title(f'SHAP Values Bar Chart for {model}')
+    ax.legend(loc='upper center', bbox_to_anchor=(0.5, -0.15), ncol=min(len(class_names), 5))
+
+    plt.tight_layout()
+    plt.savefig(f"{prefix}_{model}_shap_bar.png", dpi=300, bbox_inches='tight')
+    plt.close()
+
 def get_model_type(model_name):
     """
     Get the SHAP explainer type based on the model name.
@@ -397,6 +431,12 @@ def process_model(model_name, prefix, num_features, n_jobs_explainer):
         # Plot radar chart
         plot_shap_radar(model_name, shap_df, num_features, prefix, class_names)
         print(f"SHAP radar plot saved to {prefix}_{model_name}_shap_radar.png")
+
+        # If multi-class classification, plot bar chart
+        if len(class_names) > 1:
+            plot_shap_bar(model_name, shap_df, num_features, prefix, class_names)
+            print(f"SHAP bar chart saved to {prefix}_{model_name}_shap_bar.png")
+
     except Exception as e:
         print(f"Error processing model {model_name}: {e}")
 
@@ -404,7 +444,7 @@ def main():
     parser = argparse.ArgumentParser(description='Calculate SHAP values for specified models')
     parser.add_argument('-m', '--models', type=str, nargs='+', choices=list(model_map.keys()), help='Name of the model(s)', required=True)
     parser.add_argument('-p', '--prefix', type=str, required=True, help='Output prefix')
-    parser.add_argument('-f', '--num_features', type=int, required=True, help='Number of top features to display in radar chart')
+    parser.add_argument('-f', '--num_features', type=int, required=True, help='Number of top features to display in radar chart and bar chart')
     args = parser.parse_args()
 
     models = [model_map[model] for model in args.models]
