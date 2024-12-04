@@ -10,6 +10,11 @@ from Step2_NN import neural_network
 from Step2_SVM import svm
 from Step2_XGBOOST import xgboost
 from Step2_PLSDA import plsda
+from Step2_VAE_MLP import vae
+from Step2_Light_GBM import lightgbm
+from Step2_LR import logistic_regression
+from Step2_MLP_in_VAE import vae as mlpvae
+from Step2_NB import gaussian_nb
 
 def parse_arguments():
     parser = argparse.ArgumentParser(description='Script to run classifiers')
@@ -32,9 +37,15 @@ def run_model(model, csv, prefix):
     elif model == "PLSDA":
         plsda(csv, prefix)
     elif model == "VAE":
-        cmd = f"python3 /scripts/Step2_VAE_MLP.py -i {csv} -p {prefix}"
-        returned_value = subprocess.call(cmd, shell=True) 
-        print(f"VAE job return code: '{returned_value}")
+        vae(csv, prefix)
+    elif model == "LGBM":
+        lightgbm(csv, prefix)
+    elif model == "LR":
+        logistic_regression(csv, prefix)
+    elif model == "MLPVAE":
+        mlpvae(csv, prefix)
+    elif model == "NB":
+        gaussian_nb(csv, prefix)
     print(f"Finished {model}")
 
 if __name__ == "__main__":
