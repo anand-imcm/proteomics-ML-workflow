@@ -32,12 +32,17 @@ workflow main {
     if (run_plan.use_dim){
         scatter (dim_method in run_plan.dim_opt) {
             call dim_reduction {
-                input: prefix = dim_method, inp = input_csv
+                input:
+                    input_csv = input_csv,
+                    output_prefix = output_prefix,
+                    dim_method = dim_method,
+                    docker = container_gen
             }
         }
     }
     Array[File] std_out = if (!run_plan.use_dim) then flatten(select_all([std_preprocessing.out])) else default_arr
     Array[File] dim_out = if (run_plan.use_dim) then flatten(select_all([dim_reduction.out])) else default_arr
+    Array[File] dim_png = if (run_plan.use_dim) then flatten(select_all([dim_reduction.png])) else default_arr
     Array[File] processed_csv = flatten([std_out, dim_out])
     if (run_plan.use_gen) {
         scatter (gen_method in run_plan.gen_opt) {
@@ -65,7 +70,7 @@ workflow main {
     }
     Array[File] reg_out = if (run_plan.use_reg) then flatten(select_all([reg.out])) else default_arr
 
-    Array[File] all_results = flatten([dim_out, classification_out, reg_out])
+    Array[File] all_results = flatten([dim_out, dim_png, classification_out, reg_out])
 
     call pdf_report {
         input: prefix = "test", inp = processed_csv[0], summary_set = all_results
@@ -202,8 +207,8 @@ task std_preprocessing {
             -p ~{output_prefix}
     >>>
     output {
-        # Array[File] out = glob("*.csv")
-        Array[File] out = output_prefix + ".csv"
+        Array[File] out = glob("*.csv")
+        # File out = output_prefix + ".csv"
     }
     runtime {
         docker: "~{docker}"
@@ -215,14 +220,32 @@ task std_preprocessing {
 
 task dim_reduction {
     input {
-        String prefix
-        File inp
+        File input_csv
+        String output_prefix
+        String dim_method = "PCA"
+        Int num_dimensions = 3
+        String docker
+        Int memory_gb = 16
+        Int cpu = 16
     }
+    Int disk_size_gb = ceil(size(input_csv, "GB")) + 5
     command <<<
-        cat ~{inp} > ~{prefix}.txt
+        set -euo pipefail
+        python /scripts/Step1_Preprocessing.py \
+            -i ~{input_csv} \
+            -m ~{dim_method} \
+            -d ~{num_dimensions} \
+            -p ~{output_prefix}
     >>>
     output {
-        File out = prefix + ".txt"
+        File out = output_prefix + "_" + dim_method +"_result.csv"
+        File png = output_prefix + "_" + dim_method +"_result.png"
+    }
+    runtime {
+        docker: "~{docker}"
+        cpu: "~{cpu}"
+        memory: "~{memory_gb}GB"
+        disks: "local-disk ~{disk_size_gb} HDD"
     }
 }
 
