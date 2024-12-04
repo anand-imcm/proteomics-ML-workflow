@@ -12,6 +12,7 @@ dependencies:
   - numpy<=1.26.4
   - optuna<=4.0.0
   - pandas<=2.2.2
+  - pytorch::pytorch<=2.5.0
   - scikit-learn<=1.5.1
   - seaborn<=0.13.2
   - shap<=0.46.0
