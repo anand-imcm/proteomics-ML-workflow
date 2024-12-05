@@ -49,11 +49,127 @@ def random_forest(inp, prefix):
     y_binarized = pd.get_dummies(y_encoded).values
     num_classes = len(np.unique(y_encoded))
 
-    # Define cross-validation strategy
+    # Define outer cross-validation strategy
     cv_outer = StratifiedKFold(n_splits=5, shuffle=True, random_state=1234)
-    
-    # Define the objective function for Optuna
-    def objective(trial):
+
+    # Lists to store outer fold metrics
+    outer_f1_scores = []
+    outer_auc_scores = []
+
+    # Iterate over each outer fold
+    fold_idx = 1
+    for train_idx, test_idx in cv_outer.split(X, y_encoded):
+        print(f"Processing outer fold {fold_idx}...")
+        X_train_outer, X_test_outer = X.iloc[train_idx], X.iloc[test_idx]
+        y_train_outer, y_test_outer = y_encoded[train_idx], y_encoded[test_idx]
+
+        # Define inner cross-validation strategy
+        cv_inner = StratifiedKFold(n_splits=5, shuffle=True, random_state=1234)
+
+        # Define the objective function for Optuna within the outer fold
+        def objective_inner(trial):
+            # Suggest hyperparameters
+            n_estimators = trial.suggest_int('n_estimators', 100, 1000, step=100)
+            max_depth = trial.suggest_categorical('max_depth', [None] + list(range(5, 51, 5)))
+            max_features = trial.suggest_categorical('max_features', ['sqrt', 'log2', None])
+            min_samples_split = trial.suggest_int('min_samples_split', 2, 10)
+            min_samples_leaf = trial.suggest_int('min_samples_leaf', 1, 10)
+            max_leaf_nodes = trial.suggest_categorical('max_leaf_nodes', [None] + list(range(10, 1001, 50)))
+            min_impurity_decrease = trial.suggest_float('min_impurity_decrease', 0.0, 0.1, step=0.01)
+            
+            # Initialize RandomForest with suggested hyperparameters
+            clf = RandomForestClassifier(
+                n_estimators=n_estimators,
+                max_depth=max_depth,
+                max_features=max_features,
+                min_samples_split=min_samples_split,
+                min_samples_leaf=min_samples_leaf,
+                max_leaf_nodes=max_leaf_nodes,
+                min_impurity_decrease=min_impurity_decrease,
+                random_state=1234
+            )
+            
+            # Perform inner cross-validation
+            with SuppressOutput():
+                f1_scores = []
+                for inner_train_idx, inner_valid_idx in cv_inner.split(X_train_outer, y_train_outer):
+                    X_train_inner, X_valid_inner = X_train_outer.iloc[inner_train_idx], X_train_outer.iloc[inner_valid_idx]
+                    y_train_inner, y_valid_inner = y_train_outer[inner_train_idx], y_train_outer[inner_valid_idx]
+                    clf.fit(X_train_inner, y_train_inner)
+                    y_pred_inner = clf.predict(X_valid_inner)
+                    f1 = f1_score(y_valid_inner, y_pred_inner, average='weighted')
+                    f1_scores.append(f1)
+                return np.mean(f1_scores)
+
+        # Create an Optuna study for the inner fold
+        study_inner = optuna.create_study(direction='maximize', sampler=TPESampler(seed=1234))
+        study_inner.optimize(objective_inner, n_trials=50, show_progress_bar=False)
+
+        # Best hyperparameters from the inner fold
+        best_params_inner = study_inner.best_params
+
+        # Initialize the best model with the best hyperparameters
+        best_model_inner = RandomForestClassifier(
+            n_estimators=best_params_inner['n_estimators'],
+            max_depth=best_params_inner['max_depth'],
+            max_features=best_params_inner['max_features'],
+            min_samples_split=best_params_inner['min_samples_split'],
+            min_samples_leaf=best_params_inner['min_samples_leaf'],
+            max_leaf_nodes=best_params_inner['max_leaf_nodes'],
+            min_impurity_decrease=best_params_inner['min_impurity_decrease'],
+            random_state=1234
+        )
+
+        # Fit the model on the outer training set
+        with SuppressOutput():
+            best_model_inner.fit(X_train_outer, y_train_outer)
+
+        # Predict probabilities on the outer test set
+        y_pred_prob_outer = best_model_inner.predict_proba(X_test_outer)
+        y_pred_class_outer = best_model_inner.predict(X_test_outer)
+
+        # Compute F1 score
+        f1_outer = f1_score(y_test_outer, y_pred_class_outer, average='weighted')
+        outer_f1_scores.append(f1_outer)
+
+        # Compute AUC
+        if num_classes == 2:
+            fpr, tpr, _ = roc_curve(y_test_outer, y_pred_prob_outer[:, 1])
+            auc_outer = auc(fpr, tpr)
+        else:
+            # Compute micro-average ROC AUC for multi-class
+            fpr, tpr, _ = roc_curve(y_binarized[test_idx].ravel(), y_pred_prob_outer.ravel())
+            auc_outer = auc(fpr, tpr)
+        outer_auc_scores.append(auc_outer)
+
+        print(f"Fold {fold_idx} - F1 Score: {f1_outer:.4f}, AUC: {auc_outer:.4f}")
+        fold_idx += 1
+
+    # Plot and save the F1 and AUC scores per outer fold
+    plt.figure(figsize=(10, 6))
+    folds = range(1, cv_outer.get_n_splits() + 1)
+    plt.plot(folds, outer_f1_scores, marker='o', label='F1 Score')
+    plt.plot(folds, outer_auc_scores, marker='s', label='AUC')
+    plt.xlabel('Outer Fold')
+    plt.ylabel('Score')
+    plt.title('F1 and AUC Scores per Outer Fold')
+    plt.xticks(folds)
+    plt.ylim(0, 1)
+    plt.legend()
+    plt.grid(True)
+    plt.tight_layout()
+    plt.savefig(f"{prefix}_random_forest_nested_cv_f1_auc.png", dpi=300)
+    plt.close()
+
+    print("Nested cross-validation completed.")
+    print(f"Average F1 Score: {np.mean(outer_f1_scores):.4f} ± {np.std(outer_f1_scores):.4f}")
+    print(f"Average AUC: {np.mean(outer_auc_scores):.4f} ± {np.std(outer_auc_scores):.4f}")
+
+    # After nested CV, perform hyperparameter tuning on the entire dataset
+    print("Starting hyperparameter tuning on the entire dataset...")
+
+    # Define the objective function for Optuna on the entire dataset
+    def objective_full(trial):
         # Suggest hyperparameters
         n_estimators = trial.suggest_int('n_estimators', 100, 1000, step=100)
         max_depth = trial.suggest_categorical('max_depth', [None] + list(range(5, 51, 5)))
@@ -77,39 +193,33 @@ def random_forest(inp, prefix):
         
         # Perform cross-validation
         with SuppressOutput():
-            scores = []
-            for train_idx, valid_idx in cv_outer.split(X, y_encoded):
-                X_train, X_valid = X.iloc[train_idx], X.iloc[valid_idx]
-                y_train, y_valid = y_encoded[train_idx], y_encoded[valid_idx]
-                clf.fit(X_train, y_train)
-                y_pred = clf.predict(X_valid)
-                f1 = f1_score(y_valid, y_pred, average='weighted')  # Using F1 score
-                scores.append(f1)
-            return np.mean(scores)
+            f1_scores = []
+            for train_idx_inner, valid_idx_inner in cv_outer.split(X, y_encoded):
+                X_train_inner, X_valid_inner = X.iloc[train_idx_inner], X.iloc[valid_idx_inner]
+                y_train_inner, y_valid_inner = y_encoded[train_idx_inner], y_encoded[valid_idx_inner]
+                clf.fit(X_train_inner, y_train_inner)
+                y_pred_inner = clf.predict(X_valid_inner)
+                f1 = f1_score(y_valid_inner, y_pred_inner, average='weighted')
+                f1_scores.append(f1)
+            return np.mean(f1_scores)
 
-    # Create an Optuna study
-    study = optuna.create_study(direction='maximize', sampler=TPESampler(seed=1234))
-    study.optimize(objective, n_trials=50, show_progress_bar=True)
+    # Create an Optuna study for the entire dataset
+    study_full = optuna.create_study(direction='maximize', sampler=TPESampler(seed=1234))
+    study_full.optimize(objective_full, n_trials=50, show_progress_bar=True)
 
-    # Best hyperparameters
-    best_params = study.best_params
-    best_n_estimators = best_params['n_estimators']
-    best_max_depth = best_params['max_depth']
-    best_max_features = best_params['max_features']
-    best_min_samples_split = best_params['min_samples_split']
-    best_min_samples_leaf = best_params['min_samples_leaf']
-    best_max_leaf_nodes = best_params['max_leaf_nodes']
-    best_min_impurity_decrease = best_params['min_impurity_decrease']
+    # Best hyperparameters from the entire dataset
+    best_params_full = study_full.best_params
+    print(f"Best parameters for Random Forest: {best_params_full}")
 
-    # Initialize the best model
+    # Initialize the best model with the best hyperparameters
     best_model = RandomForestClassifier(
-        n_estimators=best_n_estimators,
-        max_depth=best_max_depth,
-        max_features=best_max_features,
-        min_samples_split=best_min_samples_split,
-        min_samples_leaf=best_min_samples_leaf,
-        max_leaf_nodes=best_max_leaf_nodes,
-        min_impurity_decrease=best_min_impurity_decrease,
+        n_estimators=best_params_full['n_estimators'],
+        max_depth=best_params_full['max_depth'],
+        max_features=best_params_full['max_features'],
+        min_samples_split=best_params_full['min_samples_split'],
+        min_samples_leaf=best_params_full['min_samples_leaf'],
+        max_leaf_nodes=best_params_full['max_leaf_nodes'],
+        min_impurity_decrease=best_params_full['min_impurity_decrease'],
         random_state=1234
     )
 
@@ -120,9 +230,6 @@ def random_forest(inp, prefix):
     # Save the best model and data
     joblib.dump(best_model, f"{prefix}_random_forest_model.pkl")
     joblib.dump((X, y_encoded, le), f"{prefix}_random_forest_data.pkl")
-
-    # Output the best parameters
-    print(f"Best parameters for Random Forest: {best_params}")
 
     # Prediction using cross_val_predict
     y_pred_prob = cross_val_predict(best_model, X, y_encoded, cv=cv_outer, method='predict_proba', n_jobs=-1)
@@ -221,7 +328,7 @@ def random_forest(inp, prefix):
 
 if __name__ == '__main__':
     import argparse
-    parser = argparse.ArgumentParser(description='Run Random Forest with Optuna hyperparameter optimization.')
+    parser = argparse.ArgumentParser(description='Run Random Forest with Nested Cross-Validation and Optuna hyperparameter optimization.')
     parser.add_argument('--i', type=str, required=True, help='Path to the input CSV file.')
     parser.add_argument('--p', type=str, required=True, help='Prefix for output files.')
     args = parser.parse_args()

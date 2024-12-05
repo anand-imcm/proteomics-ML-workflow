@@ -1,7 +1,7 @@
 import argparse
 import pandas as pd
 import numpy as np
-from sklearn.preprocessing import LabelEncoder, label_binarize
+from sklearn.preprocessing import LabelEncoder, label_binarize, StandardScaler
 from sklearn.model_selection import StratifiedKFold, cross_val_predict
 from sklearn.cross_decomposition import PLSRegression
 from sklearn.metrics import roc_curve, auc, confusion_matrix, f1_score, accuracy_score, ConfusionMatrixDisplay
@@ -12,10 +12,18 @@ import contextlib
 import joblib
 import optuna
 from optuna.samplers import TPESampler
+from optuna.exceptions import TrialPruned
 from sklearn.base import BaseEstimator, ClassifierMixin
+from sklearn.linear_model import ElasticNet
+from sklearn.feature_selection import SelectFromModel
+from sklearn.pipeline import Pipeline
+from sklearn.exceptions import ConvergenceWarning
 
-# Suppress all warnings
-warnings.filterwarnings('ignore')
+# Suppress all warnings except ConvergenceWarning from ElasticNet
+warnings.filterwarnings('ignore', category=FutureWarning)
+warnings.filterwarnings('ignore', category=UserWarning)
+warnings.filterwarnings('ignore', category=DeprecationWarning)
+warnings.filterwarnings('ignore', category=ConvergenceWarning)
 
 # Suppress output
 class SuppressOutput(contextlib.AbstractContextManager):
@@ -65,7 +73,7 @@ class PLSDAClassifier(BaseEstimator, ClassifierMixin):
             y_pred_proba = np.hstack([1 - y_pred_proba, y_pred_proba])
         return y_pred_proba
 
-def plsda(inp, prefix):
+def plsda_nested_cv(inp, prefix, use_elasticnet):
     # Read data
     data = pd.read_csv(inp)
 
@@ -79,61 +87,264 @@ def plsda(inp, prefix):
     # Data processing
     X = data.drop(columns=['SampleID', 'Label'])
     y = data['Label']
-    
+
     # Convert target variable to categorical
     le = LabelEncoder()
     y_encoded = le.fit_transform(y)
     y_binarized = label_binarize(y_encoded, classes=np.unique(y_encoded))
     num_classes = len(np.unique(y_encoded))
 
-    # Define cross-validation strategy
+    # Define outer cross-validation strategy
     cv_outer = StratifiedKFold(n_splits=5, shuffle=True, random_state=1234)
-    
-    # Define the objective function for Optuna
-    def objective(trial):
-        n_components = trial.suggest_int('n_components', 1, min(100, X.shape[1]))
-        clf = PLSDAClassifier(n_components=n_components)
+
+    # Lists to store outer fold metrics
+    outer_f1_scores = []
+    outer_auc_scores = []
+
+    # Iterate over each outer fold
+    fold_idx = 1
+    for train_idx, test_idx in cv_outer.split(X, y_encoded):
+        print(f"Processing outer fold {fold_idx}...")
+        X_train_outer, X_test_outer = X.iloc[train_idx], X.iloc[test_idx]
+        y_train_outer, y_test_outer = y_encoded[train_idx], y_encoded[test_idx]
+
+        # Define inner cross-validation strategy
+        cv_inner = StratifiedKFold(n_splits=3, shuffle=True, random_state=1234)
+
+        # Define the objective function for Optuna within the outer fold
+        def objective_inner(trial):
+            if use_elasticnet:
+                # Suggest hyperparameters for ElasticNet
+                elasticnet_alpha = trial.suggest_loguniform('elasticnet_alpha', 1e-4, 1e1)
+                l1_ratio = trial.suggest_uniform('elasticnet_l1_ratio', 0.0, 1.0)
+
+            # Create pipeline with StandardScaler, optional ElasticNet feature selection, and PLSDAClassifier
+            steps = [('scaler', StandardScaler())]
+            if use_elasticnet:
+                steps.append(('feature_selection', SelectFromModel(
+                    ElasticNet(alpha=elasticnet_alpha, l1_ratio=l1_ratio, max_iter=10000, tol=1e-4, random_state=1234)
+                )))
+                # Set a conservative upper bound for n_components to prevent exceeding feature count after selection
+                max_n_components = min(10, X_train_outer.shape[0])
+            else:
+                max_n_components = min(100, X_train_outer.shape[1], X_train_outer.shape[0])
+
+            if max_n_components < 1:
+                max_n_components = 1  # Ensure at least 1 component
+
+            n_components = trial.suggest_int('n_components', 1, max_n_components)
+
+            steps.append(('plsda', PLSDAClassifier(n_components=n_components)))
+            pipeline = Pipeline(steps)
+
+            # Perform inner cross-validation
+            with SuppressOutput():
+                f1_scores = []
+                for inner_train_idx, inner_valid_idx in cv_inner.split(X_train_outer, y_train_outer):
+                    X_train_inner, X_valid_inner = X_train_outer.iloc[inner_train_idx], X_train_outer.iloc[inner_valid_idx]
+                    y_train_inner, y_valid_inner = y_train_outer[inner_train_idx], y_train_outer[inner_valid_idx]
+                    try:
+                        pipeline.fit(X_train_inner, y_train_inner)
+                        y_pred_inner = pipeline.predict(X_valid_inner)
+                        f1 = f1_score(y_valid_inner, y_pred_inner, average='weighted')
+                        f1_scores.append(f1)
+                    except ValueError as e:
+                        if "`n_components` upper bound is" in str(e):
+                            # Prune the trial if n_components is invalid
+                            raise TrialPruned()
+                        else:
+                            # Raise other unexpected errors
+                            raise e
+                return np.mean(f1_scores)
+
+        # Create an Optuna study for the inner fold
+        study_inner = optuna.create_study(direction='maximize', sampler=TPESampler(seed=1234))
+        study_inner.optimize(objective_inner, n_trials=50, show_progress_bar=False)
+
+        # Best hyperparameters from the inner fold
+        best_params_inner = study_inner.best_params
+
+        # Initialize the best model with the best hyperparameters
+        steps = [('scaler', StandardScaler())]
+        if use_elasticnet:
+            best_elasticnet_alpha = best_params_inner['elasticnet_alpha']
+            best_l1_ratio = best_params_inner['elasticnet_l1_ratio']
+            steps.append(('feature_selection', SelectFromModel(
+                ElasticNet(alpha=best_elasticnet_alpha, l1_ratio=best_l1_ratio, max_iter=10000, tol=1e-4, random_state=1234)
+            )))
+            best_n_components = best_params_inner['n_components']
+            steps.append(('plsda', PLSDAClassifier(n_components=best_n_components)))
+        else:
+            best_n_components = best_params_inner['n_components']
+            steps.append(('plsda', PLSDAClassifier(n_components=best_n_components)))
+        best_model_inner = Pipeline(steps)
+
+        # Fit the model on the outer training set
         with SuppressOutput():
-            scores = []
-            for train_idx, valid_idx in cv_outer.split(X, y_encoded):
-                X_train, X_valid = X.iloc[train_idx], X.iloc[valid_idx]
-                y_train, y_valid = y_encoded[train_idx], y_encoded[valid_idx]
-                clf.fit(X_train, y_train)
-                y_pred = clf.predict(X_valid)
-                f1 = f1_score(y_valid, y_pred, average='weighted')  # Using F1 score
-                scores.append(f1)
-            return np.mean(scores)
+            try:
+                best_model_inner.fit(X_train_outer, y_train_outer)
+            except ValueError as e:
+                print(f"Error fitting the model in outer fold {fold_idx}: {e}")
+                outer_f1_scores.append(0)
+                outer_auc_scores.append(0)
+                fold_idx += 1
+                continue
 
-    # Create an Optuna study
-    study = optuna.create_study(direction='maximize', sampler=TPESampler(seed=1234))
-    study.optimize(objective, n_trials=50, show_progress_bar=True)
+        # Predict probabilities on the outer test set
+        try:
+            y_pred_prob_outer = best_model_inner.predict_proba(X_test_outer)
+            y_pred_class_outer = best_model_inner.predict(X_test_outer)
+        except ValueError as e:
+            print(f"Error predicting in outer fold {fold_idx}: {e}")
+            outer_f1_scores.append(0)
+            outer_auc_scores.append(0)
+            fold_idx += 1
+            continue
 
-    # Best hyperparameters
-    best_params = study.best_params
-    best_n_components = best_params['n_components']
+        # Compute F1 score
+        f1_outer = f1_score(y_test_outer, y_pred_class_outer, average='weighted')
+        outer_f1_scores.append(f1_outer)
 
-    # Initialize the best model
-    best_model = PLSDAClassifier(n_components=best_n_components)
+        # Compute AUC
+        if num_classes == 2:
+            fpr, tpr, _ = roc_curve(y_test_outer, y_pred_prob_outer[:, 1])
+            auc_outer = auc(fpr, tpr)
+        else:
+            # Compute micro-average ROC AUC for multi-class
+            y_binarized_test = label_binarize(y_test_outer, classes=np.unique(y_encoded))
+            if y_binarized_test.shape[1] == 1:
+                y_binarized_test = np.hstack([1 - y_binarized_test, y_binarized_test])
+            fpr, tpr, _ = roc_curve(y_binarized_test.ravel(), y_pred_prob_outer.ravel())
+            auc_outer = auc(fpr, tpr)
+        outer_auc_scores.append(auc_outer)
+
+        print(f"Fold {fold_idx} - F1 Score: {f1_outer:.4f}, AUC: {auc_outer:.4f}")
+        fold_idx += 1
+
+    # Plot and save the F1 and AUC scores per outer fold
+    plt.figure(figsize=(10, 6))
+    folds = range(1, cv_outer.get_n_splits() + 1)
+    plt.plot(folds, outer_f1_scores, marker='o', label='F1 Score')
+    plt.plot(folds, outer_auc_scores, marker='s', label='AUC')
+    plt.xlabel('Outer Fold')
+    plt.ylabel('Score')
+    plt.title('F1 and AUC Scores per Outer Fold')
+    plt.xticks(folds)
+    plt.ylim(0, 1)
+    plt.legend()
+    plt.grid(True)
+    plt.tight_layout()
+    plt.savefig(f"{prefix}_plsda_nested_cv_f1_auc.png", dpi=300)
+    plt.close()
+
+    print("Nested cross-validation completed.")
+    print(f"Average F1 Score: {np.mean(outer_f1_scores):.4f} ± {np.std(outer_f1_scores):.4f}")
+    print(f"Average AUC: {np.mean(outer_auc_scores):.4f} ± {np.std(outer_auc_scores):.4f}")
+
+    # After nested CV, perform hyperparameter tuning on the entire dataset
+    print("Starting hyperparameter tuning on the entire dataset...")
+
+    # Define the objective function for Optuna on the entire dataset
+    def objective_full(trial):
+        if use_elasticnet:
+            # Suggest hyperparameters for ElasticNet
+            elasticnet_alpha = trial.suggest_loguniform('elasticnet_alpha', 1e-4, 1e1)
+            l1_ratio = trial.suggest_uniform('elasticnet_l1_ratio', 0.0, 1.0)
+
+        # Create pipeline with StandardScaler, optional ElasticNet feature selection, and PLSDAClassifier
+        steps = [('scaler', StandardScaler())]
+        if use_elasticnet:
+            steps.append(('feature_selection', SelectFromModel(
+                ElasticNet(alpha=elasticnet_alpha, l1_ratio=l1_ratio, max_iter=10000, tol=1e-4, random_state=1234)
+            )))
+            # Set a conservative upper bound for n_components to prevent exceeding feature count after selection
+            max_n_components_full = min(10, X.shape[0])
+        else:
+            max_n_components_full = min(100, X.shape[1], X.shape[0])
+
+        if max_n_components_full < 1:
+            max_n_components_full = 1  # Ensure at least 1 component
+
+        n_components = trial.suggest_int('n_components', 1, max_n_components_full)
+
+        steps.append(('plsda', PLSDAClassifier(n_components=n_components)))
+        pipeline = Pipeline(steps)
+
+        # Perform cross-validation
+        with SuppressOutput():
+            f1_scores = []
+            for train_idx_full, valid_idx_full in cv_outer.split(X, y_encoded):
+                X_train_full, X_valid_full = X.iloc[train_idx_full], X.iloc[valid_idx_full]
+                y_train_full, y_valid_full = y_encoded[train_idx_full], y_encoded[valid_idx_full]
+                try:
+                    pipeline.fit(X_train_full, y_train_full)
+                    y_pred_full = pipeline.predict(X_valid_full)
+                    f1 = f1_score(y_valid_full, y_pred_full, average='weighted')
+                    f1_scores.append(f1)
+                except ValueError as e:
+                    if "`n_components` upper bound is" in str(e):
+                        # Prune the trial if n_components is invalid
+                        raise TrialPruned()
+                    else:
+                        # Raise other unexpected errors
+                        raise e
+            return np.mean(f1_scores)
+
+    # Create an Optuna study for the entire dataset
+    study_full = optuna.create_study(direction='maximize', sampler=TPESampler(seed=1234))
+    study_full.optimize(objective_full, n_trials=50, show_progress_bar=True)
+
+    # Best hyperparameters from the entire dataset
+    best_params_full = study_full.best_params
+    print(f"Best parameters for PLSDA: {best_params_full}")
+
+    # Initialize the best model with the best hyperparameters
+    steps = [('scaler', StandardScaler())]
+    if use_elasticnet:
+        best_elasticnet_alpha_full = best_params_full['elasticnet_alpha']
+        best_l1_ratio_full = best_params_full['elasticnet_l1_ratio']
+        steps.append(('feature_selection', SelectFromModel(
+            ElasticNet(alpha=best_elasticnet_alpha_full, l1_ratio=best_l1_ratio_full, max_iter=10000, tol=1e-4, random_state=1234)
+        )))
+    best_n_components_full = best_params_full['n_components']
+    steps.append(('plsda', PLSDAClassifier(n_components=best_n_components_full)))
+    best_model = Pipeline(steps)
 
     # Fit the model on the entire dataset
     with SuppressOutput():
-        best_model.fit(X, y_encoded)
+        try:
+            best_model.fit(X, y_encoded)
+        except ValueError as e:
+            print(f"Error fitting the final model: {e}")
+            sys.exit(1)
 
     # Save the best model and data
     joblib.dump(best_model, f"{prefix}_plsda_model.pkl")
     joblib.dump((X, y_encoded, le), f"{prefix}_plsda_data.pkl")
 
     # Output the best parameters
-    print(f"Best parameters for PLSDA: {best_params}")
+    print(f"Best parameters for PLSDA: {best_params_full}")
 
-    # Predict probabilities
-    y_pred_prob = cross_val_predict(best_model, X, y_encoded, cv=cv_outer, method='predict_proba', n_jobs=-1)
+    # If ElasticNet is used, save the selected features
+    if use_elasticnet:
+        try:
+            # Extract feature selection step
+            feature_selection_step = best_model.named_steps['feature_selection']
+            selected_features_mask = feature_selection_step.get_support()
+            selected_features = X.columns[selected_features_mask]
+            selected_features_df = pd.DataFrame(selected_features, columns=['Selected_Features'])
+            selected_features_df.to_csv(f"{prefix}_plsda_selected_features.csv", index=False)
+            print(f"Selected {selected_features_mask.sum()} features saved to {prefix}_plsda_selected_features.csv")
+        except AttributeError as e:
+            print(f"Error extracting selected features: {e}")
 
-    # Convert probabilities to class labels
-    if num_classes == 2:
-        y_pred_class = (y_pred_prob[:, 1] >= 0.5).astype(int)
-    else:
+    # Prediction using cross_val_predict
+    try:
+        y_pred_prob = cross_val_predict(best_model, X, y_encoded, cv=cv_outer, method='predict_proba', n_jobs=-1)
         y_pred_class = np.argmax(y_pred_prob, axis=1)
+    except ValueError as e:
+        print(f"Error during cross_val_predict: {e}")
+        y_pred_class = np.zeros_like(y_encoded)  # Assign default predictions
 
     # Calculate performance metrics
     acc = accuracy_score(y_encoded, y_pred_class)
@@ -142,9 +353,14 @@ def plsda(inp, prefix):
 
     # Calculate sensitivity and specificity
     if num_classes == 2:
-        tn, fp, fn, tp = cm.ravel()
-        sensitivity = tp / (tp + fn)
-        specificity = tn / (tn + fp)
+        if cm.shape == (2, 2):
+            tn, fp, fn, tp = cm.ravel()
+            sensitivity = tp / (tp + fn) if (tp + fn) > 0 else 0
+            specificity = tn / (tn + fp) if (tn + fp) > 0 else 0
+        else:
+            # Handle cases where one class might be missing in predictions
+            sensitivity = 0
+            specificity = 0
     else:
         sensitivity = np.mean(np.diag(cm) / np.sum(cm, axis=1))
         specificity = np.mean(np.diag(cm) / np.sum(cm, axis=0))
@@ -199,7 +415,7 @@ def plsda(inp, prefix):
     plt.ylabel('True Positive Rate')
     plt.title('ROC Curves for PLSDA')
     plt.legend(loc="lower right")
-    plt.savefig(f"{prefix}_plsda_roc_curve.png", dpi=300)
+    plt.savefig(f'{prefix}_plsda_roc_curve.png', dpi=300)
     plt.close()
 
     # Output performance metrics as a bar chart
@@ -227,10 +443,12 @@ def plsda(inp, prefix):
     print(f"Predictions saved to {prefix}_plsda_predictions.csv")
 
 if __name__ == '__main__':
-    parser = argparse.ArgumentParser(description='Run PLSDA with Optuna hyperparameter optimization.')
+    parser = argparse.ArgumentParser(description='Run PLSDA with Nested Cross-Validation, Optional ElasticNet Feature Selection, and Optuna hyperparameter optimization.')
     parser.add_argument('--i', type=str, required=True, help='Path to the input CSV file.')
     parser.add_argument('--p', type=str, required=True, help='Prefix for output files.')
+    parser.add_argument('--use_elasticnet', action='store_true', help='Enable ElasticNet feature selection.')
+
     args = parser.parse_args()
 
-    # Run the PLSDA function
-    plsda(args.i, args.p)
+    # Run the PLSDA nested cross-validation function
+    plsda_nested_cv(args.i, args.p, args.use_elasticnet)

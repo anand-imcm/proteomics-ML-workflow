@@ -1,9 +1,12 @@
 import argparse
 import pandas as pd
 import numpy as np
-from sklearn.preprocessing import LabelEncoder
+from sklearn.preprocessing import LabelEncoder, StandardScaler
 from sklearn.model_selection import StratifiedKFold, cross_val_predict
 from sklearn.neighbors import KNeighborsClassifier
+from sklearn.linear_model import ElasticNet
+from sklearn.feature_selection import SelectFromModel
+from sklearn.pipeline import Pipeline
 from sklearn.metrics import roc_curve, auc, confusion_matrix, f1_score, accuracy_score, ConfusionMatrixDisplay
 import matplotlib.pyplot as plt
 import warnings
@@ -12,9 +15,13 @@ import contextlib
 import joblib
 import optuna
 from optuna.samplers import TPESampler
+from sklearn.exceptions import ConvergenceWarning
 
-# Suppress all warnings
-warnings.filterwarnings('ignore')
+# Suppress all warnings except ConvergenceWarning from ElasticNet
+warnings.filterwarnings('ignore', category=FutureWarning)
+warnings.filterwarnings('ignore', category=UserWarning)
+warnings.filterwarnings('ignore', category=DeprecationWarning)
+warnings.filterwarnings('ignore', category=ConvergenceWarning)
 
 # Suppress output
 class SuppressOutput(contextlib.AbstractContextManager):
@@ -29,7 +36,7 @@ class SuppressOutput(contextlib.AbstractContextManager):
         sys.stdout = self._stdout
         sys.stderr = self._stderr
 
-def knn(inp, prefix):
+def knn_nested_cv(inp, prefix, use_elasticnet):
     # Read data
     data = pd.read_csv(inp)
     
@@ -53,51 +60,207 @@ def knn(inp, prefix):
     y_binarized = pd.get_dummies(y_encoded).values
     num_classes = len(np.unique(y_encoded))
     
-    # Define cross-validation strategy
+    # Define outer cross-validation strategy
     cv_outer = StratifiedKFold(n_splits=5, shuffle=True, random_state=1234)
     
-    # Define the objective function for Optuna
-    def objective(trial):
-        # Determine the maximum allowed n_neighbors
-        max_n_neighbors = min(30, len(X) - 1)
-        if max_n_neighbors < 1:
-            raise ValueError("Not enough samples to perform KNN.")
+    # Lists to store outer fold metrics
+    outer_f1_scores = []
+    outer_auc_scores = []
+    
+    # Iterate over each outer fold
+    fold_idx = 1
+    for train_idx, test_idx in cv_outer.split(X, y_encoded):
+        print(f"Processing outer fold {fold_idx}...")
+        X_train_outer, X_test_outer = X.iloc[train_idx], X.iloc[test_idx]
+        y_train_outer, y_test_outer = y_encoded[train_idx], y_encoded[test_idx]
         
-        # Suggest a value for n_neighbors within the valid range
-        n_neighbors = trial.suggest_int('n_neighbors', 1, max_n_neighbors)
+        # Define inner cross-validation strategy
+        cv_inner = StratifiedKFold(n_splits=3, shuffle=True, random_state=1234)
         
-        # Initialize KNN with suggested hyperparameter
-        clf = KNeighborsClassifier(n_neighbors=n_neighbors)
+        # Define the objective function for Optuna within the outer fold
+        def objective_inner(trial):
+            if use_elasticnet:
+                # Suggest hyperparameters for ElasticNet
+                elasticnet_alpha = trial.suggest_loguniform('elasticnet_alpha', 1e-4, 1e1)
+                l1_ratio = trial.suggest_uniform('l1_ratio', 0.0, 1.0)
+                
+                # Suggest hyperparameters for KNN
+                n_neighbors = trial.suggest_int('n_neighbors', 1, min(30, len(X_train_outer) - 1))
+                
+                # Create pipeline with StandardScaler, ElasticNet feature selection, and KNN
+                pipeline = Pipeline([
+                    ('scaler', StandardScaler()),
+                    ('feature_selection', SelectFromModel(
+                        ElasticNet(alpha=elasticnet_alpha, l1_ratio=l1_ratio, max_iter=10000, tol=1e-4, random_state=1234)
+                    )),
+                    ('knn', KNeighborsClassifier(n_neighbors=n_neighbors))
+                ])
+            else:
+                # Suggest hyperparameters for KNN
+                n_neighbors = trial.suggest_int('n_neighbors', 1, min(30, len(X_train_outer) - 1))
+                
+                # Create pipeline with StandardScaler and KNN
+                pipeline = Pipeline([
+                    ('scaler', StandardScaler()),
+                    ('knn', KNeighborsClassifier(n_neighbors=n_neighbors))
+                ])
+            
+            # Perform inner cross-validation
+            with SuppressOutput():
+                f1_scores = []
+                for inner_train_idx, inner_valid_idx in cv_inner.split(X_train_outer, y_train_outer):
+                    X_train_inner, X_valid_inner = X_train_outer.iloc[inner_train_idx], X_train_outer.iloc[inner_valid_idx]
+                    y_train_inner, y_valid_inner = y_train_outer[inner_train_idx], y_train_outer[inner_valid_idx]
+                    pipeline.fit(X_train_inner, y_train_inner)
+                    y_pred_inner = pipeline.predict(X_valid_inner)
+                    f1 = f1_score(y_valid_inner, y_pred_inner, average='weighted')
+                    f1_scores.append(f1)
+                return np.mean(f1_scores)
+        
+        # Create an Optuna study for the inner fold
+        study_inner = optuna.create_study(direction='maximize', sampler=TPESampler(seed=1234))
+        study_inner.optimize(objective_inner, n_trials=50, show_progress_bar=False)
+        
+        # Best hyperparameters from the inner fold
+        best_params_inner = study_inner.best_params
+        
+        # Initialize the best model with the best hyperparameters
+        if use_elasticnet:
+            best_elasticnet_alpha = best_params_inner['elasticnet_alpha']
+            best_l1_ratio = best_params_inner['l1_ratio']
+            best_n_neighbors = best_params_inner['n_neighbors']
+            
+            best_model_inner = Pipeline([
+                ('scaler', StandardScaler()),
+                ('feature_selection', SelectFromModel(
+                    ElasticNet(alpha=best_elasticnet_alpha, l1_ratio=best_l1_ratio, max_iter=10000, tol=1e-4, random_state=1234)
+                )),
+                ('knn', KNeighborsClassifier(n_neighbors=best_n_neighbors))
+            ])
+        else:
+            best_n_neighbors = best_params_inner['n_neighbors']
+            
+            best_model_inner = Pipeline([
+                ('scaler', StandardScaler()),
+                ('knn', KNeighborsClassifier(n_neighbors=best_n_neighbors))
+            ])
+        
+        # Fit the model on the outer training set
+        with SuppressOutput():
+            best_model_inner.fit(X_train_outer, y_train_outer)
+        
+        # Predict probabilities on the outer test set
+        y_pred_prob_outer = best_model_inner.predict_proba(X_test_outer)
+        y_pred_class_outer = best_model_inner.predict(X_test_outer)
+        
+        # Compute F1 score
+        f1_outer = f1_score(y_test_outer, y_pred_class_outer, average='weighted')
+        outer_f1_scores.append(f1_outer)
+        
+        # Compute AUC
+        if num_classes == 2:
+            fpr, tpr, _ = roc_curve(y_test_outer, y_pred_prob_outer[:, 1])
+            auc_outer = auc(fpr, tpr)
+        else:
+            # Compute micro-average ROC AUC for multi-class
+            fpr, tpr, _ = roc_curve(y_binarized[test_idx].ravel(), y_pred_prob_outer.ravel())
+            auc_outer = auc(fpr, tpr)
+        outer_auc_scores.append(auc_outer)
+        
+        print(f"Fold {fold_idx} - F1 Score: {f1_outer:.4f}, AUC: {auc_outer:.4f}")
+        fold_idx += 1
+    
+    # Plot and save the F1 and AUC scores per outer fold
+    plt.figure(figsize=(10, 6))
+    folds = range(1, cv_outer.get_n_splits() + 1)
+    plt.plot(folds, outer_f1_scores, marker='o', label='F1 Score')
+    plt.plot(folds, outer_auc_scores, marker='s', label='AUC')
+    plt.xlabel('Outer Fold')
+    plt.ylabel('Score')
+    plt.title('F1 and AUC Scores per Outer Fold')
+    plt.xticks(folds)
+    plt.ylim(0, 1)
+    plt.legend()
+    plt.grid(True)
+    plt.tight_layout()
+    plt.savefig(f"{prefix}_knn_nested_cv_f1_auc.png", dpi=300)
+    plt.close()
+    
+    print("Nested cross-validation completed.")
+    print(f"Average F1 Score: {np.mean(outer_f1_scores):.4f} ± {np.std(outer_f1_scores):.4f}")
+    print(f"Average AUC: {np.mean(outer_auc_scores):.4f} ± {np.std(outer_auc_scores):.4f}")
+    
+    # After nested CV, perform hyperparameter tuning on the entire dataset
+    print("Starting hyperparameter tuning on the entire dataset...")
+    
+    # Define the objective function for Optuna on the entire dataset
+    def objective_full(trial):
+        if use_elasticnet:
+            # Suggest hyperparameters for ElasticNet
+            elasticnet_alpha = trial.suggest_loguniform('elasticnet_alpha', 1e-4, 1e1)
+            l1_ratio = trial.suggest_uniform('l1_ratio', 0.0, 1.0)
+            
+            # Suggest hyperparameters for KNN
+            n_neighbors = trial.suggest_int('n_neighbors', 1, min(30, len(X) - 1))
+            
+            # Create pipeline with StandardScaler, ElasticNet feature selection, and KNN
+            pipeline = Pipeline([
+                ('scaler', StandardScaler()),
+                ('feature_selection', SelectFromModel(
+                    ElasticNet(alpha=elasticnet_alpha, l1_ratio=l1_ratio, max_iter=10000, tol=1e-4, random_state=1234)
+                )),
+                ('knn', KNeighborsClassifier(n_neighbors=n_neighbors))
+            ])
+        else:
+            # Suggest hyperparameters for KNN
+            n_neighbors = trial.suggest_int('n_neighbors', 1, min(30, len(X) - 1))
+            
+            # Create pipeline with StandardScaler and KNN
+            pipeline = Pipeline([
+                ('scaler', StandardScaler()),
+                ('knn', KNeighborsClassifier(n_neighbors=n_neighbors))
+            ])
         
         # Perform cross-validation
         with SuppressOutput():
-            scores = []
-            for train_idx, valid_idx in cv_outer.split(X, y_encoded):
-                X_train, X_valid = X.iloc[train_idx], X.iloc[valid_idx]
-                y_train, y_valid = y_encoded[train_idx], y_encoded[valid_idx]
-                
-                # Ensure n_neighbors does not exceed the number of training samples
-                effective_max_n = min(n_neighbors, len(X_train))
-                if effective_max_n < n_neighbors:
-                    # Adjust n_neighbors if necessary
-                    clf.set_params(n_neighbors=effective_max_n)
-                
-                clf.fit(X_train, y_train)
-                y_pred = clf.predict(X_valid)
-                f1 = f1_score(y_valid, y_pred, average='weighted')
-                scores.append(f1)
-            return np.mean(scores)
+            f1_scores = []
+            for train_idx_full, valid_idx_full in cv_outer.split(X, y_encoded):
+                X_train_full, X_valid_full = X.iloc[train_idx_full], X.iloc[valid_idx_full]
+                y_train_full, y_valid_full = y_encoded[train_idx_full], y_encoded[valid_idx_full]
+                pipeline.fit(X_train_full, y_train_full)
+                y_pred_full = pipeline.predict(X_valid_full)
+                f1 = f1_score(y_valid_full, y_pred_full, average='weighted')
+                f1_scores.append(f1)
+            return np.mean(f1_scores)
     
-    # Create an Optuna study
-    study = optuna.create_study(direction='maximize', sampler=TPESampler(seed=1234))
-    study.optimize(objective, n_trials=50, show_progress_bar=True)
+    # Create an Optuna study for the entire dataset
+    study_full = optuna.create_study(direction='maximize', sampler=TPESampler(seed=1234))
+    study_full.optimize(objective_full, n_trials=50, show_progress_bar=True)
     
-    # Best hyperparameters
-    best_params = study.best_params
-    best_n_neighbors = best_params['n_neighbors']
+    # Best hyperparameters from the entire dataset
+    best_params_full = study_full.best_params
+    print(f"Best parameters for KNN: {best_params_full}")
     
-    # Initialize the best model
-    best_model = KNeighborsClassifier(n_neighbors=best_n_neighbors)
+    # Initialize the best model with the best hyperparameters
+    if use_elasticnet:
+        best_elasticnet_alpha_full = best_params_full['elasticnet_alpha']
+        best_l1_ratio_full = best_params_full['l1_ratio']
+        best_n_neighbors_full = best_params_full['n_neighbors']
+        
+        best_model = Pipeline([
+            ('scaler', StandardScaler()),
+            ('feature_selection', SelectFromModel(
+                ElasticNet(alpha=best_elasticnet_alpha_full, l1_ratio=best_l1_ratio_full, max_iter=10000, tol=1e-4, random_state=1234)
+            )),
+            ('knn', KNeighborsClassifier(n_neighbors=best_n_neighbors_full))
+        ])
+    else:
+        best_n_neighbors_full = best_params_full['n_neighbors']
+        
+        best_model = Pipeline([
+            ('scaler', StandardScaler()),
+            ('knn', KNeighborsClassifier(n_neighbors=best_n_neighbors_full))
+        ])
     
     # Fit the model on the entire dataset
     with SuppressOutput():
@@ -108,7 +271,17 @@ def knn(inp, prefix):
     joblib.dump((X, y_encoded, le, feature_names), f"{prefix}_knn_data.pkl")
     
     # Output the best parameters
-    print(f"Best parameters for KNN: {best_params}")
+    print(f"Best parameters for KNN: {best_params_full}")
+    
+    # If ElasticNet is used, save the selected features
+    if use_elasticnet:
+        # Extract feature selection step
+        feature_selection_step = best_model.named_steps['feature_selection']
+        selected_features_mask = feature_selection_step.get_support()
+        selected_features = X.columns[selected_features_mask]
+        selected_features_df = pd.DataFrame(selected_features, columns=['Selected_Features'])
+        selected_features_df.to_csv(f"{prefix}_knn_selected_features.csv", index=False)
+        print(f"Selected {selected_features_mask.sum()} features saved to {prefix}_knn_selected_features.csv")
     
     # Prediction using cross_val_predict
     y_pred_prob = cross_val_predict(best_model, X, y_encoded, cv=cv_outer, method='predict_proba', n_jobs=-1)
@@ -137,7 +310,7 @@ def knn(inp, prefix):
     disp = ConfusionMatrixDisplay(confusion_matrix=cm, display_labels=le.classes_)
     disp.plot(cmap=plt.cm.Blues)
     plt.title('Confusion Matrix for KNN')
-    plt.savefig(f"{prefix}_knn_confusion_matrix.png",dpi=300)
+    plt.savefig(f"{prefix}_knn_confusion_matrix.png", dpi=300)
     plt.close()
     
     # ROC and AUC
@@ -183,7 +356,7 @@ def knn(inp, prefix):
     plt.ylabel('True Positive Rate')
     plt.title('ROC Curves for KNN')
     plt.legend(loc="lower right")
-    plt.savefig(f"{prefix}_knn_roc_curve.png",dpi=300)
+    plt.savefig(f"{prefix}_knn_roc_curve.png", dpi=300)
     plt.close()
     
     # Output performance metrics as a bar chart
@@ -197,7 +370,7 @@ def knn(inp, prefix):
         ax.bar_label(container, fmt='%.2f')
     plt.xticks(rotation=45, ha='right')
     plt.tight_layout()
-    plt.savefig(f"{prefix}_knn_metrics.png",dpi=300)
+    plt.savefig(f"{prefix}_knn_metrics.png", dpi=300)
     plt.close()
     
     # Create a DataFrame for predictions
@@ -214,12 +387,13 @@ def knn(inp, prefix):
 
 if __name__ == '__main__':
     # Define argument parser
-    parser = argparse.ArgumentParser(description='Run KNN model with Optuna hyperparameter optimization.')
+    parser = argparse.ArgumentParser(description='Run KNN model with Nested Cross-Validation, Optional ElasticNet Feature Selection, and Optuna hyperparameter optimization.')
     parser.add_argument('--i', type=str, required=True, help='Path to the input CSV file.')
     parser.add_argument('--p', type=str, required=True, help='Prefix for output files.')
+    parser.add_argument('--use_elasticnet', action='store_true', help='Enable ElasticNet feature selection.')
     
     # Parse the arguments
     args = parser.parse_args()
     
-    # Run the KNN function
-    knn(args.i, args.p)
+    # Run the KNN nested cross-validation function
+    knn_nested_cv(args.i, args.p, args.use_elasticnet)
