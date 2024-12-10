@@ -4,7 +4,7 @@ workflow main {
     input {
         File input_csv
         String output_prefix
-        String? dimensionality_reduction_choices
+        String? dimensionality_reduction_choices # t-SNE PCA
         String model_choices = "RF"
         String regression_choices = "NNR"
         String mode = "Classification" # choices: Classification, Regression, Summary
@@ -12,7 +12,6 @@ workflow main {
     }
     String pipeline_version = "1.0.1"
     String container_gen = "ghcr.io/anand-imcm/proteomics-ml-workflow-gen:~{pipeline_version}"
-    String container_vae = "ghcr.io/anand-imcm/proteomics-ml-workflow-vae:~{pipeline_version}"
     Array[File] default_arr = []
     call run_plan {
         input: model_choices = model_choices,
@@ -127,7 +126,81 @@ task run_plan {
         vae_choices = [opt for opt in ml_options if "VAE" in opt]
         gen_choices = [opt for opt in ml_options if "VAE" not in opt]
         with open("use_gen.txt", "w") as gen_opt, open("use_reg.txt", "w") as reg_opt, open("use_vae.txt", "w") as vae_opt, open("use_shap.txt", "w") as shap_opt,  open("use_dim.txt", "w") as dim_opt, open("dim_options.txt", "w") as dim_plan, open("cl_options.txt", "w") as cl_plan, open("vae_options.txt", "w") as vae_plan, open("reg_options.txt", "w") as reg_plan:
-            if run_mode.lower() != "regression" and run_mode.lower() != "classification":
+            if run_mode.lower() == "regression":
+                if any(dim_options) and len(dim_options) > 1:
+                    run_mode = "summary"
+                    if any(dim_options):
+                        dim_opt.write("true")
+                        for dim in dim_options:
+                            dim_plan.write(dim + "\n")
+                    else:
+                        dim_opt.write("false")
+                    gen_opt.write("false")
+                    vae_opt.write("false")
+                    reg_opt.write("false")
+                    shap_opt.write("false")
+                else:
+                    run_mode = "regression"
+                    if any(dim_options):
+                        dim_opt.write("true")
+                        for dim in dim_options:
+                            dim_plan.write(dim + "\n")
+                    else:
+                        dim_opt.write("false")
+                    gen_opt.write("false")
+                    vae_opt.write("false")
+                    if any(reg_options):
+                        reg_opt.write("true")
+                        for reg in reg_options:
+                            reg_plan.write(reg + "\n")
+                        if usr_shap.lower() == "true":
+                            shap_opt.write("true")
+                    else:
+                        reg_opt.write("false")
+                        shap_opt.write("false")
+            elif run_mode.lower() == "classification":
+                if any(dim_options) and len(dim_options) > 1:
+                    run_mode = "summary"
+                    if any(dim_options):
+                        dim_opt.write("true")
+                        for dim in dim_options:
+                            dim_plan.write(dim + "\n")
+                    else:
+                        dim_opt.write("false")
+                    gen_opt.write("false")
+                    vae_opt.write("false")
+                    reg_opt.write("false")
+                    shap_opt.write("false")
+                else:
+                    run_mode = "classification"
+                    shap_opt.write("false")
+                    reg_opt.write("false")
+                    if any(dim_options):
+                        dim_opt.write("true")
+                        dim_plan.write(dim_options[0])
+                    else:
+                        dim_opt.write("false")
+                    if any(gen_choices):
+                        gen_opt.write("true")
+                        for ml in gen_choices:
+                            cl_plan.write(ml + "\n")
+                        if usr_shap.lower() == "true":
+                            shap_opt.seek(0)
+                            shap_opt.truncate()
+                            shap_opt.write("true")
+                    else:
+                        gen_opt.write("false")
+                    if any(vae_choices):
+                        vae_opt.write("true")
+                        for ml in vae_choices:
+                            vae_plan.write(ml + "\n")
+                        if usr_shap.lower() == "true":
+                            shap_opt.seek(0)
+                            shap_opt.truncate()
+                            shap_opt.write("true")
+                    else:
+                        vae_opt.write("false")
+            else:
                 run_mode = "summary"
                 if any(dim_options):
                     dim_opt.write("true")
@@ -139,53 +212,6 @@ task run_plan {
                 vae_opt.write("false")
                 reg_opt.write("false")
                 shap_opt.write("false")
-            if run_mode.lower() == "regression":
-                run_mode = "regression"
-                if any(dim_options):
-                    dim_opt.write("true")
-                    dim_plan.write(dim_options[0])
-                else:
-                    dim_opt.write("false")
-                gen_opt.write("false")
-                vae_opt.write("false")
-                if any(reg_options):
-                    reg_opt.write("true")
-                    for reg in reg_options:
-                        reg_plan.write(reg + "\n")
-                    if usr_shap.lower() == "true":
-                        shap_opt.write("true")
-                else:
-                    reg_opt.write("false")
-                    shap_opt.write("false")
-            if run_mode.lower() == "classification":
-                run_mode = "classification"
-                shap_opt.write("false")
-                reg_opt.write("false")
-                if any(dim_options):
-                    dim_opt.write("true")
-                    dim_plan.write(dim_options[0])
-                else:
-                    dim_opt.write("false")
-                if any(gen_choices):
-                    gen_opt.write("true")
-                    for ml in gen_choices:
-                        cl_plan.write(ml + "\n")
-                    if usr_shap.lower() == "true":
-                        shap_opt.seek(0)
-                        shap_opt.truncate()
-                        shap_opt.write("true")
-                else:
-                    gen_opt.write("false")
-                if any(vae_choices):
-                    vae_opt.write("true")
-                    for ml in vae_choices:
-                        vae_plan.write(ml + "\n")
-                    if usr_shap.lower() == "true":
-                        shap_opt.seek(0)
-                        shap_opt.truncate()
-                        shap_opt.write("true")
-                else:
-                    vae_opt.write("false")
         EOF
     >>>
     output {
