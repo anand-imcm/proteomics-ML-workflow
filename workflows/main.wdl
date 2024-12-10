@@ -212,7 +212,7 @@ task run_plan {
                 vae_opt.write("false")
                 reg_opt.write("false")
                 shap_opt.write("false")
-        EOF
+EOF
     >>>
     output {
         Boolean use_dim = read_boolean("use_dim.txt")
