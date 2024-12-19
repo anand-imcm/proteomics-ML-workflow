@@ -3,9 +3,10 @@ import random
 from pathlib import Path
 import pandas as pd
 import numpy as np
-from sklearn.model_selection import KFold, train_test_split
+from sklearn.model_selection import KFold, StratifiedKFold, train_test_split
 from sklearn.metrics import mean_squared_error, mean_absolute_error, r2_score
 from sklearn.base import BaseEstimator, RegressorMixin
+from sklearn.preprocessing import StandardScaler
 import shap
 import matplotlib.pyplot as plt
 import warnings
@@ -18,7 +19,7 @@ import optuna
 import joblib
 from joblib import Parallel, delayed
 import matplotlib.ticker as mticker
-
+device = torch.device("cpu")
 def parse_arguments():
     parser = argparse.ArgumentParser(description='Script to run regression with VAE and MLP')
     parser.add_argument('-i', '--csv', type=str, help='Input CSV file', required=True)
@@ -424,12 +425,16 @@ def vae_regression(inp, prefix):
             
             # Perform inner cross-validation on training data
             inner_kf = KFold(n_splits=5, shuffle=True, random_state=fold_num)  # Use fold_num as seed
-            rmse_scores = []
+            rmse_scores_inner = []
 
             for inner_train_idx, inner_val_idx in inner_kf.split(X_train):
                 X_inner_train, X_inner_val = X_train[inner_train_idx], X_train[inner_val_idx]
-                y_inner_train, y_inner_val = y_train[inner_train_idx], y_train[inner_val_idx]
-                # Each fold uses a separate instance to prevent shared state issues
+                y_inner_train, y_inner_val = y[inner_train_idx], y[inner_val_idx]
+                # Fit scaler on inner training data
+                scaler_inner = StandardScaler()
+                X_inner_train_scaled = scaler_inner.fit_transform(X_inner_train)
+                X_inner_val_scaled = scaler_inner.transform(X_inner_val)
+                # Create a new model instance for each inner fold
                 fold_model = VAE_MLP(
                     input_dim=model.input_dim,
                     latent_dim=model.latent_dim,
@@ -444,12 +449,12 @@ def vae_regression(inp, prefix):
                     epochs=model.epochs,
                     batch_size=model.batch_size
                 )
-                fold_model.fit(X_inner_train, y_inner_train)
-                y_pred = fold_model.predict(X_inner_val)
-                rmse = np.sqrt(mean_squared_error(y_inner_val, y_pred))
-                rmse_scores.append(rmse)
+                fold_model.fit(X_inner_train_scaled, y_inner_train)
+                y_inner_pred = fold_model.predict(X_inner_val_scaled)
+                rmse = np.sqrt(mean_squared_error(y_inner_val, y_inner_pred))
+                rmse_scores_inner.append(rmse)
 
-            return np.mean(rmse_scores)
+            return np.mean(rmse_scores_inner)
 
         # Create Optuna study
         study = optuna.create_study(direction='minimize', sampler=optuna.samplers.TPESampler(seed=42))
@@ -471,6 +476,11 @@ def vae_regression(inp, prefix):
         epochs = best_params['epochs']
         batch_size = best_params['batch_size']
 
+        # Print best hyperparameters for the current outer fold
+        print(f"Best hyperparameters for Fold {fold_num} found by Optuna:")
+        for key, value in best_params.items():
+            print(f"{key}: {value}")
+
         # Create the model with best hyperparameters
         model = VAE_MLP(
             input_dim=X_train.shape[1],
@@ -487,11 +497,16 @@ def vae_regression(inp, prefix):
             batch_size=batch_size
         )
 
-        # Fit the model on training data
-        model.fit(X_train, y_train)
+        # Fit scaler on outer training data
+        scaler_outer = StandardScaler()
+        X_train_scaled = scaler_outer.fit_transform(X_train)
+        X_test_scaled = scaler_outer.transform(X_test)
 
-        # Predict on test data
-        y_pred = model.predict(X_test)
+        # Fit the model on outer training data
+        model.fit(X_train_scaled, y_train)
+
+        # Predict on outer test data
+        y_pred = model.predict(X_test_scaled)
 
         # Compute metrics
         mse = mean_squared_error(y_test, y_pred)
@@ -509,7 +524,7 @@ def vae_regression(inp, prefix):
 
         # Collect predictions
         predictions = {
-            'X_test': X_test,
+            'X_test': X_test_scaled,
             'y_test': y_test,
             'y_pred': y_pred,
             'test_idx': test_idx
@@ -631,8 +646,8 @@ def vae_regression(inp, prefix):
         background = X[background_indices]
 
         # Create and train a final model on the entire dataset for SHAP
-        # For SHAP, we can perform hyperparameter optimization on the entire dataset
-        def objective(trial):
+        # Perform hyperparameter optimization on the entire dataset
+        def objective_shap(trial):
             # Suggest hyperparameters
             latent_dim = trial.suggest_int('latent_dim', 2, 512, log=True)
             dropout_rate = trial.suggest_float('dropout_rate', 0.1, 0.5, step=0.1)
@@ -684,13 +699,17 @@ def vae_regression(inp, prefix):
             
             # Perform 5-fold cross-validation
             kf = KFold(n_splits=5, shuffle=True, random_state=42)
-            rmse_scores = []
+            rmse_scores_shap = []
 
-            for train_idx, val_idx in kf.split(X):
-                X_train_cv, X_val_cv = X[train_idx], X[val_idx]
-                y_train_cv, y_val_cv = y[train_idx], y[val_idx]
-                # Each fold uses a separate instance to prevent shared state issues
-                fold_model = VAE_MLP(
+            for inner_train_idx, inner_val_idx in kf.split(X):
+                X_inner_train, X_inner_val = X[inner_train_idx], X[inner_val_idx]
+                y_inner_train, y_inner_val = y[inner_train_idx], y[inner_val_idx]
+                # Fit scaler on inner training data
+                scaler_inner_shap = StandardScaler()
+                X_inner_train_scaled = scaler_inner_shap.fit_transform(X_inner_train)
+                X_inner_val_scaled = scaler_inner_shap.transform(X_inner_val)
+                # Create a new model instance for each inner fold
+                fold_model_shap = VAE_MLP(
                     input_dim=model.input_dim,
                     latent_dim=model.latent_dim,
                     encoder_layers=model.encoder_layers,
@@ -704,31 +723,31 @@ def vae_regression(inp, prefix):
                     epochs=model.epochs,
                     batch_size=model.batch_size
                 )
-                fold_model.fit(X_train_cv, y_train_cv)
-                y_pred_cv = fold_model.predict(X_val_cv)
-                rmse = np.sqrt(mean_squared_error(y_val_cv, y_pred_cv))
-                rmse_scores.append(rmse)
+                fold_model_shap.fit(X_inner_train_scaled, y_inner_train)
+                y_inner_pred_shap = fold_model_shap.predict(X_inner_val_scaled)
+                rmse = np.sqrt(mean_squared_error(y_inner_val, y_inner_pred_shap))
+                rmse_scores_shap.append(rmse)
 
-            return np.mean(rmse_scores)
+            return np.mean(rmse_scores_shap)
 
-        study = optuna.create_study(direction='minimize', sampler=optuna.samplers.TPESampler(seed=42))
+        study_shap = optuna.create_study(direction='minimize', sampler=optuna.samplers.TPESampler(seed=42))
         with SuppressOutput():
-            study.optimize(objective, n_trials=20, n_jobs=-1)  # n_jobs=-1 uses all available cores
+            study_shap.optimize(objective_shap, n_trials=20, n_jobs=-1)  # n_jobs=-1 uses all available cores
 
-        best_params = study.best_params
+        best_params_shap = study_shap.best_params
 
-        # Extract hyperparameters from best_params
-        latent_dim = best_params['latent_dim']
-        dropout_rate = best_params['dropout_rate']
-        early_stopping_patience = best_params['early_stopping_patience']
-        early_stopping_min_delta = best_params['early_stopping_min_delta']
-        encoder_layers = [best_params[f'encoder_units_l{i}'] for i in range(best_params['num_encoder_layers'])]
-        decoder_layers = [best_params[f'decoder_units_l{i}'] for i in range(best_params['num_decoder_layers'])]
-        mlp_layers = [best_params[f'mlp_units_l{i}'] for i in range(best_params['num_mlp_layers'])]
-        vae_learning_rate = best_params['vae_learning_rate']
-        mlp_learning_rate = best_params['mlp_learning_rate']
-        epochs = best_params['epochs']
-        batch_size = best_params['batch_size']
+        # Extract hyperparameters from best_params_shap
+        latent_dim = best_params_shap['latent_dim']
+        dropout_rate = best_params_shap['dropout_rate']
+        early_stopping_patience = best_params_shap['early_stopping_patience']
+        early_stopping_min_delta = best_params_shap['early_stopping_min_delta']
+        encoder_layers = [best_params_shap[f'encoder_units_l{i}'] for i in range(best_params_shap['num_encoder_layers'])]
+        decoder_layers = [best_params_shap[f'decoder_units_l{i}'] for i in range(best_params_shap['num_decoder_layers'])]
+        mlp_layers = [best_params_shap[f'mlp_units_l{i}'] for i in range(best_params_shap['num_mlp_layers'])]
+        vae_learning_rate = best_params_shap['vae_learning_rate']
+        mlp_learning_rate = best_params_shap['mlp_learning_rate']
+        epochs = best_params_shap['epochs']
+        batch_size = best_params_shap['batch_size']
 
         # Create a model with best hyperparameters
         final_model = VAE_MLP(
@@ -746,8 +765,12 @@ def vae_regression(inp, prefix):
             batch_size=batch_size
         )
 
-        # Fit the final model on the entire dataset
-        final_model.fit(X, y)
+        # Fit scaler on the entire dataset
+        scaler_final = StandardScaler()
+        X_scaled_final = scaler_final.fit_transform(X)
+
+        # Fit the final model on the entire scaled dataset
+        final_model.fit(X_scaled_final, y)
 
         # Define a prediction function based on original features
         def model_predict(X_input):
@@ -757,7 +780,7 @@ def vae_regression(inp, prefix):
         explainer = shap.PermutationExplainer(model_predict, background, n_repeats=10, random_state=42, n_jobs=-1)
 
         # Calculate SHAP values
-        shap_values = explainer.shap_values(X)  # Shape: (samples, features)
+        shap_values = explainer.shap_values(X)
 
         # Calculate mean absolute SHAP values for each feature
         mean_shap_values = np.mean(np.abs(shap_values), axis=0)
