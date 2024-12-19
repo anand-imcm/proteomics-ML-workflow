@@ -143,101 +143,199 @@ def regression(inp, prefix, selected_models):
 
     def evaluate_model(name, reg, X, y, sample_ids, prefix, RANDOM_SEED):
         num_features = X.shape[1]
-        # Define Optuna sampler with fixed seed
-        sampler = TPESampler(seed=RANDOM_SEED)
-        study = optuna.create_study(direction='minimize', sampler=sampler)
+        outer_metrics = []
+        fold_indices = []
+        y_preds = np.zeros_like(y)
+        # Loop over outer folds
+        for fold_idx, (train_idx, test_idx) in enumerate(cv_outer.split(X, y), 1):
+            print(f"Model: {name}, Fold: {fold_idx}")
+            X_train, X_test = X.iloc[train_idx], X.iloc[test_idx]
+            y_train, y_test = y[train_idx], y[test_idx]
 
-        # Get hyperparameter distributions
-        param_distributions = get_param_distributions(name, num_features)
+            # Define Optuna sampler with fixed seed
+            sampler = TPESampler(seed=RANDOM_SEED)
+            study = optuna.create_study(direction='minimize', sampler=sampler)
 
-        if not param_distributions:
-            raise ValueError(f"No hyperparameter distributions defined for model '{name}'.")
+            # Get hyperparameter distributions
+            param_distributions = get_param_distributions(name, num_features)
 
-        try:
-            def objective(trial):
-                params = {}
+            if not param_distributions:
+                raise ValueError(f"No hyperparameter distributions defined for model '{name}'.")
+
+            try:
+                def objective(trial):
+                    params = {}
+                    if name == 'Neural_Network_reg':
+                        # Suggest number of layers
+                        n_layers = trial.suggest_int('n_layers', 1, 15)
+                        # Suggest hidden layer size
+                        hidden_layer_size = trial.suggest_int('hidden_layer_size', 10, 200)
+                        params['n_layers'] = n_layers
+                        params['hidden_layer_size'] = hidden_layer_size
+                        # Suggest other hyperparameters
+                        params['alpha'] = trial.suggest_float('alpha', 1e-4, 1e-1, log=True)
+                        params['learning_rate_init'] = trial.suggest_float('learning_rate_init', 1e-4, 1e-1, log=True)
+                    else:
+                        for param, distribution in param_distributions.items():
+                            if isinstance(distribution, optuna.distributions.IntDistribution):
+                                params[param] = trial.suggest_int(param, distribution.low, distribution.high)
+                            elif isinstance(distribution, optuna.distributions.FloatDistribution):
+                                params[param] = trial.suggest_float(param, distribution.low, distribution.high, log=distribution.log)
+                            elif isinstance(distribution, optuna.distributions.CategoricalDistribution):
+                                params[param] = trial.suggest_categorical(param, distribution.choices)
+                            else:
+                                raise ValueError(f"Unsupported distribution type: {type(distribution)}")
+
+                    # Clone model with suggested hyperparameters
+                    if name == 'Neural_Network_reg':
+                        hidden_layer_sizes = tuple([params['hidden_layer_size']] * params['n_layers'])
+                        model = MLPRegressor(
+                            hidden_layer_sizes=hidden_layer_sizes,
+                            alpha=params['alpha'],
+                            learning_rate_init=params['learning_rate_init'],
+                            max_iter=200000,
+                            random_state=RANDOM_SEED
+                        )
+                    elif name == 'Random_Forest_reg':
+                        model = RandomForestRegressor(
+                            n_estimators=params['n_estimators'],
+                            max_depth=params['max_depth'],
+                            max_features=params['max_features'],
+                            min_samples_split=params['min_samples_split'],
+                            min_samples_leaf=params['min_samples_leaf'],
+                            random_state=RANDOM_SEED,
+                            n_jobs=-1
+                        )
+                    elif name == 'SVM_reg':
+                        model = SVR(
+                            C=params['C'],
+                            gamma=params['gamma'],
+                            epsilon=params['epsilon']
+                        )
+                    elif name == 'XGBoost_reg':
+                        model = XGBRegressor(
+                            n_estimators=params['n_estimators'],
+                            max_depth=params['max_depth'],
+                            learning_rate=params['learning_rate'],
+                            subsample=params['subsample'],
+                            colsample_bytree=params['colsample_bytree'],
+                            reg_alpha=params['reg_alpha'],
+                            reg_lambda=params['reg_lambda'],
+                            eval_metric='rmse',
+                            random_state=RANDOM_SEED,
+                            verbosity=0,
+                            n_jobs=-1
+                        )
+                    elif name == 'PLS_reg':
+                        model = PLSRegression(
+                            n_components=params['n_components']
+                        )
+                    elif name == 'KNN_reg':
+                        model = KNeighborsRegressor(
+                            n_neighbors=params['n_neighbors'],
+                            weights=params['weights'],
+                            p=params['p'],
+                            n_jobs=-1
+                        )
+                    elif name == 'LightGBM_reg':
+                        model = LGBMRegressor(
+                            n_estimators=params['n_estimators'],
+                            max_depth=params['max_depth'],
+                            learning_rate=params['learning_rate'],
+                            num_leaves=params['num_leaves'],
+                            subsample=params['subsample'],
+                            colsample_bytree=params['colsample_bytree'],
+                            reg_alpha=params['reg_alpha'],
+                            reg_lambda=params['reg_lambda'],
+                            random_state=RANDOM_SEED,
+                            force_col_wise=True,
+                            verbosity=-1,
+                            n_jobs=-1
+                        )
+                    else:
+                        raise ValueError(f"Unsupported model: {name}")
+
+                    # Perform cross-validation on training data
+                    with SuppressOutput():
+                        cv_inner = KFold(n_splits=5, shuffle=True, random_state=RANDOM_SEED)
+                        cv_scores = []
+                        for inner_train_idx, inner_valid_idx in cv_inner.split(X_train, y_train):
+                            X_inner_train, X_inner_valid = X_train.iloc[inner_train_idx], X_train.iloc[inner_valid_idx]
+                            y_inner_train, y_inner_valid = y_train[inner_train_idx], y_train[inner_valid_idx]
+                            model.fit(X_inner_train, y_inner_train)
+                            preds = model.predict(X_inner_valid)
+                            mse = mean_squared_error(y_inner_valid, preds)
+                            cv_scores.append(mse)
+                    # Return average MSE
+                    return np.mean(cv_scores)
+
+                # Optimize hyperparameters
+                study.optimize(objective, n_trials=50, n_jobs=1, show_progress_bar=False)
+
+                # Get best hyperparameters
+                best_params = study.best_params
+
+                # Initialize model with best hyperparameters
                 if name == 'Neural_Network_reg':
-                    # Suggest number of layers
-                    n_layers = trial.suggest_int('n_layers', 1, 15)
-                    # Suggest hidden layer size
-                    hidden_layer_size = trial.suggest_int('hidden_layer_size', 10, 200)
-                    params['n_layers'] = n_layers
-                    params['hidden_layer_size'] = hidden_layer_size
-                    # Suggest other hyperparameters
-                    params['alpha'] = trial.suggest_float('alpha', 1e-4, 1e-1, log=True)
-                    params['learning_rate_init'] = trial.suggest_float('learning_rate_init', 1e-4, 1e-1, log=True)
-                else:
-                    for param, distribution in param_distributions.items():
-                        if isinstance(distribution, optuna.distributions.IntDistribution):
-                            params[param] = trial.suggest_int(param, distribution.low, distribution.high)
-                        elif isinstance(distribution, optuna.distributions.FloatDistribution):
-                            params[param] = trial.suggest_float(param, distribution.low, distribution.high, log=distribution.log)
-                        elif isinstance(distribution, optuna.distributions.CategoricalDistribution):
-                            params[param] = trial.suggest_categorical(param, distribution.choices)
-                        else:
-                            raise ValueError(f"Unsupported distribution type: {type(distribution)}")
-
-                # Clone model with suggested hyperparameters
-                if name == 'Neural_Network_reg':
-                    hidden_layer_sizes = tuple([params['hidden_layer_size']] * params['n_layers'])
-                    model = MLPRegressor(
+                    hidden_layer_sizes = tuple([best_params['hidden_layer_size']] * best_params['n_layers'])
+                    best_model = MLPRegressor(
                         hidden_layer_sizes=hidden_layer_sizes,
-                        alpha=params['alpha'],
-                        learning_rate_init=params['learning_rate_init'],
+                        alpha=best_params['alpha'],
+                        learning_rate_init=best_params['learning_rate_init'],
                         max_iter=200000,
                         random_state=RANDOM_SEED
                     )
                 elif name == 'Random_Forest_reg':
-                    model = RandomForestRegressor(
-                        n_estimators=params['n_estimators'],
-                        max_depth=params['max_depth'],
-                        max_features=params['max_features'],
-                        min_samples_split=params['min_samples_split'],
-                        min_samples_leaf=params['min_samples_leaf'],
+                    best_model = RandomForestRegressor(
+                        n_estimators=best_params['n_estimators'],
+                        max_depth=best_params['max_depth'],
+                        max_features=best_params['max_features'],
+                        min_samples_split=best_params['min_samples_split'],
+                        min_samples_leaf=best_params['min_samples_leaf'],
                         random_state=RANDOM_SEED,
                         n_jobs=-1
                     )
                 elif name == 'SVM_reg':
-                    model = SVR(
-                        C=params['C'],
-                        gamma=params['gamma'],
-                        epsilon=params['epsilon']
+                    best_model = SVR(
+                        C=best_params['C'],
+                        gamma=best_params['gamma'],
+                        epsilon=best_params['epsilon']
                     )
                 elif name == 'XGBoost_reg':
-                    model = XGBRegressor(
-                        n_estimators=params['n_estimators'],
-                        max_depth=params['max_depth'],
-                        learning_rate=params['learning_rate'],
-                        subsample=params['subsample'],
-                        colsample_bytree=params['colsample_bytree'],
-                        reg_alpha=params['reg_alpha'],
-                        reg_lambda=params['reg_lambda'],
+                    best_model = XGBRegressor(
+                        n_estimators=best_params['n_estimators'],
+                        max_depth=best_params['max_depth'],
+                        learning_rate=best_params['learning_rate'],
+                        subsample=best_params['subsample'],
+                        colsample_bytree=best_params['colsample_bytree'],
+                        reg_alpha=best_params['reg_alpha'],
+                        reg_lambda=best_params['reg_lambda'],
                         eval_metric='rmse',
                         random_state=RANDOM_SEED,
                         verbosity=0,
                         n_jobs=-1
                     )
                 elif name == 'PLS_reg':
-                    model = PLSRegression(
-                        n_components=params['n_components']
+                    best_model = PLSRegression(
+                        n_components=best_params['n_components']
                     )
                 elif name == 'KNN_reg':
-                    model = KNeighborsRegressor(
-                        n_neighbors=params['n_neighbors'],
-                        weights=params['weights'],
-                        p=params['p'],
+                    best_model = KNeighborsRegressor(
+                        n_neighbors=best_params['n_neighbors'],
+                        weights=best_params['weights'],
+                        p=best_params['p'],
                         n_jobs=-1
                     )
                 elif name == 'LightGBM_reg':
-                    model = LGBMRegressor(
-                        n_estimators=params['n_estimators'],
-                        max_depth=params['max_depth'],
-                        learning_rate=params['learning_rate'],
-                        num_leaves=params['num_leaves'],
-                        subsample=params['subsample'],
-                        colsample_bytree=params['colsample_bytree'],
-                        reg_alpha=params['reg_alpha'],
-                        reg_lambda=params['reg_lambda'],
+                    best_model = LGBMRegressor(
+                        n_estimators=best_params['n_estimators'],
+                        max_depth=best_params['max_depth'],
+                        learning_rate=best_params['learning_rate'],
+                        num_leaves=best_params['num_leaves'],
+                        subsample=best_params['subsample'],
+                        colsample_bytree=best_params['colsample_bytree'],
+                        reg_alpha=best_params['reg_alpha'],
+                        reg_lambda=best_params['reg_lambda'],
                         random_state=RANDOM_SEED,
                         force_col_wise=True,
                         verbosity=-1,
@@ -246,186 +344,144 @@ def regression(inp, prefix, selected_models):
                 else:
                     raise ValueError(f"Unsupported model: {name}")
 
-                # Perform cross-validation
-                with SuppressOutput():
-                    cv_scores = []
-                    for train_idx, valid_idx in cv_outer.split(X, y):
-                        X_train, X_valid = X.iloc[train_idx], X.iloc[valid_idx]
-                        y_train, y_valid = y[train_idx], y[valid_idx]
-                        model.fit(X_train, y_train)
-                        preds = model.predict(X_valid)
-                        mse = mean_squared_error(y_valid, preds)
-                        cv_scores.append(mse)
-                # Return average MSE
-                return np.mean(cv_scores)
+            except Exception as e:
+                print(f"Optimization failed for model {name}: {e}. Using default parameters.")
+                # Initialize model with default parameters
+                if name == 'Neural_Network_reg':
+                    best_model = MLPRegressor(
+                        hidden_layer_sizes=(100,),
+                        max_iter=200000,
+                        random_state=RANDOM_SEED
+                    )
+                elif name == 'Random_Forest_reg':
+                    best_model = RandomForestRegressor(
+                        random_state=RANDOM_SEED,
+                        n_jobs=-1
+                    )
+                elif name == 'SVM_reg':
+                    best_model = SVR()
+                elif name == 'XGBoost_reg':
+                    best_model = XGBRegressor(
+                        eval_metric='rmse',
+                        random_state=RANDOM_SEED,
+                        verbosity=0,
+                        n_jobs=-1
+                    )
+                elif name == 'PLS_reg':
+                    n_components = 2
+                    best_model = PLSRegression(
+                        n_components=n_components
+                    )
+                elif name == 'KNN_reg':
+                    best_model = KNeighborsRegressor(
+                        n_jobs=-1
+                    )
+                elif name == 'LightGBM_reg':
+                    best_model = LGBMRegressor(
+                        random_state=RANDOM_SEED,
+                        force_col_wise=True,
+                        verbosity=-1,
+                        n_jobs=-1
+                    )
+                else:
+                    raise ValueError(f"Unsupported model: {name}")
 
-            # Optimize hyperparameters
-            study.optimize(objective, n_trials=50, n_jobs=1, show_progress_bar=False)
+            # Train the best model on the training data
+            with SuppressOutput():
+                best_model.fit(X_train, y_train)
 
-            # Get best hyperparameters
-            best_params = study.best_params
+            # Save the best model with prefix and model name for each fold
+            model_path = f"{prefix}_{name}_fold{fold_idx}_best_model.pkl"
+            dump(best_model, model_path)
 
-            # Initialize model with best hyperparameters
-            if name == 'Neural_Network_reg':
-                hidden_layer_sizes = tuple([best_params['hidden_layer_size']] * best_params['n_layers'])
-                best_model = MLPRegressor(
-                    hidden_layer_sizes=hidden_layer_sizes,
-                    alpha=best_params['alpha'],
-                    learning_rate_init=best_params['learning_rate_init'],
-                    max_iter=200000,
-                    random_state=RANDOM_SEED
-                )
-            elif name == 'Random_Forest_reg':
-                best_model = RandomForestRegressor(
-                    n_estimators=best_params['n_estimators'],
-                    max_depth=best_params['max_depth'],
-                    max_features=best_params['max_features'],
-                    min_samples_split=best_params['min_samples_split'],
-                    min_samples_leaf=best_params['min_samples_leaf'],
-                    random_state=RANDOM_SEED,
-                    n_jobs=-1
-                )
-            elif name == 'SVM_reg':
-                best_model = SVR(
-                    C=best_params['C'],
-                    gamma=best_params['gamma'],
-                    epsilon=best_params['epsilon']
-                )
-            elif name == 'XGBoost_reg':
-                best_model = XGBRegressor(
-                    n_estimators=best_params['n_estimators'],
-                    max_depth=best_params['max_depth'],
-                    learning_rate=best_params['learning_rate'],
-                    subsample=best_params['subsample'],
-                    colsample_bytree=best_params['colsample_bytree'],
-                    reg_alpha=best_params['reg_alpha'],
-                    reg_lambda=best_params['reg_lambda'],
-                    eval_metric='rmse',
-                    random_state=RANDOM_SEED,
-                    verbosity=0,
-                    n_jobs=-1
-                )
-            elif name == 'PLS_reg':
-                best_model = PLSRegression(
-                    n_components=best_params['n_components']
-                )
-            elif name == 'KNN_reg':
-                best_model = KNeighborsRegressor(
-                    n_neighbors=best_params['n_neighbors'],
-                    weights=best_params['weights'],
-                    p=best_params['p'],
-                    n_jobs=-1
-                )
-            elif name == 'LightGBM_reg':
-                best_model = LGBMRegressor(
-                    n_estimators=best_params['n_estimators'],
-                    max_depth=best_params['max_depth'],
-                    learning_rate=best_params['learning_rate'],
-                    num_leaves=best_params['num_leaves'],
-                    subsample=best_params['subsample'],
-                    colsample_bytree=best_params['colsample_bytree'],
-                    reg_alpha=best_params['reg_alpha'],
-                    reg_lambda=best_params['reg_lambda'],
-                    random_state=RANDOM_SEED,
-                    force_col_wise=True,
-                    verbosity=-1,
-                    n_jobs=-1
-                )
-            else:
-                raise ValueError(f"Unsupported model: {name}")
+            # Predict on the test set
+            y_pred = best_model.predict(X_test)
 
-        except Exception as e:
-            print(f"Optimization failed for model {name}: {e}. Using default parameters.")
-            # Initialize model with default parameters
-            if name == 'Neural_Network_reg':
-                best_model = MLPRegressor(
-                    hidden_layer_sizes=(100,),
-                    max_iter=200000,
-                    random_state=RANDOM_SEED
-                )
-            elif name == 'Random_Forest_reg':
-                best_model = RandomForestRegressor(
-                    random_state=RANDOM_SEED,
-                    n_jobs=-1
-                )
-            elif name == 'SVM_reg':
-                best_model = SVR()
-            elif name == 'XGBoost_reg':
-                best_model = XGBRegressor(
-                    eval_metric='rmse',
-                    random_state=RANDOM_SEED,
-                    verbosity=0,
-                    n_jobs=-1
-                )
-            elif name == 'PLS_reg':
-                n_components = 2
-                best_model = PLSRegression(
-                    n_components=n_components
-                )
-            elif name == 'KNN_reg':
-                best_model = KNeighborsRegressor(
-                    n_jobs=-1
-                )
-            elif name == 'LightGBM_reg':
-                best_model = LGBMRegressor(
-                    random_state=RANDOM_SEED,
-                    force_col_wise=True,
-                    verbosity=-1,
-                    n_jobs=-1
-                )
-            else:
-                raise ValueError(f"Unsupported model: {name}")
+            # Store the predictions
+            y_preds[test_idx] = y_pred
 
-        # Train the best model on the entire dataset
-        with SuppressOutput():
-            best_model.fit(X, y)
+            # Calculate performance metrics
+            mse = mean_squared_error(y_test, y_pred)
+            rmse = np.sqrt(mse)
+            mae = mean_absolute_error(y_test, y_pred)
+            r2 = r2_score(y_test, y_pred)
 
-        # Save the best model with prefix and ' reg' appended to the model name
-        model_path = f"{prefix}_{name}_best_model.pkl"
-        dump(best_model, model_path)
+            # Store metrics
+            outer_metrics.append({
+                'Fold': fold_idx,
+                'MSE': mse,
+                'RMSE': rmse,
+                'MAE': mae,
+                'R2': r2
+            })
 
-        # Perform cross-validation predictions
-        y_pred = cross_val_predict(best_model, X, y, cv=cv_outer, n_jobs=-1)
+            # Save model parameters
+            with open(f"{prefix}_{name}_fold{fold_idx}_model_params.json", 'w') as f:
+                try:
+                    params_to_save = best_model.get_params()
+                except:
+                    params_to_save = {}
+                json.dump(params_to_save, f, indent=4)
 
-        # Calculate performance metrics
-        mse = mean_squared_error(y, y_pred)
-        rmse = np.sqrt(mse)
-        mae = mean_absolute_error(y, y_pred)
-        r2 = r2_score(y, y_pred)
+            # Save predictions for this fold
+            fold_predictions = pd.DataFrame({
+                'SampleID': sample_ids.iloc[test_idx],
+                'Original Label': y_test,
+                f'{name}_Predicted': y_pred
+            })
+            fold_predictions.to_csv(f"{prefix}_{name}_fold{fold_idx}_predictions.csv", index=False)
 
-        # Save model results and data with prefix and ' reg' appended to the model name
+            # Plot and save Actual vs Predicted with 300 DPI
+            plt.figure(figsize=(10, 6))
+            plt.scatter(y_test, y_pred, alpha=0.5)
+            plt.plot([y_test.min(), y_test.max()], [y_test.min(), y_test.max()], 'r--', lw=2)
+            plt.xlabel('Actual')
+            plt.ylabel('Predicted')
+            plt.title(f'Actual vs Predicted for {name} - Fold {fold_idx}')
+            plt.savefig(f"{prefix}_{name}_fold{fold_idx}_prediction.png", dpi=300)
+            plt.close()
+
+            # Plot and save Residuals with 300 DPI
+            residuals = y_test - y_pred
+            plt.figure(figsize=(10, 6))
+            sns.histplot(residuals, kde=True, bins=30)
+            plt.xlabel('Residuals')
+            plt.ylabel('Frequency')
+            plt.title(f'Residuals for {name} - Fold {fold_idx}')
+            plt.savefig(f"{prefix}_{name}_fold{fold_idx}_residuals.png", dpi=300)
+            plt.close()
+
+        # After all folds, calculate overall metrics
+        metrics_df = pd.DataFrame(outer_metrics)
+
+        # Save model results and data with prefix and model name
         # Use prefix and model name in filenames
         np.save(f"{prefix}_{name}_X.npy", X.values)
         np.save(f"{prefix}_{name}_y_true.npy", y)
-        np.save(f"{prefix}_{name}_y_pred.npy", y_pred)
+        np.save(f"{prefix}_{name}_y_pred.npy", y_preds)
         np.save(f"{prefix}_{name}_feature_names.npy", X.columns.values)  # Save feature names
 
-        # Save model parameters
-        with open(f"{prefix}_{name}_model_params.json", 'w') as f:
-            try:
-                params_to_save = best_model.get_params()
-            except:
-                params_to_save = {}
-            json.dump(params_to_save, f, indent=4)
+        # Calculate overall performance metrics
+        mse = mean_squared_error(y, y_preds)
+        rmse = np.sqrt(mse)
+        mae = mean_absolute_error(y, y_preds)
+        r2 = r2_score(y, y_preds)
 
-        # Plot and save Actual vs Predicted with 300 DPI
-        plt.figure(figsize=(10, 6))
-        plt.scatter(y, y_pred, alpha=0.5)
-        plt.plot([y.min(), y.max()], [y.min(), y.max()], 'r--', lw=2)
-        plt.xlabel('Actual')
-        plt.ylabel('Predicted')
-        plt.title(f'Actual vs Predicted for {name}')
-        plt.savefig(f"{prefix}_{name}_prediction.png", dpi=300)
-        plt.close()
+        # Save metrics to CSV
+        metrics_df.to_csv(f"{prefix}_{name}_model_performance_metrics.csv", index=False)
+        print(f"Model performance metrics saved to {prefix}_{name}_model_performance_metrics.csv")
 
-        # Plot and save Residuals with 300 DPI
-        residuals = y - y_pred
+        # Plot and save line plots for metrics
         plt.figure(figsize=(10, 6))
-        sns.histplot(residuals, kde=True, bins=30)
-        plt.xlabel('Residuals')
-        plt.ylabel('Frequency')
-        plt.title(f'Residuals for {name}')
-        plt.savefig(f"{prefix}_{name}_residuals.png", dpi=300)
+        plt.plot(metrics_df['Fold'], metrics_df['MSE'], marker='o', label='MSE')
+        plt.plot(metrics_df['Fold'], metrics_df['RMSE'], marker='o', label='RMSE')
+        plt.plot(metrics_df['Fold'], metrics_df['MAE'], marker='o', label='MAE')
+        plt.plot(metrics_df['Fold'], metrics_df['R2'], marker='o', label='R2')
+        plt.xlabel('Fold')
+        plt.ylabel('Metric Value')
+        plt.title(f'Model Performance Metrics Across Folds for {name}')
+        plt.legend()
+        plt.savefig(f"{prefix}_{name}_metrics_line_plot.png", dpi=300)
         plt.close()
 
         # Return performance metrics and predictions
@@ -436,7 +492,7 @@ def regression(inp, prefix, selected_models):
             'rmse': rmse,
             'mae': mae,
             'r2': r2,
-            'y_pred': y_pred
+            'y_pred': y_preds
         }
 
     # Wrapper function to run models in parallel
