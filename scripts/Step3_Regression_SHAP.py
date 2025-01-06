@@ -10,8 +10,12 @@ from joblib import Parallel, delayed, load
 import argparse
 import warnings
 
+# Import custom feature selectors for proper unpickling
+from feature_selectors import PLSFeatureSelector, ElasticNetFeatureSelector, TSNETransformer
+
 # Suppress specific matplotlib warnings
 warnings.filterwarnings("ignore", message="The figure layout has changed to tight")
+
 
 def calculate_shap_values(model_name, num_features, output_prefix):
     """
@@ -31,7 +35,7 @@ def calculate_shap_values(model_name, num_features, output_prefix):
 
         # Check if all required files exist
         required_files = [X_path, y_true_path, feature_names_path, model_path]
-        missing_files = [f for f in required_files if not os.path.exists(f)]
+        missing_files = [file for file in required_files if not os.path.exists(file)]
         if missing_files:
             print(f"Missing files for model '{model_name}': {missing_files}. Skipping.")
             return
@@ -48,39 +52,43 @@ def calculate_shap_values(model_name, num_features, output_prefix):
         # Convert X to pandas DataFrame with feature names
         X_df = pd.DataFrame(X, columns=feature_names)
 
-        # Load the trained model
+        # Load the trained model (Pipeline)
         model = load(model_path)
 
-        # Ensure model has feature names (for some models like MLPRegressor)
+        # Ensure model has feature names for certain models like MLPRegressor
         if hasattr(model, 'feature_names_in_'):
             X_df = X_df[model.feature_names_in_]
 
-        # Determine the type of explainer to use
-        if model_name.startswith(('Random_Forest_reg', 'XGBoost_reg', 'LightGBM_reg')):
-            explainer = shap.TreeExplainer(model)
-            # Calculate SHAP values
-            shap_values = explainer.shap_values(X_df)
+        # To avoid "Model type not yet supported by TreeExplainer" for pipelines,
+        # we will use PermutationExplainer for all models.
+
+        # Some KNN configurations can be very slow or large-memory
+        # so we can optionally reduce the background size for KNN_reg.
+        if model_name == 'KNN_reg':
+            background_size = min(10, X_df.shape[0])
         else:
-            # Select 100 samples for background data
             background_size = min(100, X_df.shape[0])
-            background_indices = np.random.choice(X_df.shape[0], background_size, replace=False)
-            background = X_df.iloc[background_indices]
 
-            # Calculate required max_evals based on number of features
-            num_features_in_model = X_df.shape[1]
-            required_max_evals = 2 * num_features_in_model + 1
+        background_indices = np.random.choice(X_df.shape[0], background_size, replace=False)
+        background = X_df.iloc[background_indices]
 
-            # Create PermutationExplainer with appropriate max_evals
-            explainer = shap.PermutationExplainer(model.predict, background, max_evals=required_max_evals)
+        # Calculate required max_evals based on number of features
+        num_features_in_model = X_df.shape[1]
+        required_max_evals = 2 * num_features_in_model + 1
 
-            # Define a function to compute SHAP values for one sample
-            def compute_shap(row):
-                return explainer(row).values.flatten()
+        # Create a PermutationExplainer
+        explainer = shap.PermutationExplainer(model.predict, background, max_evals=required_max_evals)
 
-            # Parallel computation over samples
-            shap_values = np.array(Parallel(n_jobs=-1)(
+        # Define a function to compute SHAP values for one sample
+        def compute_shap(row):
+            return explainer(row).values.flatten()
+
+        # Parallel computation over samples
+        shap_values = np.array(
+            Parallel(n_jobs=-1)(
                 delayed(compute_shap)(X_df.iloc[[i]]) for i in range(X_df.shape[0])
-            ))
+            )
+        )
 
         # Ensure SHAP values are in the correct format
         if isinstance(shap_values, list):
@@ -115,16 +123,17 @@ def calculate_shap_values(model_name, num_features, output_prefix):
         plt.close()
 
         print(f"SHAP analysis completed for model '{model_name}'.")
-    
+
     except Exception as e:
         print(f"Error in model '{model_name}': {e}")
         return
+
 
 def main():
     # Define argument parser
     parser = argparse.ArgumentParser(description='Calculate SHAP values for regression models.')
     parser.add_argument('--p', type=str, required=True, help='Prefix for the output filenames from regression models.')
-    parser.add_argument('--m', type=str, nargs='+', required=True, help='List of model names to analyze (e.g., "Neural_Network_reg").')
+    parser.add_argument('--m', type=str, nargs='+', required=True, help='List of model names to analyze, e.g. "Neural_Network_reg".')
     parser.add_argument('--f', type=int, default=20, help='Number of top features to display in SHAP plots.')
 
     # Parse arguments
@@ -140,6 +149,7 @@ def main():
         for model_name in model_names
     )
     print("All SHAP analyses completed.")
+
 
 if __name__ == "__main__":
     main()
