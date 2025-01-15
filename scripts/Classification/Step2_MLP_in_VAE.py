@@ -788,33 +788,27 @@ def vae(inp, prefix):
 
     # Plot F1 and AUC scores per fold as line plots
     folds = np.arange(1, outer_fold + 1)
-
-    # Plot F1 Scores
+    
     plt.figure(figsize=(10, 6))
-    plt.plot(folds, per_fold_f1, marker='o', linestyle='-', color='b')
-    plt.title('F1 Scores per Outer Fold')
+    plt.plot(folds, per_fold_f1, marker='o', linestyle='-', color='b', label='F1 Score')
+    plt.plot(folds, per_fold_auc, marker='s', linestyle='--', color='g', label='AUC Score')
+    plt.title('F1 and AUC Scores Across Outer Folds')
     plt.xlabel('Fold Number')
-    plt.ylabel('F1 Score')
+    plt.ylabel('Score')
     plt.xticks(folds)
     plt.ylim(0, 1)
-    for i, score in zip(folds, per_fold_f1):
-        plt.text(i, score + 0.01, f"{score:.2f}", ha='center', va='bottom')
+    
+    # Add value labels for F1 scores
+    for i, f1 in zip(folds, per_fold_f1):
+        plt.text(i, f1 + 0.01, f"{f1:.2f}", ha='center', va='bottom', fontsize=10, color='b')
+    
+    # Add value labels for AUC scores
+    for i, auc_val in zip(folds, per_fold_auc):
+        plt.text(i, auc_val - 0.05, f"{auc_val:.2f}", ha='center', va='top', fontsize=10, color='g')
+    
+    plt.legend()
     plt.grid(True)
-    plt.savefig(f"{prefix}_vaemlp_f1_scores.png", dpi=300)
-    plt.close()
-
-    # Plot AUC Scores
-    plt.figure(figsize=(10, 6))
-    plt.plot(folds, per_fold_auc, marker='o', linestyle='-', color='g')
-    plt.title('AUC Scores per Outer Fold')
-    plt.xlabel('Fold Number')
-    plt.ylabel('AUC Score')
-    plt.xticks(folds)
-    plt.ylim(0, 1)
-    for i, score in zip(folds, per_fold_auc):
-        plt.text(i, score + 0.01, f"{score:.2f}", ha='center', va='bottom')
-    plt.grid(True)
-    plt.savefig(f"{prefix}_vaemlp_auc_scores.png", dpi=300)
+    plt.savefig(f"{prefix}_vaemlp_nested_cv_f1_auc.png", dpi=300)
     plt.close()
 
     # Calculate SHAP feature importance using PermutationExplainer with parallel processing

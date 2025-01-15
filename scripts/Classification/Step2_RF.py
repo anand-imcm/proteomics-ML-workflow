@@ -3,7 +3,7 @@ import pandas as pd
 import numpy as np
 from sklearn.preprocessing import LabelEncoder, label_binarize, StandardScaler
 from sklearn.model_selection import StratifiedKFold, cross_val_predict
-from xgboost import XGBClassifier
+from sklearn.ensemble import RandomForestClassifier
 from sklearn.linear_model import ElasticNet
 from sklearn.feature_selection import SelectFromModel
 from sklearn.pipeline import Pipeline
@@ -123,7 +123,7 @@ class PCATransformer(BaseEstimator, TransformerMixin):
     def transform(self, X):
         return self.pca.transform(X)
 
-def xgboost_nested_cv(inp, prefix, feature_selection_method):
+def random_forest_nested_cv(inp, prefix, feature_selection_method):
     # Read data
     data = pd.read_csv(inp)
 
@@ -213,7 +213,7 @@ def xgboost_nested_cv(inp, prefix, feature_selection_method):
             X_test_outer_fold = X_test_outer
 
         # Define inner cross-validation strategy
-        cv_inner = StratifiedKFold(n_splits=3, shuffle=True, random_state=1234)
+        cv_inner = StratifiedKFold(n_splits=5, shuffle=True, random_state=1234)
 
         if not tsne_selected:
             # Define the objective function for Optuna within the outer fold
@@ -272,25 +272,24 @@ def xgboost_nested_cv(inp, prefix, feature_selection_method):
                             tol=1e-4
                         )))
 
-                # Add XGBoost to the pipeline
-                # Suggest hyperparameters for XGBoost
-                n_estimators = trial.suggest_int('n_estimators', 10, 300)
-                max_depth = trial.suggest_int('max_depth', 3, 15)
-                learning_rate = trial.suggest_loguniform('learning_rate', 1e-4, 0.1)
-                reg_alpha = trial.suggest_loguniform('reg_alpha', 1e-8, 10.0)
-                reg_lambda = trial.suggest_loguniform('reg_lambda', 1e-8, 10.0)
-                gamma = trial.suggest_loguniform('gamma', 1e-8, 10.0)
+                # Add Random Forest to the pipeline
+                # Suggest hyperparameters for Random Forest
+                n_estimators = trial.suggest_int('n_estimators', 100, 1000, step=100)
+                max_depth = trial.suggest_categorical('max_depth', [None] + list(range(5, 51, 5)))
+                max_features = trial.suggest_categorical('max_features', ['sqrt', 'log2', None])
+                min_samples_split = trial.suggest_int('min_samples_split', 2, 10)
+                min_samples_leaf = trial.suggest_int('min_samples_leaf', 1, 10)
+                max_leaf_nodes = trial.suggest_categorical('max_leaf_nodes', [None] + list(range(10, 1001, 50)))
+                min_impurity_decrease = trial.suggest_float('min_impurity_decrease', 0.0, 0.1, step=0.01)
 
-                steps.append(('xgb', XGBClassifier(
+                steps.append(('rf', RandomForestClassifier(
                     n_estimators=n_estimators,
                     max_depth=max_depth,
-                    learning_rate=learning_rate,
-                    reg_alpha=reg_alpha,
-                    reg_lambda=reg_lambda,
-                    gamma=gamma,
-                    eval_metric='mlogloss',
-                    use_label_encoder=False,
-                    verbosity=0,
+                    max_features=max_features,
+                    min_samples_split=min_samples_split,
+                    min_samples_leaf=min_samples_leaf,
+                    max_leaf_nodes=max_leaf_nodes,
+                    min_impurity_decrease=min_impurity_decrease,
                     random_state=1234
                 )))
 
@@ -308,7 +307,7 @@ def xgboost_nested_cv(inp, prefix, feature_selection_method):
                             f1 = f1_score(y_valid_inner, y_pred_inner, average='weighted')
                             f1_scores.append(f1)
                         except (ValueError, ArpackError, NotImplementedError):
-                            # If feature selection or XGBoost fails
+                            # If feature selection or RF fails
                             f1_scores.append(0.0)
                     return np.mean(f1_scores)
 
@@ -371,25 +370,24 @@ def xgboost_nested_cv(inp, prefix, feature_selection_method):
                         tol=1e-4
                     )))
 
-            # Add XGBoost to the pipeline
-            # Suggest hyperparameters for XGBoost based on best_params_inner
+            # Add Random Forest to the pipeline
+            # Suggest hyperparameters for RF based on best_params_inner
             best_n_estimators = best_params_inner.get('n_estimators', 100)
             best_max_depth = best_params_inner.get('max_depth', 5)
-            best_learning_rate = best_params_inner.get('learning_rate', 0.05)
-            best_reg_alpha = best_params_inner.get('reg_alpha', 0.0)
-            best_reg_lambda = best_params_inner.get('reg_lambda', 1.0)
-            best_gamma = best_params_inner.get('gamma', 0.0)
+            best_max_features = best_params_inner.get('max_features', 'sqrt')
+            best_min_samples_split = best_params_inner.get('min_samples_split', 2)
+            best_min_samples_leaf = best_params_inner.get('min_samples_leaf', 1)
+            best_max_leaf_nodes = best_params_inner.get('max_leaf_nodes', None)
+            best_min_impurity_decrease = best_params_inner.get('min_impurity_decrease', 0.0)
 
-            steps.append(('xgb', XGBClassifier(
+            steps.append(('rf', RandomForestClassifier(
                 n_estimators=best_n_estimators,
                 max_depth=best_max_depth,
-                learning_rate=best_learning_rate,
-                reg_alpha=best_reg_alpha,
-                reg_lambda=best_reg_lambda,
-                gamma=best_gamma,
-                eval_metric='mlogloss',
-                use_label_encoder=False,
-                verbosity=0,
+                max_features=best_max_features,
+                min_samples_split=best_min_samples_split,
+                min_samples_leaf=best_min_samples_leaf,
+                max_leaf_nodes=best_max_leaf_nodes,
+                min_impurity_decrease=best_min_impurity_decrease,
                 random_state=1234
             )))
 
@@ -397,18 +395,16 @@ def xgboost_nested_cv(inp, prefix, feature_selection_method):
 
             if tsne_selected:
                 # For t-SNE, the data has already been transformed outside the pipeline
-                # Thus, we only add XGBoost
+                # Thus, we only add RF
                 best_model_inner = Pipeline([
-                    ('xgb', XGBClassifier(
+                    ('rf', RandomForestClassifier(
                         n_estimators=best_n_estimators,
                         max_depth=best_max_depth,
-                        learning_rate=best_learning_rate,
-                        reg_alpha=best_reg_alpha,
-                        reg_lambda=best_reg_lambda,
-                        gamma=best_gamma,
-                        eval_metric='mlogloss',
-                        use_label_encoder=False,
-                        verbosity=0,
+                        max_features=best_max_features,
+                        min_samples_split=best_min_samples_split,
+                        min_samples_leaf=best_min_samples_leaf,
+                        max_leaf_nodes=best_max_leaf_nodes,
+                        min_impurity_decrease=best_min_impurity_decrease,
                         random_state=1234
                     ))
                 ])
@@ -471,29 +467,28 @@ def xgboost_nested_cv(inp, prefix, feature_selection_method):
         # Handle t-SNE path
         print("Completed cross-validation with t-SNE transformed data.")
 
-        # Hyperparameter tuning for XGBoost on the entire transformed dataset
-        print("Starting hyperparameter tuning for XGBoost on the entire t-SNE transformed dataset...")
+        # Hyperparameter tuning for Random Forest on the entire transformed dataset
+        print("Starting hyperparameter tuning for Random Forest on the entire t-SNE transformed dataset...")
 
         def objective_full_tsne(trial):
-            # Suggest hyperparameters for XGBoost
-            n_estimators = trial.suggest_int('n_estimators', 10, 300)
-            max_depth = trial.suggest_int('max_depth', 3, 15)
-            learning_rate = trial.suggest_loguniform('learning_rate', 1e-4, 0.1)
-            reg_alpha = trial.suggest_loguniform('reg_alpha', 1e-8, 10.0)
-            reg_lambda = trial.suggest_loguniform('reg_lambda', 1e-8, 10.0)
-            gamma = trial.suggest_loguniform('gamma', 1e-8, 10.0)
+            # Suggest hyperparameters for Random Forest
+            n_estimators = trial.suggest_int('n_estimators', 100, 1000, step=100)
+            max_depth = trial.suggest_categorical('max_depth', [None] + list(range(5, 51, 5)))
+            max_features = trial.suggest_categorical('max_features', ['sqrt', 'log2', None])
+            min_samples_split = trial.suggest_int('min_samples_split', 2, 10)
+            min_samples_leaf = trial.suggest_int('min_samples_leaf', 1, 10)
+            max_leaf_nodes = trial.suggest_categorical('max_leaf_nodes', [None] + list(range(10, 1001, 50)))
+            min_impurity_decrease = trial.suggest_float('min_impurity_decrease', 0.0, 0.1, step=0.01)
 
-            # Create XGBoost model
-            model = XGBClassifier(
+            # Create Random Forest model
+            model = RandomForestClassifier(
                 n_estimators=n_estimators,
                 max_depth=max_depth,
-                learning_rate=learning_rate,
-                reg_alpha=reg_alpha,
-                reg_lambda=reg_lambda,
-                gamma=gamma,
-                eval_metric='mlogloss',
-                use_label_encoder=False,
-                verbosity=0,
+                max_features=max_features,
+                min_samples_split=min_samples_split,
+                min_samples_leaf=min_samples_leaf,
+                max_leaf_nodes=max_leaf_nodes,
+                min_impurity_decrease=min_impurity_decrease,
                 random_state=1234
             )
 
@@ -509,7 +504,7 @@ def xgboost_nested_cv(inp, prefix, feature_selection_method):
                         f1 = f1_score(y_valid_full, y_pred_full, average='weighted')
                         f1_scores.append(f1)
                     except (ValueError, ArpackError, NotImplementedError):
-                        # If XGBoost fails
+                        # If RF fails
                         f1_scores.append(0.0)
                 return np.mean(f1_scores)
 
@@ -519,19 +514,17 @@ def xgboost_nested_cv(inp, prefix, feature_selection_method):
 
         # Best hyperparameters from the entire dataset
         best_params_full_tsne = study_full_tsne.best_params
-        print(f"Best parameters for XGBoost with t-SNE: {best_params_full_tsne}")
+        print(f"Best parameters for Random Forest with t-SNE: {best_params_full_tsne}")
 
         # Initialize the best model with the best hyperparameters
-        best_model = XGBClassifier(
+        best_model = RandomForestClassifier(
             n_estimators=best_params_full_tsne.get('n_estimators', 100),
             max_depth=best_params_full_tsne.get('max_depth', 5),
-            learning_rate=best_params_full_tsne.get('learning_rate', 0.05),
-            reg_alpha=best_params_full_tsne.get('reg_alpha', 0.0),
-            reg_lambda=best_params_full_tsne.get('reg_lambda', 1.0),
-            gamma=best_params_full_tsne.get('gamma', 0.0),
-            eval_metric='mlogloss',
-            use_label_encoder=False,
-            verbosity=0,
+            max_features=best_params_full_tsne.get('max_features', 'sqrt'),
+            min_samples_split=best_params_full_tsne.get('min_samples_split', 2),
+            min_samples_leaf=best_params_full_tsne.get('min_samples_leaf', 1),
+            max_leaf_nodes=best_params_full_tsne.get('max_leaf_nodes', None),
+            min_impurity_decrease=best_params_full_tsne.get('min_impurity_decrease', 0.0),
             random_state=1234
         )
 
@@ -544,22 +537,22 @@ def xgboost_nested_cv(inp, prefix, feature_selection_method):
                 sys.exit(1)
 
         # Save the best model and transformed data
-        joblib.dump(best_model, f"{prefix}_xgboost_model.pkl")
-        joblib.dump((X_transformed_final, y_encoded, le), f"{prefix}_xgboost_data.pkl")
+        joblib.dump(best_model, f"{prefix}_random_forest_model.pkl")
+        joblib.dump((X_transformed_final, y_encoded, le), f"{prefix}_random_forest_data.pkl")
 
         # Output the best parameters
-        print(f"Best parameters for XGBoost with t-SNE: {best_params_full_tsne}")
+        print(f"Best parameters for Random Forest with t-SNE: {best_params_full_tsne}")
 
         # Save the transformed data
         X_transformed_df = pd.DataFrame(X_transformed_final, columns=[f"TSNE_Component_{i+1}" for i in range(X_transformed_final.shape[1])])
         X_transformed_df.insert(0, 'SampleID', sample_ids)
         X_transformed_df['Label'] = y
-        transformed_csv_path = f"{prefix}_xgboost_transformed_X_tsne.csv"
+        transformed_csv_path = f"{prefix}_random_forest_transformed_X_tsne.csv"
         X_transformed_df.to_csv(transformed_csv_path, index=False)
         print(f"t-SNE transformed data saved to {transformed_csv_path}")
 
         # No variance information available for t-SNE
-        variance_csv_path = f"{prefix}_xgboost_variance.csv"
+        variance_csv_path = f"{prefix}_random_forest_variance.csv"
         with open(variance_csv_path, 'w') as f:
             f.write("t-SNE does not provide explained variance information.\n")
         print(f"No variance information available for t-SNE. File created at {variance_csv_path}")
@@ -600,8 +593,8 @@ def xgboost_nested_cv(inp, prefix, feature_selection_method):
         # Confusion matrix
         disp = ConfusionMatrixDisplay(confusion_matrix=cm, display_labels=le.classes_)
         disp.plot(cmap=plt.cm.Blues)
-        plt.title('Confusion Matrix for XGBoost with t-SNE')
-        plt.savefig(f"{prefix}_xgboost_confusion_matrix.png", dpi=300)
+        plt.title('Confusion Matrix for Random Forest with t-SNE')
+        plt.savefig(f"{prefix}_random_forest_confusion_matrix.png", dpi=300)
         plt.close()
 
         # ROC and AUC
@@ -637,7 +630,7 @@ def xgboost_nested_cv(inp, prefix, feature_selection_method):
             'tpr': tpr_dict,
             'roc_auc': roc_auc_dict
         }
-        np.save(f"{prefix}_xgboost_roc_data.npy", roc_data)
+        np.save(f"{prefix}_random_forest_roc_data.npy", roc_data)
 
         # Plot and save ROC curve
         plt.figure(figsize=(10, 8))
@@ -656,23 +649,23 @@ def xgboost_nested_cv(inp, prefix, feature_selection_method):
         plt.ylim([0.0, 1.05])
         plt.xlabel('False Positive Rate')
         plt.ylabel('True Positive Rate')
-        plt.title('ROC Curves for XGBoost with t-SNE')
+        plt.title('ROC Curves for Random Forest with t-SNE')
         plt.legend(loc="lower right")
-        plt.savefig(f'{prefix}_xgboost_roc_curve.png', dpi=300)
+        plt.savefig(f'{prefix}_random_forest_roc_curve.png', dpi=300)
         plt.close()
 
         # Output performance metrics as a bar chart
         metrics = {'Accuracy': acc, 'F1 Score': f1, 'Sensitivity': sensitivity, 'Specificity': specificity}
         metrics_df = pd.DataFrame(list(metrics.items()), columns=['Metric', 'Value'])
         ax = metrics_df.plot(kind='bar', x='Metric', y='Value', legend=False)
-        plt.title('Performance Metrics for XGBoost with t-SNE')
+        plt.title('Performance Metrics for Random Forest with t-SNE')
         plt.ylabel('Value')
         plt.ylim(0, 1)
         for container in ax.containers:
             ax.bar_label(container, fmt='%.2f')
         plt.xticks(rotation=45, ha='right')
         plt.tight_layout()
-        plt.savefig(f'{prefix}_xgboost_metrics.png', dpi=300)
+        plt.savefig(f'{prefix}_random_forest_metrics.png', dpi=300)
         plt.close()
 
         # Create a DataFrame for predictions
@@ -683,9 +676,9 @@ def xgboost_nested_cv(inp, prefix, feature_selection_method):
         })
 
         # Save predictions to CSV
-        predictions_df.to_csv(f"{prefix}_xgboost_predictions.csv", index=False)
+        predictions_df.to_csv(f"{prefix}_random_forest_predictions.csv", index=False)
 
-        print(f"Predictions saved to {prefix}_xgboost_predictions.csv")
+        print(f"Predictions saved to {prefix}_random_forest_predictions.csv")
 
     else:
         # Handle non-t-SNE feature selection methods
@@ -702,7 +695,7 @@ def xgboost_nested_cv(inp, prefix, feature_selection_method):
         plt.legend()
         plt.grid(True)
         plt.tight_layout()
-        plt.savefig(f"{prefix}_xgboost_nested_cv_f1_auc.png", dpi=300)
+        plt.savefig(f"{prefix}_random_forest_nested_cv_f1_auc.png", dpi=300)
         plt.close()
 
         print("Nested cross-validation completed.")
@@ -768,25 +761,24 @@ def xgboost_nested_cv(inp, prefix, feature_selection_method):
                         tol=1e-4
                     )))
 
-            # Add XGBoost to the pipeline
-            # Suggest hyperparameters for XGBoost
-            n_estimators = trial.suggest_int('n_estimators', 10, 300)
-            max_depth = trial.suggest_int('max_depth', 3, 15)
-            learning_rate = trial.suggest_loguniform('learning_rate', 1e-4, 0.1)
-            reg_alpha = trial.suggest_loguniform('reg_alpha', 1e-8, 10.0)
-            reg_lambda = trial.suggest_loguniform('reg_lambda', 1e-8, 10.0)
-            gamma = trial.suggest_loguniform('gamma', 1e-8, 10.0)
+            # Add Random Forest to the pipeline
+            # Suggest hyperparameters for RF
+            n_estimators = trial.suggest_int('n_estimators', 100, 1000, step=100)
+            max_depth = trial.suggest_categorical('max_depth', [None] + list(range(5, 51, 5)))
+            max_features = trial.suggest_categorical('max_features', ['sqrt', 'log2', None])
+            min_samples_split = trial.suggest_int('min_samples_split', 2, 10)
+            min_samples_leaf = trial.suggest_int('min_samples_leaf', 1, 10)
+            max_leaf_nodes = trial.suggest_categorical('max_leaf_nodes', [None] + list(range(10, 1001, 50)))
+            min_impurity_decrease = trial.suggest_float('min_impurity_decrease', 0.0, 0.1, step=0.01)
 
-            steps.append(('xgb', XGBClassifier(
+            steps.append(('rf', RandomForestClassifier(
                 n_estimators=n_estimators,
                 max_depth=max_depth,
-                learning_rate=learning_rate,
-                reg_alpha=reg_alpha,
-                reg_lambda=reg_lambda,
-                gamma=gamma,
-                eval_metric='mlogloss',
-                use_label_encoder=False,
-                verbosity=0,
+                max_features=max_features,
+                min_samples_split=min_samples_split,
+                min_samples_leaf=min_samples_leaf,
+                max_leaf_nodes=max_leaf_nodes,
+                min_impurity_decrease=min_impurity_decrease,
                 random_state=1234
             )))
 
@@ -804,7 +796,7 @@ def xgboost_nested_cv(inp, prefix, feature_selection_method):
                         f1 = f1_score(y_valid_full, y_pred_full, average='weighted')
                         f1_scores.append(f1)
                     except (ValueError, ArpackError, NotImplementedError):
-                        # If feature selection or XGBoost fails
+                        # If feature selection or RF fails
                         f1_scores.append(0.0)
                 return np.mean(f1_scores)
 
@@ -814,7 +806,7 @@ def xgboost_nested_cv(inp, prefix, feature_selection_method):
 
         # Best hyperparameters from the entire dataset
         best_params_full = study_full.best_params
-        print(f"Best parameters for XGBoost: {best_params_full}")
+        print(f"Best parameters for Random Forest: {best_params_full}")
 
         # Initialize the best model with the best hyperparameters
         steps = []
@@ -868,42 +860,39 @@ def xgboost_nested_cv(inp, prefix, feature_selection_method):
                     tol=1e-4
                 )))
 
-        # Add XGBoost to the pipeline
-        # Suggest hyperparameters for XGBoost based on best_params_full
+        # Add Random Forest to the pipeline
+        # Suggest hyperparameters for RF based on best_params_full
         best_n_estimators_full = best_params_full.get('n_estimators', 100)
         best_max_depth_full = best_params_full.get('max_depth', 5)
-        best_learning_rate_full = best_params_full.get('learning_rate', 0.05)
-        best_reg_alpha_full = best_params_full.get('reg_alpha', 0.0)
-        best_reg_lambda_full = best_params_full.get('reg_lambda', 1.0)
-        best_gamma_full = best_params_full.get('gamma', 0.0)
+        best_max_features_full = best_params_full.get('max_features', 'sqrt')
+        best_min_samples_split_full = best_params_full.get('min_samples_split', 2)
+        best_min_samples_leaf_full = best_params_full.get('min_samples_leaf', 1)
+        best_max_leaf_nodes_full = best_params_full.get('max_leaf_nodes', None)
+        best_min_impurity_decrease_full = best_params_full.get('min_impurity_decrease', 0.0)
 
-        steps.append(('xgb', XGBClassifier(
+        steps.append(('rf', RandomForestClassifier(
             n_estimators=best_n_estimators_full,
             max_depth=best_max_depth_full,
-            learning_rate=best_learning_rate_full,
-            reg_alpha=best_reg_alpha_full,
-            reg_lambda=best_reg_lambda_full,
-            gamma=best_gamma_full,
-            eval_metric='mlogloss',
-            use_label_encoder=False,
-            verbosity=0,
+            max_features=best_max_features_full,
+            min_samples_split=best_min_samples_split_full,
+            min_samples_leaf=best_min_samples_leaf_full,
+            max_leaf_nodes=best_max_leaf_nodes_full,
+            min_impurity_decrease=best_min_impurity_decrease_full,
             random_state=1234
         )))
 
         if tsne_selected:
             # For t-SNE, the data has already been transformed outside the pipeline
-            # Thus, we only add XGBoost
+            # Thus, we only add RF
             best_model = Pipeline([
-                ('xgb', XGBClassifier(
+                ('rf', RandomForestClassifier(
                     n_estimators=best_n_estimators_full,
                     max_depth=best_max_depth_full,
-                    learning_rate=best_learning_rate_full,
-                    reg_alpha=best_reg_alpha_full,
-                    reg_lambda=best_reg_lambda_full,
-                    gamma=best_gamma_full,
-                    eval_metric='mlogloss',
-                    use_label_encoder=False,
-                    verbosity=0,
+                    max_features=best_max_features_full,
+                    min_samples_split=best_min_samples_split_full,
+                    min_samples_leaf=best_min_samples_leaf_full,
+                    max_leaf_nodes=best_max_leaf_nodes_full,
+                    min_impurity_decrease=best_min_impurity_decrease_full,
                     random_state=1234
                 ))
             ])
@@ -924,17 +913,17 @@ def xgboost_nested_cv(inp, prefix, feature_selection_method):
 
         # Save the best model and data
         if tsne_selected:
-            joblib.dump(best_model, f"{prefix}_xgboost_model.pkl")
-            joblib.dump((X_transformed_final, y_encoded, le), f"{prefix}_xgboost_data.pkl")
+            joblib.dump(best_model, f"{prefix}_random_forest_model.pkl")
+            joblib.dump((X_transformed_final, y_encoded, le), f"{prefix}_random_forest_data.pkl")
         else:
-            joblib.dump(best_model, f"{prefix}_xgboost_model.pkl")
-            joblib.dump((X, y_encoded, le), f"{prefix}_xgboost_data.pkl")
+            joblib.dump(best_model, f"{prefix}_random_forest_model.pkl")
+            joblib.dump((X, y_encoded, le), f"{prefix}_random_forest_data.pkl")
 
         # Output the best parameters
         if tsne_selected:
-            print(f"Best parameters for XGBoost with t-SNE: {best_params_full_tsne}")
+            print(f"Best parameters for Random Forest with t-SNE: {best_params_full_tsne}")
         else:
-            print(f"Best parameters for XGBoost: {best_params_full}")
+            print(f"Best parameters for Random Forest: {best_params_full}")
 
         # If feature selection is used and not t-SNE, save the transformed data and variance information
         if feature_selection_method != 'none' and not tsne_selected:
@@ -960,11 +949,11 @@ def xgboost_nested_cv(inp, prefix, feature_selection_method):
 
                 X_transformed_df.insert(0, 'SampleID', sample_ids)
                 X_transformed_df['Label'] = y
-                transformed_csv_path = f"{prefix}_xgboost_transformed_X.csv"
+                transformed_csv_path = f"{prefix}_random_forest_transformed_X.csv"
                 X_transformed_df.to_csv(transformed_csv_path, index=False)
                 print(f"Transformed data saved to {transformed_csv_path}")
 
-                variance_csv_path = f"{prefix}_xgboost_variance.csv"
+                variance_csv_path = f"{prefix}_random_forest_variance.csv"
                 if feature_selection_method == 'pca':
                     # Fit a full PCA to get all components' variance
                     full_pca = PCA(n_components=X.shape[1], random_state=1234)
@@ -1052,8 +1041,8 @@ def xgboost_nested_cv(inp, prefix, feature_selection_method):
             # Confusion matrix
             disp = ConfusionMatrixDisplay(confusion_matrix=cm, display_labels=le.classes_)
             disp.plot(cmap=plt.cm.Blues)
-            plt.title('Confusion Matrix for XGBoost')
-            plt.savefig(f"{prefix}_xgboost_confusion_matrix.png", dpi=300)
+            plt.title('Confusion Matrix for Random Forest')
+            plt.savefig(f"{prefix}_random_forest_confusion_matrix.png", dpi=300)
             plt.close()
 
             # ROC and AUC
@@ -1089,7 +1078,7 @@ def xgboost_nested_cv(inp, prefix, feature_selection_method):
                 'tpr': tpr_dict,
                 'roc_auc': roc_auc_dict
             }
-            np.save(f"{prefix}_xgboost_roc_data.npy", roc_data)
+            np.save(f"{prefix}_random_forest_roc_data.npy", roc_data)
 
             # Plot and save ROC curve
             plt.figure(figsize=(10, 8))
@@ -1108,23 +1097,23 @@ def xgboost_nested_cv(inp, prefix, feature_selection_method):
             plt.ylim([0.0, 1.05])
             plt.xlabel('False Positive Rate')
             plt.ylabel('True Positive Rate')
-            plt.title('ROC Curves for XGBoost')
+            plt.title('ROC Curves for Random Forest')
             plt.legend(loc="lower right")
-            plt.savefig(f'{prefix}_xgboost_roc_curve.png', dpi=300)
+            plt.savefig(f'{prefix}_random_forest_roc_curve.png', dpi=300)
             plt.close()
 
             # Output performance metrics as a bar chart
             metrics = {'Accuracy': acc, 'F1 Score': f1, 'Sensitivity': sensitivity, 'Specificity': specificity}
             metrics_df = pd.DataFrame(list(metrics.items()), columns=['Metric', 'Value'])
             ax = metrics_df.plot(kind='bar', x='Metric', y='Value', legend=False)
-            plt.title('Performance Metrics for XGBoost')
+            plt.title('Performance Metrics for Random Forest')
             plt.ylabel('Value')
             plt.ylim(0, 1)
             for container in ax.containers:
                 ax.bar_label(container, fmt='%.2f')
             plt.xticks(rotation=45, ha='right')
             plt.tight_layout()
-            plt.savefig(f'{prefix}_xgboost_metrics.png', dpi=300)
+            plt.savefig(f'{prefix}_random_forest_metrics.png', dpi=300)
             plt.close()
 
             # Create a DataFrame for predictions
@@ -1135,20 +1124,12 @@ def xgboost_nested_cv(inp, prefix, feature_selection_method):
             })
 
             # Save predictions to CSV
-            predictions_df.to_csv(f"{prefix}_xgboost_predictions.csv", index=False)
+            predictions_df.to_csv(f"{prefix}_random_forest_predictions.csv", index=False)
 
-            print(f"Predictions saved to {prefix}_xgboost_predictions.csv")
-
-    if tsne_selected:
-        # For t-SNE, prediction and evaluation have been handled separately
-        pass
-    else:
-        # Handle non-t-SNE feature selection methods
-        # Prediction and Evaluation are already handled above
-        pass
+            print(f"Predictions saved to {prefix}_random_forest_predictions.csv")
 
 def main():
-    parser = argparse.ArgumentParser(description='Run XGBoost with Nested Cross-Validation, Feature Selection (ElasticNet, PCA, KPCA, UMAP, t-SNE, PLS), and Optuna hyperparameter optimization.')
+    parser = argparse.ArgumentParser(description='Run Random Forest with Nested Cross-Validation, Feature Selection (ElasticNet, PCA, KPCA, UMAP, t-SNE, PLS), and Optuna hyperparameter optimization.')
     parser.add_argument('-i', type=str, help='Input file in CSV format', required=True)
     parser.add_argument('-p', type=str, help='Prefix for output files', required=True)
     parser.add_argument('-f', type=str, choices=['none', 'elasticnet', 'pca', 'kpca', 'umap', 'tsne', 'pls'], default='none', help='Feature selection method to use. Options: none, elasticnet, pca, kpca, umap, tsne, pls.')
@@ -1159,8 +1140,8 @@ def main():
     if args.f == 'tsne':
         print("Warning: t-SNE does not support transforming new data. The entire dataset will be transformed before cross-validation, which may lead to data leakage.")
 
-    # Run the XGBoost nested cross-validation function
-    xgboost_nested_cv(args.i, args.p, args.f)
+    # Run the Random Forest nested cross-validation function
+    random_forest_nested_cv(args.i, args.p, args.f)
 
 if __name__ == '__main__':
     main()

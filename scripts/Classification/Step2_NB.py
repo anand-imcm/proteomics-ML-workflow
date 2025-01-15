@@ -152,7 +152,7 @@ def gaussian_nb_nested_cv(inp, prefix, feature_selection_method):
         y_train_outer, y_test_outer = y_encoded[train_idx], y_encoded[test_idx]
 
         # Define inner cross-validation strategy
-        cv_inner = StratifiedKFold(n_splits=3, shuffle=True, random_state=1234)
+        cv_inner = StratifiedKFold(n_splits=5, shuffle=True, random_state=1234)
 
         # Define the objective function for Optuna within the outer fold
         def objective_inner(trial):

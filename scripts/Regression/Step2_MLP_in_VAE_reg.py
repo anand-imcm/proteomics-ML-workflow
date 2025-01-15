@@ -9,6 +9,7 @@ from sklearn.base import BaseEstimator, RegressorMixin
 from sklearn.preprocessing import StandardScaler
 import shap
 import matplotlib.pyplot as plt
+import seaborn as sns
 import warnings
 import sys
 import contextlib
@@ -19,6 +20,7 @@ import optuna
 import joblib
 from joblib import Parallel, delayed
 import matplotlib.ticker as mticker
+
 device = torch.device("cpu")
 def parse_arguments():
     parser = argparse.ArgumentParser(description='Script to run regression with VAE and MLP')
@@ -568,7 +570,7 @@ def vae_regression(inp, prefix):
             'Original Label': data['Label'].values[all_test_idx],
             'Predicted Value': y_all_pred
         })
-        results_df.to_csv(f"{prefix}_vaemlp_predictions.csv", index=False)
+        results_df.to_csv(f"{prefix}_vaemlp_reg_predictions.csv", index=False)
     else:
         print("No predictions were made. The predictions DataFrame will not be created.")
 
@@ -598,7 +600,7 @@ def vae_regression(inp, prefix):
     plt.title('Evaluation Metrics over Folds')
     plt.legend()
     plt.xticks(fold_numbers)
-    plt.savefig(f"{prefix}_vaemlp_metrics_over_folds.png", dpi=300)
+    plt.savefig(f"{prefix}_vaemlp_reg_metrics_over_folds.png", dpi=300)
     plt.close()
 
     # Plot average evaluation metrics bar chart
@@ -614,7 +616,7 @@ def vae_regression(inp, prefix):
 
     plt.title('Average Evaluation Metrics for VAE_MLP Regression')
     plt.ylabel('Score')
-    plt.savefig(f"{prefix}_vaemlp_average_metrics.png", dpi=300)
+    plt.savefig(f"{prefix}_vaemlp_reg_average_metrics.png", dpi=300)
     plt.close()
 
     # Plot predictions vs actual values
@@ -624,18 +626,17 @@ def vae_regression(inp, prefix):
     plt.xlabel('Actual Values')
     plt.ylabel('Predicted Values')
     plt.title('Predicted vs Actual Values')
-    plt.savefig(f"{prefix}_vaemlp_predictions_vs_actual.png", dpi=300)
+    plt.savefig(f"{prefix}_vaemlp_reg_predictions.png", dpi=300)
     plt.close()
 
     # Plot residuals
     residuals = y_all_true - y_all_pred
     plt.figure(figsize=(10, 8))
-    plt.scatter(y_all_pred, residuals, alpha=0.6)
-    plt.hlines(y=0, xmin=y_all_pred.min(), xmax=y_all_pred.max(), colors='r', linestyles='--')
-    plt.xlabel('Predicted Values')
-    plt.ylabel('Residuals')
-    plt.title('Residuals Plot')
-    plt.savefig(f"{prefix}_vaemlp_residuals.png", dpi=300)
+    sns.histplot(residuals, bins=30, alpha=0.7, kde=True, edgecolor='black')
+    plt.xlabel('Residuals')
+    plt.ylabel('Frequency')
+    plt.title('Residuals Histogram')
+    plt.savefig(f"{prefix}_vaemlp_reg_residuals.png", dpi=300)
     plt.close()
 
     # Calculate SHAP feature importance using PermutationExplainer with parallel processing
@@ -788,18 +789,18 @@ def vae_regression(inp, prefix):
             'Feature': feature_names,
             'Mean SHAP Value': mean_shap_values
         })
-        shap_df.to_csv(f"{prefix}_vaemlp_shap_values.csv", index=False)
+        shap_df.to_csv(f"{prefix}_vaemlp_reg_shap_values.csv", index=False)
 
-        print(f"SHAP values have been saved to {prefix}_vaemlp_shap_values.csv")
+        print(f"SHAP values have been saved to {prefix}_vaemlp_reg_shap_values.csv")
 
         # Plot SHAP summary plot
         shap.summary_plot(shap_values, X, feature_names=feature_names, show=False)
-        plt.savefig(f"{prefix}_vaemlp_shap_summary.png", dpi=300)
+        plt.savefig(f"{prefix}_vaemlp_reg_shap_summary.png", dpi=300)
         plt.close()
 
         # Plot SHAP bar chart
         shap.summary_plot(shap_values, X, feature_names=feature_names, plot_type='bar', show=False)
-        plt.savefig(f"{prefix}_vaemlp_shap_bar.png", dpi=300)
+        plt.savefig(f"{prefix}_vaemlp_reg_shap_bar.png", dpi=300)
         plt.close()
 
     except Exception as e:

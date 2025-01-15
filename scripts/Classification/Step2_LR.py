@@ -198,7 +198,7 @@ def logistic_regression_nested_cv(inp, prefix, feature_selection_method):
             X_test_outer_fold = X_test_outer
 
         # Define inner cross-validation strategy
-        cv_inner = StratifiedKFold(n_splits=3, shuffle=True, random_state=1234)
+        cv_inner = StratifiedKFold(n_splits=5, shuffle=True, random_state=1234)
 
         if not tsne_selected:
             # Define the objective function for Optuna within the outer fold

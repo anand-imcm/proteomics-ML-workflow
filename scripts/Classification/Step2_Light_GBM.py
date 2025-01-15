@@ -3,7 +3,7 @@ import pandas as pd
 import numpy as np
 from sklearn.preprocessing import LabelEncoder, label_binarize, StandardScaler
 from sklearn.model_selection import StratifiedKFold, cross_val_predict
-from sklearn.ensemble import RandomForestClassifier
+from lightgbm import LGBMClassifier
 from sklearn.linear_model import ElasticNet
 from sklearn.feature_selection import SelectFromModel
 from sklearn.pipeline import Pipeline
@@ -123,7 +123,7 @@ class PCATransformer(BaseEstimator, TransformerMixin):
     def transform(self, X):
         return self.pca.transform(X)
 
-def random_forest_nested_cv(inp, prefix, feature_selection_method):
+def lightgbm_nested_cv(inp, prefix, feature_selection_method):
     # Read data
     data = pd.read_csv(inp)
 
@@ -213,7 +213,7 @@ def random_forest_nested_cv(inp, prefix, feature_selection_method):
             X_test_outer_fold = X_test_outer
 
         # Define inner cross-validation strategy
-        cv_inner = StratifiedKFold(n_splits=3, shuffle=True, random_state=1234)
+        cv_inner = StratifiedKFold(n_splits=5, shuffle=True, random_state=1234)
 
         if not tsne_selected:
             # Define the objective function for Optuna within the outer fold
@@ -272,25 +272,37 @@ def random_forest_nested_cv(inp, prefix, feature_selection_method):
                             tol=1e-4
                         )))
 
-                # Add Random Forest to the pipeline
-                # Suggest hyperparameters for Random Forest
-                n_estimators = trial.suggest_int('n_estimators', 100, 1000, step=100)
-                max_depth = trial.suggest_categorical('max_depth', [None] + list(range(5, 51, 5)))
-                max_features = trial.suggest_categorical('max_features', ['sqrt', 'log2', None])
-                min_samples_split = trial.suggest_int('min_samples_split', 2, 10)
-                min_samples_leaf = trial.suggest_int('min_samples_leaf', 1, 10)
-                max_leaf_nodes = trial.suggest_categorical('max_leaf_nodes', [None] + list(range(10, 1001, 50)))
-                min_impurity_decrease = trial.suggest_float('min_impurity_decrease', 0.0, 0.1, step=0.01)
+                # Add LightGBM to the pipeline
+                if feature_selection_method == 'elasticnet':
+                    # Suggest hyperparameters for ElasticNet already done above
+                    pass  # Handled in feature_selection step
+                # Suggest hyperparameters for LightGBM
+                n_estimators = trial.suggest_int('n_estimators', 50, 300)
+                max_depth = trial.suggest_int('max_depth', 3, 9)
+                learning_rate = trial.suggest_loguniform('learning_rate', 1e-4, 0.1)
+                min_split_gain = trial.suggest_float('min_split_gain', 0, 0.2)
+                min_child_samples = trial.suggest_int('min_child_samples', 20, 50)
+                num_leaves = trial.suggest_int('num_leaves', 31, 50)
+                lambda_l1 = trial.suggest_loguniform('lambda_l1', 1e-8, 10.0)
+                lambda_l2 = trial.suggest_loguniform('lambda_l2', 1e-8, 10.0)
+                feature_fraction = trial.suggest_uniform('feature_fraction', 0.4, 1.0)
+                bagging_fraction = trial.suggest_uniform('bagging_fraction', 0.4, 1.0)
+                bagging_freq = trial.suggest_int('bagging_freq', 1, 7)
 
-                steps.append(('rf', RandomForestClassifier(
+                steps.append(('lgbm', LGBMClassifier(
                     n_estimators=n_estimators,
                     max_depth=max_depth,
-                    max_features=max_features,
-                    min_samples_split=min_samples_split,
-                    min_samples_leaf=min_samples_leaf,
-                    max_leaf_nodes=max_leaf_nodes,
-                    min_impurity_decrease=min_impurity_decrease,
-                    random_state=1234
+                    learning_rate=learning_rate,
+                    min_split_gain=min_split_gain,
+                    min_child_samples=min_child_samples,
+                    num_leaves=num_leaves,
+                    lambda_l1=lambda_l1,
+                    lambda_l2=lambda_l2,
+                    feature_fraction=feature_fraction,
+                    bagging_fraction=bagging_fraction,
+                    bagging_freq=bagging_freq,
+                    random_state=1234,
+                    verbose=-1
                 )))
 
                 pipeline = Pipeline(steps)
@@ -307,7 +319,7 @@ def random_forest_nested_cv(inp, prefix, feature_selection_method):
                             f1 = f1_score(y_valid_inner, y_pred_inner, average='weighted')
                             f1_scores.append(f1)
                         except (ValueError, ArpackError, NotImplementedError):
-                            # If feature selection or RF fails
+                            # If feature selection or LightGBM fails
                             f1_scores.append(0.0)
                     return np.mean(f1_scores)
 
@@ -370,42 +382,56 @@ def random_forest_nested_cv(inp, prefix, feature_selection_method):
                         tol=1e-4
                     )))
 
-            # Add Random Forest to the pipeline
-            # Suggest hyperparameters for RF based on best_params_inner
-            best_n_estimators = best_params_inner.get('n_estimators', 100)
-            best_max_depth = best_params_inner.get('max_depth', 5)
-            best_max_features = best_params_inner.get('max_features', 'sqrt')
-            best_min_samples_split = best_params_inner.get('min_samples_split', 2)
-            best_min_samples_leaf = best_params_inner.get('min_samples_leaf', 1)
-            best_max_leaf_nodes = best_params_inner.get('max_leaf_nodes', None)
-            best_min_impurity_decrease = best_params_inner.get('min_impurity_decrease', 0.0)
+            # Add LightGBM to the pipeline
+            # Suggest hyperparameters for LightGBM based on best_params_inner
+            n_estimators = best_params_inner.get('n_estimators', 100)
+            max_depth = best_params_inner.get('max_depth', 5)
+            learning_rate = best_params_inner.get('learning_rate', 0.05)
+            min_split_gain = best_params_inner.get('min_split_gain', 0.0)
+            min_child_samples = best_params_inner.get('min_child_samples', 20)
+            num_leaves = best_params_inner.get('num_leaves', 31)
+            lambda_l1 = best_params_inner.get('lambda_l1', 0.0)
+            lambda_l2 = best_params_inner.get('lambda_l2', 0.0)
+            feature_fraction = best_params_inner.get('feature_fraction', 1.0)
+            bagging_fraction = best_params_inner.get('bagging_fraction', 1.0)
+            bagging_freq = best_params_inner.get('bagging_freq', 1)
 
-            steps.append(('rf', RandomForestClassifier(
-                n_estimators=best_n_estimators,
-                max_depth=best_max_depth,
-                max_features=best_max_features,
-                min_samples_split=best_min_samples_split,
-                min_samples_leaf=best_min_samples_leaf,
-                max_leaf_nodes=best_max_leaf_nodes,
-                min_impurity_decrease=best_min_impurity_decrease,
-                random_state=1234
+            steps.append(('lgbm', LGBMClassifier(
+                n_estimators=n_estimators,
+                max_depth=max_depth,
+                learning_rate=learning_rate,
+                min_split_gain=min_split_gain,
+                min_child_samples=min_child_samples,
+                num_leaves=num_leaves,
+                lambda_l1=lambda_l1,
+                lambda_l2=lambda_l2,
+                feature_fraction=feature_fraction,
+                bagging_fraction=bagging_fraction,
+                bagging_freq=bagging_freq,
+                random_state=1234,
+                verbose=-1
             )))
 
             best_model_inner = Pipeline(steps)
 
             if tsne_selected:
                 # For t-SNE, the data has already been transformed outside the pipeline
-                # Thus, we only add RF
+                # Thus, we only add LightGBM
                 best_model_inner = Pipeline([
-                    ('rf', RandomForestClassifier(
-                        n_estimators=best_n_estimators,
-                        max_depth=best_max_depth,
-                        max_features=best_max_features,
-                        min_samples_split=best_min_samples_split,
-                        min_samples_leaf=best_min_samples_leaf,
-                        max_leaf_nodes=best_max_leaf_nodes,
-                        min_impurity_decrease=best_min_impurity_decrease,
-                        random_state=1234
+                    ('lgbm', LGBMClassifier(
+                        n_estimators=n_estimators,
+                        max_depth=max_depth,
+                        learning_rate=learning_rate,
+                        min_split_gain=min_split_gain,
+                        min_child_samples=min_child_samples,
+                        num_leaves=num_leaves,
+                        lambda_l1=lambda_l1,
+                        lambda_l2=lambda_l2,
+                        feature_fraction=feature_fraction,
+                        bagging_fraction=bagging_fraction,
+                        bagging_freq=bagging_freq,
+                        random_state=1234,
+                        verbose=-1
                     ))
                 ])
                 X_train_outer_fold_final = X_transformed_final.iloc[train_idx].reset_index(drop=True)
@@ -467,29 +493,38 @@ def random_forest_nested_cv(inp, prefix, feature_selection_method):
         # Handle t-SNE path
         print("Completed cross-validation with t-SNE transformed data.")
 
-        # Hyperparameter tuning for Random Forest on the entire transformed dataset
-        print("Starting hyperparameter tuning for Random Forest on the entire t-SNE transformed dataset...")
+        # Hyperparameter tuning for LightGBM on the entire transformed dataset
+        print("Starting hyperparameter tuning for LightGBM on the entire t-SNE transformed dataset...")
 
         def objective_full_tsne(trial):
-            # Suggest hyperparameters for Random Forest
-            n_estimators = trial.suggest_int('n_estimators', 100, 1000, step=100)
-            max_depth = trial.suggest_categorical('max_depth', [None] + list(range(5, 51, 5)))
-            max_features = trial.suggest_categorical('max_features', ['sqrt', 'log2', None])
-            min_samples_split = trial.suggest_int('min_samples_split', 2, 10)
-            min_samples_leaf = trial.suggest_int('min_samples_leaf', 1, 10)
-            max_leaf_nodes = trial.suggest_categorical('max_leaf_nodes', [None] + list(range(10, 1001, 50)))
-            min_impurity_decrease = trial.suggest_float('min_impurity_decrease', 0.0, 0.1, step=0.01)
+            # Suggest hyperparameters for LightGBM
+            n_estimators = trial.suggest_int('n_estimators', 50, 300)
+            max_depth = trial.suggest_int('max_depth', 3, 9)
+            learning_rate = trial.suggest_loguniform('learning_rate', 1e-4, 0.1)
+            min_split_gain = trial.suggest_float('min_split_gain', 0, 0.2)
+            min_child_samples = trial.suggest_int('min_child_samples', 20, 50)
+            num_leaves = trial.suggest_int('num_leaves', 31, 50)
+            lambda_l1 = trial.suggest_loguniform('lambda_l1', 1e-8, 10.0)
+            lambda_l2 = trial.suggest_loguniform('lambda_l2', 1e-8, 10.0)
+            feature_fraction = trial.suggest_uniform('feature_fraction', 0.4, 1.0)
+            bagging_fraction = trial.suggest_uniform('bagging_fraction', 0.4, 1.0)
+            bagging_freq = trial.suggest_int('bagging_freq', 1, 7)
 
-            # Create Random Forest model
-            model = RandomForestClassifier(
+            # Create LightGBM model
+            model = LGBMClassifier(
                 n_estimators=n_estimators,
                 max_depth=max_depth,
-                max_features=max_features,
-                min_samples_split=min_samples_split,
-                min_samples_leaf=min_samples_leaf,
-                max_leaf_nodes=max_leaf_nodes,
-                min_impurity_decrease=min_impurity_decrease,
-                random_state=1234
+                learning_rate=learning_rate,
+                min_split_gain=min_split_gain,
+                min_child_samples=min_child_samples,
+                num_leaves=num_leaves,
+                lambda_l1=lambda_l1,
+                lambda_l2=lambda_l2,
+                feature_fraction=feature_fraction,
+                bagging_fraction=bagging_fraction,
+                bagging_freq=bagging_freq,
+                random_state=1234,
+                verbose=-1
             )
 
             # Perform cross-validation
@@ -504,7 +539,7 @@ def random_forest_nested_cv(inp, prefix, feature_selection_method):
                         f1 = f1_score(y_valid_full, y_pred_full, average='weighted')
                         f1_scores.append(f1)
                     except (ValueError, ArpackError, NotImplementedError):
-                        # If RF fails
+                        # If LightGBM fails
                         f1_scores.append(0.0)
                 return np.mean(f1_scores)
 
@@ -514,18 +549,23 @@ def random_forest_nested_cv(inp, prefix, feature_selection_method):
 
         # Best hyperparameters from the entire dataset
         best_params_full_tsne = study_full_tsne.best_params
-        print(f"Best parameters for Random Forest with t-SNE: {best_params_full_tsne}")
+        print(f"Best parameters for LightGBM with t-SNE: {best_params_full_tsne}")
 
         # Initialize the best model with the best hyperparameters
-        best_model = RandomForestClassifier(
+        best_model = LGBMClassifier(
             n_estimators=best_params_full_tsne.get('n_estimators', 100),
             max_depth=best_params_full_tsne.get('max_depth', 5),
-            max_features=best_params_full_tsne.get('max_features', 'sqrt'),
-            min_samples_split=best_params_full_tsne.get('min_samples_split', 2),
-            min_samples_leaf=best_params_full_tsne.get('min_samples_leaf', 1),
-            max_leaf_nodes=best_params_full_tsne.get('max_leaf_nodes', None),
-            min_impurity_decrease=best_params_full_tsne.get('min_impurity_decrease', 0.0),
-            random_state=1234
+            learning_rate=best_params_full_tsne.get('learning_rate', 0.05),
+            min_split_gain=best_params_full_tsne.get('min_split_gain', 0.0),
+            min_child_samples=best_params_full_tsne.get('min_child_samples', 20),
+            num_leaves=best_params_full_tsne.get('num_leaves', 31),
+            lambda_l1=best_params_full_tsne.get('lambda_l1', 0.0),
+            lambda_l2=best_params_full_tsne.get('lambda_l2', 0.0),
+            feature_fraction=best_params_full_tsne.get('feature_fraction', 1.0),
+            bagging_fraction=best_params_full_tsne.get('bagging_fraction', 1.0),
+            bagging_freq=best_params_full_tsne.get('bagging_freq', 1),
+            random_state=1234,
+            verbose=-1
         )
 
         # Fit the model on the entire t-SNE transformed dataset
@@ -537,22 +577,22 @@ def random_forest_nested_cv(inp, prefix, feature_selection_method):
                 sys.exit(1)
 
         # Save the best model and transformed data
-        joblib.dump(best_model, f"{prefix}_random_forest_model.pkl")
-        joblib.dump((X_transformed_final, y_encoded, le), f"{prefix}_random_forest_data.pkl")
+        joblib.dump(best_model, f"{prefix}_lightgbm_model.pkl")
+        joblib.dump((X_transformed_final, y_encoded, le), f"{prefix}_lightgbm_data.pkl")
 
         # Output the best parameters
-        print(f"Best parameters for Random Forest with t-SNE: {best_params_full_tsne}")
+        print(f"Best parameters for LightGBM with t-SNE: {best_params_full_tsne}")
 
         # Save the transformed data
         X_transformed_df = pd.DataFrame(X_transformed_final, columns=[f"TSNE_Component_{i+1}" for i in range(X_transformed_final.shape[1])])
         X_transformed_df.insert(0, 'SampleID', sample_ids)
         X_transformed_df['Label'] = y
-        transformed_csv_path = f"{prefix}_random_forest_transformed_X_tsne.csv"
+        transformed_csv_path = f"{prefix}_lightgbm_transformed_X_tsne.csv"
         X_transformed_df.to_csv(transformed_csv_path, index=False)
         print(f"t-SNE transformed data saved to {transformed_csv_path}")
 
         # No variance information available for t-SNE
-        variance_csv_path = f"{prefix}_random_forest_variance.csv"
+        variance_csv_path = f"{prefix}_lightgbm_variance.csv"
         with open(variance_csv_path, 'w') as f:
             f.write("t-SNE does not provide explained variance information.\n")
         print(f"No variance information available for t-SNE. File created at {variance_csv_path}")
@@ -593,8 +633,8 @@ def random_forest_nested_cv(inp, prefix, feature_selection_method):
         # Confusion matrix
         disp = ConfusionMatrixDisplay(confusion_matrix=cm, display_labels=le.classes_)
         disp.plot(cmap=plt.cm.Blues)
-        plt.title('Confusion Matrix for Random Forest with t-SNE')
-        plt.savefig(f"{prefix}_random_forest_confusion_matrix.png", dpi=300)
+        plt.title('Confusion Matrix for LightGBM with t-SNE')
+        plt.savefig(f"{prefix}_lightgbm_confusion_matrix.png", dpi=300)
         plt.close()
 
         # ROC and AUC
@@ -630,7 +670,7 @@ def random_forest_nested_cv(inp, prefix, feature_selection_method):
             'tpr': tpr_dict,
             'roc_auc': roc_auc_dict
         }
-        np.save(f"{prefix}_random_forest_roc_data.npy", roc_data)
+        np.save(f"{prefix}_lightgbm_roc_data.npy", roc_data)
 
         # Plot and save ROC curve
         plt.figure(figsize=(10, 8))
@@ -649,23 +689,23 @@ def random_forest_nested_cv(inp, prefix, feature_selection_method):
         plt.ylim([0.0, 1.05])
         plt.xlabel('False Positive Rate')
         plt.ylabel('True Positive Rate')
-        plt.title('ROC Curves for Random Forest with t-SNE')
+        plt.title('ROC Curves for LightGBM with t-SNE')
         plt.legend(loc="lower right")
-        plt.savefig(f'{prefix}_random_forest_roc_curve.png', dpi=300)
+        plt.savefig(f'{prefix}_lightgbm_roc_curve.png', dpi=300)
         plt.close()
 
         # Output performance metrics as a bar chart
         metrics = {'Accuracy': acc, 'F1 Score': f1, 'Sensitivity': sensitivity, 'Specificity': specificity}
         metrics_df = pd.DataFrame(list(metrics.items()), columns=['Metric', 'Value'])
         ax = metrics_df.plot(kind='bar', x='Metric', y='Value', legend=False)
-        plt.title('Performance Metrics for Random Forest with t-SNE')
+        plt.title('Performance Metrics for LightGBM with t-SNE')
         plt.ylabel('Value')
         plt.ylim(0, 1)
         for container in ax.containers:
             ax.bar_label(container, fmt='%.2f')
         plt.xticks(rotation=45, ha='right')
         plt.tight_layout()
-        plt.savefig(f'{prefix}_random_forest_metrics.png', dpi=300)
+        plt.savefig(f'{prefix}_lightgbm_metrics.png', dpi=300)
         plt.close()
 
         # Create a DataFrame for predictions
@@ -676,9 +716,9 @@ def random_forest_nested_cv(inp, prefix, feature_selection_method):
         })
 
         # Save predictions to CSV
-        predictions_df.to_csv(f"{prefix}_random_forest_predictions.csv", index=False)
+        predictions_df.to_csv(f"{prefix}_lightgbm_predictions.csv", index=False)
 
-        print(f"Predictions saved to {prefix}_random_forest_predictions.csv")
+        print(f"Predictions saved to {prefix}_lightgbm_predictions.csv")
 
     else:
         # Handle non-t-SNE feature selection methods
@@ -695,7 +735,7 @@ def random_forest_nested_cv(inp, prefix, feature_selection_method):
         plt.legend()
         plt.grid(True)
         plt.tight_layout()
-        plt.savefig(f"{prefix}_random_forest_nested_cv_f1_auc.png", dpi=300)
+        plt.savefig(f"{prefix}_lightgbm_nested_cv_f1_auc.png", dpi=300)
         plt.close()
 
         print("Nested cross-validation completed.")
@@ -761,25 +801,34 @@ def random_forest_nested_cv(inp, prefix, feature_selection_method):
                         tol=1e-4
                     )))
 
-            # Add Random Forest to the pipeline
-            # Suggest hyperparameters for RF
-            n_estimators = trial.suggest_int('n_estimators', 100, 1000, step=100)
-            max_depth = trial.suggest_categorical('max_depth', [None] + list(range(5, 51, 5)))
-            max_features = trial.suggest_categorical('max_features', ['sqrt', 'log2', None])
-            min_samples_split = trial.suggest_int('min_samples_split', 2, 10)
-            min_samples_leaf = trial.suggest_int('min_samples_leaf', 1, 10)
-            max_leaf_nodes = trial.suggest_categorical('max_leaf_nodes', [None] + list(range(10, 1001, 50)))
-            min_impurity_decrease = trial.suggest_float('min_impurity_decrease', 0.0, 0.1, step=0.01)
+            # Add LightGBM to the pipeline
+            # Suggest hyperparameters for LightGBM
+            n_estimators = trial.suggest_int('n_estimators', 50, 300)
+            max_depth = trial.suggest_int('max_depth', 3, 9)
+            learning_rate = trial.suggest_loguniform('learning_rate', 1e-4, 0.1)
+            min_split_gain = trial.suggest_float('min_split_gain', 0, 0.2)
+            min_child_samples = trial.suggest_int('min_child_samples', 20, 50)
+            num_leaves = trial.suggest_int('num_leaves', 31, 50)
+            lambda_l1 = trial.suggest_loguniform('lambda_l1', 1e-8, 10.0)
+            lambda_l2 = trial.suggest_loguniform('lambda_l2', 1e-8, 10.0)
+            feature_fraction = trial.suggest_uniform('feature_fraction', 0.4, 1.0)
+            bagging_fraction = trial.suggest_uniform('bagging_fraction', 0.4, 1.0)
+            bagging_freq = trial.suggest_int('bagging_freq', 1, 7)
 
-            steps.append(('rf', RandomForestClassifier(
+            steps.append(('lgbm', LGBMClassifier(
                 n_estimators=n_estimators,
                 max_depth=max_depth,
-                max_features=max_features,
-                min_samples_split=min_samples_split,
-                min_samples_leaf=min_samples_leaf,
-                max_leaf_nodes=max_leaf_nodes,
-                min_impurity_decrease=min_impurity_decrease,
-                random_state=1234
+                learning_rate=learning_rate,
+                min_split_gain=min_split_gain,
+                min_child_samples=min_child_samples,
+                num_leaves=num_leaves,
+                lambda_l1=lambda_l1,
+                lambda_l2=lambda_l2,
+                feature_fraction=feature_fraction,
+                bagging_fraction=bagging_fraction,
+                bagging_freq=bagging_freq,
+                random_state=1234,
+                verbose=-1
             )))
 
             pipeline = Pipeline(steps)
@@ -796,7 +845,7 @@ def random_forest_nested_cv(inp, prefix, feature_selection_method):
                         f1 = f1_score(y_valid_full, y_pred_full, average='weighted')
                         f1_scores.append(f1)
                     except (ValueError, ArpackError, NotImplementedError):
-                        # If feature selection or RF fails
+                        # If feature selection or LightGBM fails
                         f1_scores.append(0.0)
                 return np.mean(f1_scores)
 
@@ -806,7 +855,7 @@ def random_forest_nested_cv(inp, prefix, feature_selection_method):
 
         # Best hyperparameters from the entire dataset
         best_params_full = study_full.best_params
-        print(f"Best parameters for Random Forest: {best_params_full}")
+        print(f"Best parameters for LightGBM: {best_params_full}")
 
         # Initialize the best model with the best hyperparameters
         steps = []
@@ -860,40 +909,57 @@ def random_forest_nested_cv(inp, prefix, feature_selection_method):
                     tol=1e-4
                 )))
 
-        # Add Random Forest to the pipeline
-        # Suggest hyperparameters for RF based on best_params_full
+        # Add LightGBM to the pipeline
+        if feature_selection_method == 'elasticnet':
+            # Suggest hyperparameters for ElasticNet already done above
+            pass  # Handled in feature_selection step
+        # Add LightGBM with best parameters
         best_n_estimators_full = best_params_full.get('n_estimators', 100)
         best_max_depth_full = best_params_full.get('max_depth', 5)
-        best_max_features_full = best_params_full.get('max_features', 'sqrt')
-        best_min_samples_split_full = best_params_full.get('min_samples_split', 2)
-        best_min_samples_leaf_full = best_params_full.get('min_samples_leaf', 1)
-        best_max_leaf_nodes_full = best_params_full.get('max_leaf_nodes', None)
-        best_min_impurity_decrease_full = best_params_full.get('min_impurity_decrease', 0.0)
+        best_learning_rate_full = best_params_full.get('learning_rate', 0.05)
+        best_min_split_gain_full = best_params_full.get('min_split_gain', 0.0)
+        best_min_child_samples_full = best_params_full.get('min_child_samples', 20)
+        best_num_leaves_full = best_params_full.get('num_leaves', 31)
+        best_lambda_l1_full = best_params_full.get('lambda_l1', 0.0)
+        best_lambda_l2_full = best_params_full.get('lambda_l2', 0.0)
+        best_feature_fraction_full = best_params_full.get('feature_fraction', 1.0)
+        best_bagging_fraction_full = best_params_full.get('bagging_fraction', 1.0)
+        best_bagging_freq_full = best_params_full.get('bagging_freq', 1)
 
-        steps.append(('rf', RandomForestClassifier(
+        steps.append(('lgbm', LGBMClassifier(
             n_estimators=best_n_estimators_full,
             max_depth=best_max_depth_full,
-            max_features=best_max_features_full,
-            min_samples_split=best_min_samples_split_full,
-            min_samples_leaf=best_min_samples_leaf_full,
-            max_leaf_nodes=best_max_leaf_nodes_full,
-            min_impurity_decrease=best_min_impurity_decrease_full,
-            random_state=1234
+            learning_rate=best_learning_rate_full,
+            min_split_gain=best_min_split_gain_full,
+            min_child_samples=best_min_child_samples_full,
+            num_leaves=best_num_leaves_full,
+            lambda_l1=best_lambda_l1_full,
+            lambda_l2=best_lambda_l2_full,
+            feature_fraction=best_feature_fraction_full,
+            bagging_fraction=best_bagging_fraction_full,
+            bagging_freq=best_bagging_freq_full,
+            random_state=1234,
+            verbose=-1
         )))
 
         if tsne_selected:
             # For t-SNE, the data has already been transformed outside the pipeline
-            # Thus, we only add RF
+            # Thus, we only add LightGBM
             best_model = Pipeline([
-                ('rf', RandomForestClassifier(
+                ('lgbm', LGBMClassifier(
                     n_estimators=best_n_estimators_full,
                     max_depth=best_max_depth_full,
-                    max_features=best_max_features_full,
-                    min_samples_split=best_min_samples_split_full,
-                    min_samples_leaf=best_min_samples_leaf_full,
-                    max_leaf_nodes=best_max_leaf_nodes_full,
-                    min_impurity_decrease=best_min_impurity_decrease_full,
-                    random_state=1234
+                    learning_rate=best_learning_rate_full,
+                    min_split_gain=best_min_split_gain_full,
+                    min_child_samples=best_min_child_samples_full,
+                    num_leaves=best_num_leaves_full,
+                    lambda_l1=best_lambda_l1_full,
+                    lambda_l2=best_lambda_l2_full,
+                    feature_fraction=best_feature_fraction_full,
+                    bagging_fraction=best_bagging_fraction_full,
+                    bagging_freq=best_bagging_freq_full,
+                    random_state=1234,
+                    verbose=-1
                 ))
             ])
         else:
@@ -913,17 +979,17 @@ def random_forest_nested_cv(inp, prefix, feature_selection_method):
 
         # Save the best model and data
         if tsne_selected:
-            joblib.dump(best_model, f"{prefix}_random_forest_model.pkl")
-            joblib.dump((X_transformed_final, y_encoded, le), f"{prefix}_random_forest_data.pkl")
+            joblib.dump(best_model, f"{prefix}_lightgbm_model.pkl")
+            joblib.dump((X_transformed_final, y_encoded, le), f"{prefix}_lightgbm_data.pkl")
         else:
-            joblib.dump(best_model, f"{prefix}_random_forest_model.pkl")
-            joblib.dump((X, y_encoded, le), f"{prefix}_random_forest_data.pkl")
+            joblib.dump(best_model, f"{prefix}_lightgbm_model.pkl")
+            joblib.dump((X, y_encoded, le), f"{prefix}_lightgbm_data.pkl")
 
         # Output the best parameters
         if tsne_selected:
-            print(f"Best parameters for Random Forest with t-SNE: {best_params_full_tsne}")
+            print(f"Best parameters for LightGBM with t-SNE: {best_params_full_tsne}")
         else:
-            print(f"Best parameters for Random Forest: {best_params_full}")
+            print(f"Best parameters for LightGBM: {best_params_full}")
 
         # If feature selection is used and not t-SNE, save the transformed data and variance information
         if feature_selection_method != 'none' and not tsne_selected:
@@ -949,11 +1015,11 @@ def random_forest_nested_cv(inp, prefix, feature_selection_method):
 
                 X_transformed_df.insert(0, 'SampleID', sample_ids)
                 X_transformed_df['Label'] = y
-                transformed_csv_path = f"{prefix}_random_forest_transformed_X.csv"
+                transformed_csv_path = f"{prefix}_lightgbm_transformed_X.csv"
                 X_transformed_df.to_csv(transformed_csv_path, index=False)
                 print(f"Transformed data saved to {transformed_csv_path}")
 
-                variance_csv_path = f"{prefix}_random_forest_variance.csv"
+                variance_csv_path = f"{prefix}_lightgbm_variance.csv"
                 if feature_selection_method == 'pca':
                     # Fit a full PCA to get all components' variance
                     full_pca = PCA(n_components=X.shape[1], random_state=1234)
@@ -1041,8 +1107,8 @@ def random_forest_nested_cv(inp, prefix, feature_selection_method):
             # Confusion matrix
             disp = ConfusionMatrixDisplay(confusion_matrix=cm, display_labels=le.classes_)
             disp.plot(cmap=plt.cm.Blues)
-            plt.title('Confusion Matrix for Random Forest')
-            plt.savefig(f"{prefix}_random_forest_confusion_matrix.png", dpi=300)
+            plt.title('Confusion Matrix for LightGBM')
+            plt.savefig(f"{prefix}_lightgbm_confusion_matrix.png", dpi=300)
             plt.close()
 
             # ROC and AUC
@@ -1053,7 +1119,7 @@ def random_forest_nested_cv(inp, prefix, feature_selection_method):
             # Different handling for binary and multi-class cases
             if num_classes == 2:
                 try:
-                    fpr_dict[0], tpr_dict[0], _ = roc_curve(y_binarized[:, 0], y_pred_prob[:, 0])
+                    fpr_dict[0], tpr_dict[0], _ = roc_curve(y_binarized[:, 0], y_pred_prob[:, 1])
                     roc_auc_dict[0] = auc(fpr_dict[0], tpr_dict[0])
                 except ValueError:
                     roc_auc_dict[0] = 0.0
@@ -1078,7 +1144,7 @@ def random_forest_nested_cv(inp, prefix, feature_selection_method):
                 'tpr': tpr_dict,
                 'roc_auc': roc_auc_dict
             }
-            np.save(f"{prefix}_random_forest_roc_data.npy", roc_data)
+            np.save(f"{prefix}_lightgbm_roc_data.npy", roc_data)
 
             # Plot and save ROC curve
             plt.figure(figsize=(10, 8))
@@ -1097,23 +1163,23 @@ def random_forest_nested_cv(inp, prefix, feature_selection_method):
             plt.ylim([0.0, 1.05])
             plt.xlabel('False Positive Rate')
             plt.ylabel('True Positive Rate')
-            plt.title('ROC Curves for Random Forest')
+            plt.title('ROC Curves for LightGBM')
             plt.legend(loc="lower right")
-            plt.savefig(f'{prefix}_random_forest_roc_curve.png', dpi=300)
+            plt.savefig(f'{prefix}_lightgbm_roc_curve.png', dpi=300)
             plt.close()
 
             # Output performance metrics as a bar chart
             metrics = {'Accuracy': acc, 'F1 Score': f1, 'Sensitivity': sensitivity, 'Specificity': specificity}
             metrics_df = pd.DataFrame(list(metrics.items()), columns=['Metric', 'Value'])
             ax = metrics_df.plot(kind='bar', x='Metric', y='Value', legend=False)
-            plt.title('Performance Metrics for Random Forest')
+            plt.title('Performance Metrics for LightGBM')
             plt.ylabel('Value')
             plt.ylim(0, 1)
             for container in ax.containers:
                 ax.bar_label(container, fmt='%.2f')
             plt.xticks(rotation=45, ha='right')
             plt.tight_layout()
-            plt.savefig(f'{prefix}_random_forest_metrics.png', dpi=300)
+            plt.savefig(f'{prefix}_lightgbm_metrics.png', dpi=300)
             plt.close()
 
             # Create a DataFrame for predictions
@@ -1124,12 +1190,20 @@ def random_forest_nested_cv(inp, prefix, feature_selection_method):
             })
 
             # Save predictions to CSV
-            predictions_df.to_csv(f"{prefix}_random_forest_predictions.csv", index=False)
+            predictions_df.to_csv(f"{prefix}_lightgbm_predictions.csv", index=False)
 
-            print(f"Predictions saved to {prefix}_random_forest_predictions.csv")
+            print(f"Predictions saved to {prefix}_lightgbm_predictions.csv")
+
+    if tsne_selected:
+        # For t-SNE, prediction and evaluation have been handled separately
+        pass
+    else:
+        # Handle non-t-SNE feature selection methods
+        # Prediction and Evaluation are already handled above
+        pass
 
 def main():
-    parser = argparse.ArgumentParser(description='Run Random Forest with Nested Cross-Validation, Feature Selection (ElasticNet, PCA, KPCA, UMAP, t-SNE, PLS), and Optuna hyperparameter optimization.')
+    parser = argparse.ArgumentParser(description='Run LightGBM with Nested Cross-Validation, Feature Selection (PCA, KPCA, UMAP, t-SNE, PLS, ElasticNet), and Optuna hyperparameter optimization.')
     parser.add_argument('-i', type=str, help='Input file in CSV format', required=True)
     parser.add_argument('-p', type=str, help='Prefix for output files', required=True)
     parser.add_argument('-f', type=str, choices=['none', 'elasticnet', 'pca', 'kpca', 'umap', 'tsne', 'pls'], default='none', help='Feature selection method to use. Options: none, elasticnet, pca, kpca, umap, tsne, pls.')
@@ -1140,8 +1214,8 @@ def main():
     if args.f == 'tsne':
         print("Warning: t-SNE does not support transforming new data. The entire dataset will be transformed before cross-validation, which may lead to data leakage.")
 
-    # Run the Random Forest nested cross-validation function
-    random_forest_nested_cv(args.i, args.p, args.f)
+    # Run the LightGBM nested cross-validation function
+    lightgbm_nested_cv(args.i, args.p, args.f)
 
 if __name__ == '__main__':
     main()

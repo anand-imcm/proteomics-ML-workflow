@@ -9,6 +9,7 @@ from sklearn.preprocessing import LabelEncoder, StandardScaler
 from sklearn.base import BaseEstimator, ClassifierMixin
 import shap
 import matplotlib.pyplot as plt
+import seaborn as sns
 import warnings
 import sys
 import contextlib
@@ -658,21 +659,40 @@ def vae(inp, prefix):
         'Score': [mean_accuracy, mean_f1, mean_auc, mean_sensitivity, mean_specificity]
     })
     print(metrics_df)
+    
+    sns.set(style="whitegrid")
+
+    plt.figure(figsize=(10, 6))
+    barplot = sns.barplot(x='Metric', y='Score', data=metrics_df)
+    
+    for p in barplot.patches:
+        height = p.get_height()
+        barplot.annotate(f'{height:.2f}',
+                         (p.get_x() + p.get_width() / 2., height),
+                         ha='center', va='bottom',
+                         fontsize=11, color='black', xytext=(0, 5),
+                         textcoords='offset points')
+    
+    plt.title('Average Evaluation Metrics for VAE')
+    plt.ylabel('Score')
+    plt.ylim(0, 1.05)  
+    plt.savefig(f"{prefix}_vae_metrics.png", dpi=300)
+    plt.close()
 
     # Plot evaluation metrics line chart
-    folds = np.arange(1, len(f1_scores_final) + 1)
-    plt.figure(figsize=(12, 8))
-    plt.plot(folds, f1_scores_final, marker='o', label='F1 Score')
-    plt.plot(folds, auc_scores_final, marker='s', label='AUC')
-    plt.title('F1 Score and AUC Across Folds for VAE')
-    plt.xlabel('Fold Number')
-    plt.ylabel('Score')
-    plt.xticks(folds)
-    plt.ylim(0, 1.05)
-    plt.legend()
-    plt.grid(True)
-    plt.savefig(f"{prefix}_vae_f1_auc_across_folds.png", dpi=300)
-    plt.close()
+    # folds = np.arange(1, len(f1_scores_final) + 1)
+    # plt.figure(figsize=(12, 8))
+    # plt.plot(folds, f1_scores_final, marker='o', label='F1 Score')
+    # plt.plot(folds, auc_scores_final, marker='s', label='AUC')
+    # plt.title('F1 Score and AUC Across Folds for VAE')
+    # plt.xlabel('Fold Number')
+    # plt.ylabel('Score')
+    # plt.xticks(folds)
+    # plt.ylim(0, 1.05)
+    # plt.legend()
+    # plt.grid(True)
+    # plt.savefig(f"{prefix}_vae_nested_cv_f1_auc.png", dpi=300)
+    # plt.close()
 
     # Plot overall ROC curves
     plt.figure(figsize=(10, 8))
@@ -780,7 +800,7 @@ def vae(inp, prefix):
     plt.ylim(0, 1.05)
     plt.legend()
     plt.grid(True)
-    plt.savefig(f"{prefix}_vae_f1_auc_across_folds.png", dpi=300)
+    plt.savefig(f"{prefix}_vae_nested_cv_f1_auc.png", dpi=300)
     plt.close()
 
     # Plot overall ROC curves

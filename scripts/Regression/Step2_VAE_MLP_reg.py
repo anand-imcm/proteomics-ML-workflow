@@ -9,6 +9,7 @@ from sklearn.preprocessing import StandardScaler
 from sklearn.base import BaseEstimator, RegressorMixin
 import shap
 import matplotlib.pyplot as plt
+import seaborn as sns
 import warnings
 import sys
 import contextlib
@@ -19,11 +20,13 @@ import optuna
 import joblib
 from joblib import Parallel, delayed
 
+
 def parse_arguments():
     parser = argparse.ArgumentParser(description='Script to run regressors')
     parser.add_argument('-i', '--csv', type=str, help='Input CSV file', required=True)
     parser.add_argument('-p', '--prefix', type=str, help='Output prefix')
     return parser.parse_args()
+
 
 # Set random seed for reproducibility
 def set_seed(seed=42):
@@ -35,11 +38,13 @@ def set_seed(seed=42):
     torch.backends.cudnn.deterministic = True
     torch.backends.cudnn.benchmark = False
 
+
 # Call set_seed function
 set_seed()
 
 # Suppress all warnings
 warnings.filterwarnings('ignore')
+
 
 # Suppress output
 class SuppressOutput(contextlib.AbstractContextManager):
@@ -48,11 +53,13 @@ class SuppressOutput(contextlib.AbstractContextManager):
         self._stderr = sys.stderr
         sys.stdout = open('/dev/null', 'w')
         sys.stderr = open('/dev/null', 'w')
+
     def __exit__(self, exc_type, exc_value, traceback):
         sys.stdout.close()
         sys.stderr.close()
         sys.stdout = self._stdout
         sys.stderr = self._stderr
+
 
 # Early Stopping Class
 class EarlyStopping:
@@ -63,7 +70,7 @@ class EarlyStopping:
         self.best_loss = None
         self.counter = 0
         self.early_stop = False
-    
+
     def __call__(self, current_loss):
         if self.best_loss is None:
             self.best_loss = current_loss
@@ -73,13 +80,14 @@ class EarlyStopping:
             self.counter = 0
             return False
         else:
-            self.counter +=1
+            self.counter += 1
             if self.verbose:
                 print(f'EarlyStopping counter: {self.counter} out of {self.patience}')
             if self.counter >= self.patience:
                 self.early_stop = True
                 return True
             return False
+
 
 # Custom Conditional Normalization Layer
 class ConditionalNorm(nn.Module):
@@ -89,9 +97,10 @@ class ConditionalNorm(nn.Module):
             self.norm = nn.BatchNorm1d(units)
         else:
             self.norm = nn.LayerNorm(units)
-    
+
     def forward(self, x):
         return self.norm(x)
+
 
 # Define the Encoder network for VAE
 class Encoder(nn.Module):
@@ -115,6 +124,7 @@ class Encoder(nn.Module):
         z_log_var = self.z_log_var(h)
         return z_mean, z_log_var
 
+
 # Define the Decoder network for VAE
 class Decoder(nn.Module):
     def __init__(self, latent_dim, output_dim, decoder_layers, dropout_rate, use_batchnorm):
@@ -133,6 +143,7 @@ class Decoder(nn.Module):
     def forward(self, z):
         return self.decoder(z)
 
+
 # Define the VAE model combining Encoder and Decoder
 class VAE(nn.Module):
     def __init__(self, input_dim, latent_dim, encoder_layers, decoder_layers, dropout_rate, use_batchnorm):
@@ -149,6 +160,7 @@ class VAE(nn.Module):
         z = z_mean + eps * std
         x_recon = self.decoder(z)
         return x_recon, z_mean, z_log_var
+
 
 # Define the MLP regressor
 class MLPRegressor(nn.Module):
@@ -167,6 +179,7 @@ class MLPRegressor(nn.Module):
 
     def forward(self, x):
         return self.network(x)
+
 
 # Define the VAE_MLP regressor combining VAE and MLPRegressor
 class VAE_MLP(BaseEstimator, RegressorMixin):
@@ -220,12 +233,12 @@ class VAE_MLP(BaseEstimator, RegressorMixin):
         dataloader_train_vae = torch.utils.data.DataLoader(dataset_train_vae, batch_size=self.batch_size, shuffle=True, drop_last=True)
         dataset_val_vae = torch.utils.data.TensorDataset(X_val_vae_tensor)
         dataloader_val_vae = torch.utils.data.DataLoader(dataset_val_vae, batch_size=self.batch_size, shuffle=False, drop_last=True)
-        
+
         # Initialize Early Stopping for VAE
         early_stopping_vae = EarlyStopping(patience=self.early_stopping_patience,
                                            min_delta=self.early_stopping_min_delta,
                                            verbose=False)
-        
+
         # Train VAE with Early Stopping
         self.vae.train()
         for epoch in range(self.epochs):
@@ -257,7 +270,7 @@ class VAE_MLP(BaseEstimator, RegressorMixin):
                     print(f"Early stopping VAE at epoch {epoch+1}")
                 break
             self.vae.train()
-        
+
         # Obtain the reconstructed data from the entire training set
         self.vae.eval()
         with torch.no_grad():
@@ -270,7 +283,7 @@ class VAE_MLP(BaseEstimator, RegressorMixin):
                 x_recon, _, _ = self.vae(x_batch)
                 X_encoded.append(x_recon.cpu())
             X_encoded = torch.cat(X_encoded, dim=0).numpy()
-        
+
         # Split training data into training and validation for MLP
         X_train_mlp, X_val_mlp, y_train_mlp, y_val_mlp = train_test_split(X_encoded, y, test_size=0.2, random_state=42)
         X_train_mlp_tensor = torch.from_numpy(X_train_mlp).float().to(self.device)
@@ -281,12 +294,12 @@ class VAE_MLP(BaseEstimator, RegressorMixin):
         dataloader_train_mlp = torch.utils.data.DataLoader(dataset_train_mlp, batch_size=self.batch_size, shuffle=True, drop_last=True)
         dataset_val_mlp = torch.utils.data.TensorDataset(X_val_mlp_tensor, y_val_mlp_tensor)
         dataloader_val_mlp = torch.utils.data.DataLoader(dataset_val_mlp, batch_size=self.batch_size, shuffle=False, drop_last=True)
-        
+
         # Initialize Early Stopping for MLP
         early_stopping_mlp = EarlyStopping(patience=self.early_stopping_patience,
                                            min_delta=self.early_stopping_min_delta,
                                            verbose=False)
-        
+
         # Train MLP with Early Stopping
         self.mlp_model.train()
         criterion = nn.MSELoss()
@@ -342,6 +355,7 @@ class VAE_MLP(BaseEstimator, RegressorMixin):
                 y_pred.append(outputs.cpu())
             y_pred = torch.cat(y_pred, dim=0).numpy()
         return y_pred
+
 
 def vae(inp, prefix):
     # Load and preprocess data
@@ -525,7 +539,7 @@ def vae(inp, prefix):
         'MAE': maes,
         'R2': r2s
     })
-    metrics_df.to_csv(f"{prefix}_metrics_over_folds.csv", index=False)
+    metrics_df.to_csv(f"{prefix}_vae_reg_metrics_over_folds.csv", index=False)
     print(metrics_df)
 
     # Plot line charts showing the metrics over the folds
@@ -538,7 +552,20 @@ def vae(inp, prefix):
     plt.ylabel('Metric Score')
     plt.title('Metrics over Folds')
     plt.legend()
-    plt.savefig(f"{prefix}_vae_metrics_over_folds.png", dpi=300)
+    plt.savefig(f"{prefix}_vae_reg_metrics_over_folds.png", dpi=300)
+    plt.close()
+
+    # Plot average metrics as bar chart
+    plt.figure(figsize=(8, 6))
+    average_metrics = [mean_mse, mean_rmse, mean_mae, mean_r2]
+    metrics_labels = ['MSE', 'RMSE', 'MAE', 'R2']
+    plt.bar(metrics_labels, average_metrics)
+    plt.xlabel('Metrics')
+    plt.ylabel('Average Score')
+    plt.title('Average Metrics over 5 Folds')
+    for i, v in enumerate(average_metrics):
+        plt.text(i, v + 0.01 * v, f"{v:.4f}", ha='center', va='bottom')
+    plt.savefig(f"{prefix}_vae_reg_average_metrics.png", dpi=300)
     plt.close()
 
     # After cross-validation, train the final model on the entire dataset with best hyperparameters
@@ -573,7 +600,7 @@ def vae(inp, prefix):
         'Actual Value': y,
         'Predicted Value': y_pred_final
     })
-    results_df.to_csv(f"{prefix}_vae_predictions.csv", index=False)
+    results_df.to_csv(f"{prefix}_vae_reg_predictions.csv", index=False)
 
     # Plot Actual vs Predicted
     plt.figure(figsize=(10, 6))
@@ -582,24 +609,23 @@ def vae(inp, prefix):
     plt.xlabel('Actual Values')
     plt.ylabel('Predicted Values')
     plt.title('Actual vs Predicted')
-    plt.savefig(f"{prefix}_vae_predictions.png", dpi=300)
+    plt.savefig(f"{prefix}_vae_reg_predictions.png", dpi=300)
     plt.close()
 
     # Plot Residuals
     residuals = np.array(y_tests) - np.array(y_preds)
     plt.figure(figsize=(10, 6))
-    plt.scatter(y_preds, residuals, alpha=0.5)
-    plt.hlines(y=0, xmin=min(y_preds), xmax=max(y_preds), linestyles='dashed')
-    plt.xlabel('Predicted Values')
-    plt.ylabel('Residuals')
-    plt.title('Residual Plot')
-    plt.savefig(f"{prefix}_vae_residuals.png", dpi=300)
+    sns.histplot(residuals, bins=30, kde=True, edgecolor='black', alpha=0.7)
+    plt.xlabel('Residuals')
+    plt.ylabel('Frequency')
+    plt.title('Residuals Histogram')
+    plt.savefig(f"{prefix}_vae_reg_residuals.png", dpi=300)
     plt.close()
 
     # Save the final model and scaler
-    joblib.dump(final_model, f"{prefix}_vae_model.pkl")
-    joblib.dump(scaler_final, f"{prefix}_vae_scaler.pkl")
-    joblib.dump((X, y), f"{prefix}_vae_data.pkl")
+    joblib.dump(final_model, f"{prefix}_vae_reg_model.pkl")
+    joblib.dump(scaler_final, f"{prefix}_vae_reg_scaler.pkl")
+    joblib.dump((X, y), f"{prefix}_vae_reg_data.pkl")
 
     # Calculate SHAP feature importance using SHAP Explainer
     try:
@@ -620,17 +646,18 @@ def vae(inp, prefix):
             'Feature': feature_names,
             'Mean SHAP Value': mean_shap_values
         })
-        shap_df.to_csv(f"{prefix}_vae_shap_values.csv", index=False)
-        print(f"SHAP values have been saved to {prefix}_vae_shap_values.csv")
+        shap_df.to_csv(f"{prefix}_vae_reg_shap_values.csv", index=False)
+        print(f"SHAP values have been saved to {prefix}_vae_reg_shap_values.csv")
 
         # Plot SHAP summary plot
         shap.summary_plot(shap_values, scaler_final.transform(X), feature_names=feature_names, show=False)
-        plt.savefig(f"{prefix}_vae_shap_summary.png", dpi=300)
+        plt.savefig(f"{prefix}_vae_reg_shap_summary.png", dpi=300)
         plt.close()
 
     except Exception as e:
         print(f"SHAP computation failed: {e}")
         print("Proceeding without SHAP analysis.")
+
 
 if __name__ == "__main__":
     args = parse_arguments()
