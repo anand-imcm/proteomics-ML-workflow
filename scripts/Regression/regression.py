@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # regression.py
 # This script allows parallel execution of three separate scripts:
-#   1) Step2_Regression_workflow.py (supports feature selection)
+#   1) Step2_Regression_workflow.py (supports multiple models with feature selection)
 #   2) Step2_VAE_MLP_reg.py (no feature selection parameter)
 #   3) Step2_MLP_in_VAE_reg.py (no feature selection parameter)
 #
@@ -23,6 +23,8 @@ import argparse
 import subprocess
 import sys
 from joblib import Parallel, delayed
+import os
+from PIL import Image
 
 def parse_arguments():
     parser = argparse.ArgumentParser(
@@ -30,21 +32,21 @@ def parse_arguments():
     )
 
     parser.add_argument(
-        "-i", "--csv", 
-        type=str, 
-        required=True, 
+        "-i", "--csv",
+        type=str,
+        required=True,
         help="Input CSV file with at least columns: SampleID, Label, and features."
     )
     parser.add_argument(
-        "-p", "--prefix", 
-        type=str, 
-        required=True, 
+        "-p", "--prefix",
+        type=str,
+        required=True,
         help="Output prefix for results."
     )
     parser.add_argument(
-        "-m", "--models", 
-        type=str, 
-        nargs="+", 
+        "-m", "--models",
+        type=str,
+        nargs="+",
         required=True,
         help=(
             "List of model shortcuts to run in parallel. Possible values: "
@@ -53,8 +55,8 @@ def parse_arguments():
         )
     )
     parser.add_argument(
-        "-f", "--feature_selection", 
-        type=str, 
+        "-f", "--feature_selection",
+        type=str,
         default="none",
         choices=["none", "elasticnet", "pca", "kpca", "umap", "pls", "tsne"],
         help="Feature selection method to use (ignored by VAE_reg and MLPVAE_reg)."
@@ -99,38 +101,46 @@ def main():
             print(f"Error: Invalid model '{m}'.")
             sys.exit(1)
 
+    # Separate models based on the script they should be handled by
+    workflow_models = [workflow_model_map[m] for m in args.models if m in workflow_model_map]
+    vae_mlp_models = [vae_mlp_model_map[m] for m in args.models if m in vae_mlp_model_map]
+    mlp_in_vae_models = [mlp_in_vae_model_map[m] for m in args.models if m in mlp_in_vae_model_map]
+
     # Prepare parallel jobs
     jobs = []
-    for m in args.models:
-        if m in workflow_model_map:
-            # Step2_Regression_workflow.py call
-            cmd = [
-                "python", "Step2_Regression_workflow.py",
-                "-i", args.csv,
-                "-p", args.prefix,
-                "-m", workflow_model_map[m],
-                "-f", args.feature_selection
-            ]
-            job_str = " ".join(cmd)
-            jobs.append(job_str)
-        elif m in vae_mlp_model_map:
-            # Step2_VAE_MLP_reg.py call
-            cmd = [
-                "python", "Step2_VAE_MLP_reg.py",
-                "-i", args.csv,
-                "-p", args.prefix
-            ]
-            job_str = " ".join(cmd)
-            jobs.append(job_str)
-        elif m in mlp_in_vae_model_map:
-            # Step2_MLP_in_VAE_reg.py call
-            cmd = [
-                "python", "Step2_MLP_in_VAE_reg.py",
-                "-i", args.csv,
-                "-p", args.prefix
-            ]
-            job_str = " ".join(cmd)
-            jobs.append(job_str)
+
+    if workflow_models:
+        # Step2_Regression_workflow.py call with all workflow_models
+        cmd = [
+            "python", "Step2_Regression_workflow.py",
+            "-i", args.csv,
+            "-p", args.prefix,
+            "-m"
+        ] + workflow_models
+        if args.feature_selection != "none":
+            cmd += ["-f", args.feature_selection]
+        job_str = " ".join(cmd)
+        jobs.append(job_str)
+
+    for model in vae_mlp_models:
+        # Step2_VAE_MLP_reg.py call
+        cmd = [
+            "python", "Step2_VAE_MLP_reg.py",
+            "-i", args.csv,
+            "-p", args.prefix
+        ]
+        job_str = " ".join(cmd)
+        jobs.append(job_str)
+
+    for model in mlp_in_vae_models:
+        # Step2_MLP_in_VAE_reg.py call
+        cmd = [
+            "python", "Step2_MLP_in_VAE_reg.py",
+            "-i", args.csv,
+            "-p", args.prefix
+        ]
+        job_str = " ".join(cmd)
+        jobs.append(job_str)
 
     # Run in parallel
     if not jobs:
@@ -143,12 +153,54 @@ def main():
 
     # Use joblib's Parallel to run them
     # Each job is run via subprocess.run with shell=True
-    Parallel(n_jobs=-1)(
-        delayed(subprocess.run)(job, shell=True, check=True) for job in jobs
-    )
+    try:
+        Parallel(n_jobs=-1)(
+            delayed(subprocess.run)(job, shell=True, check=True) for job in jobs
+        )
+    except subprocess.CalledProcessError as e:
+        print(f"An error occurred while running jobs: {e}")
+        sys.exit(1)
 
     print("All jobs finished successfully.")
 
+    # Attempt to combine _models_summary_bar_chart.png, _vaemlp_reg_average_metrics.png and _vae_reg_average_metrics.png into one image
+    try:
+        image_names = [
+            f"{args.prefix}_models_summary_bar_chart.png",
+            f"{args.prefix}_vaemlp_reg_average_metrics.png",
+            f"{args.prefix}_vae_reg_average_metrics.png",
+        ]
+
+        # Verify that all images exist
+        missing_images = [img for img in image_names if not os.path.exists(img)]
+        if missing_images:
+            print(f"Warning: The following images were not found and will not be included in the combined summary: {', '.join(missing_images)}")
+        
+        # Proceed only with existing images
+        existing_images = [img for img in image_names if os.path.exists(img)]
+        if not existing_images:
+            print("No images available to combine.")
+            sys.exit(0)
+
+        images = [Image.open(img) for img in existing_images]
+
+        # Determine the size for the combined image (side by side)
+        widths, heights = zip(*(img.size for img in images))
+        total_width = sum(widths)
+        max_height = max(heights)
+
+        combined_img = Image.new("RGB", (total_width, max_height), color=(255, 255, 255))
+        x_offset = 0
+        for im in images:
+            combined_img.paste(im, (x_offset, 0))
+            x_offset += im.size[0]
+
+        combined_output = f"{args.prefix}_combined_summary.png"
+        combined_img.save(combined_output)
+        print(f"Combined summary image saved as {combined_output}")
+
+    except Exception as e:
+        print(f"Error combining images: {e}")
+
 if __name__ == "__main__":
     main()
-
