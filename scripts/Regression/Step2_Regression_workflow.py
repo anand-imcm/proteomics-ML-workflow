@@ -766,6 +766,28 @@ def main_regression():
 
     args = parser.parse_args()
 
+    # -------------------------------------------------------
+    # Below is the key addition to allow shorthand model names
+    # -------------------------------------------------------
+    model_aliases = {
+        "NN_reg": "Neural_Network_reg",
+        "RF_reg": "Random_Forest_reg",
+        "SVM_reg": "SVM_reg",
+        "XGB_reg": "XGBoost_reg",
+        "PLS_reg": "PLS_reg",
+        "KNN_reg": "KNN_reg",
+        "LightGBM_reg": "LightGBM_reg"
+    }
+
+    # Convert any shorthand models in args.models to full names if applicable
+    parsed_models = []
+    for m in args.models:
+        if m in model_aliases:
+            parsed_models.append(model_aliases[m])
+        else:
+            parsed_models.append(m)
+    # -------------------------------------------------------
+
     data = pd.read_csv(args.csv).dropna()
     if 'SampleID' not in data.columns or 'Label' not in data.columns:
         raise ValueError("Input data must have 'SampleID' and 'Label' columns.")
@@ -789,7 +811,8 @@ def main_regression():
         'KNN_reg',
         'LightGBM_reg'
     ]
-    selected_models = [m for m in args.models if m in regressors_available]
+    # Use parsed_models instead of args.models
+    selected_models = [m for m in parsed_models if m in regressors_available]
     if not selected_models:
         print("No valid models selected. Exiting.")
         sys.exit(1)
