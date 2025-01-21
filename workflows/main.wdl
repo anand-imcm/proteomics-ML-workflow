@@ -10,7 +10,7 @@ workflow main {
         String mode = "Classification" # choices: Classification, Regression, Summary
         Boolean calculate_shap = false
     }
-    String pipeline_version = "1.0.1"
+    String pipeline_version = "1.0.2"
     String container_gen = "ghcr.io/anand-imcm/proteomics-ml-workflow-gen:~{pipeline_version}"
     Array[File] default_arr = []
     call run_plan {
@@ -143,8 +143,7 @@ task run_plan {
                     run_mode = "regression"
                     if any(dim_options):
                         dim_opt.write("true")
-                        for dim in dim_options:
-                            dim_plan.write(dim + "\n")
+                        dim_plan.write(dim_options[0])
                     else:
                         dim_opt.write("false")
                     gen_opt.write("false")
