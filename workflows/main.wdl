@@ -334,7 +334,7 @@ task ml_vae {
     command <<<
         set -euo pipefail
         echo "running ML task with ~{model}" > ~{model}.txt
-        python /scripts/classification.py \
+        python /scripts/Classification/classification.py \
             -i ~{input_csv} \
             -p ~{output_prefix} \
             -m ~{model}
