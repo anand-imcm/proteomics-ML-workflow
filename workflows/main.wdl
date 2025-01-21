@@ -4,7 +4,7 @@ workflow main {
     input {
         File input_csv
         String output_prefix
-        String dimensionality_reduction_choices = "PCA"
+        String? dimensionality_reduction_choices # t-SNE PCA
         String model_choices = "RF"
         String regression_choices = "NNR"
         String mode = "Classification" # choices: Classification, Regression, Summary
