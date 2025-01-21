@@ -4,11 +4,12 @@ from pathlib import Path
 import pandas as pd
 import numpy as np
 from sklearn.model_selection import StratifiedKFold, train_test_split
-from sklearn.metrics import accuracy_score, f1_score, roc_curve, auc, confusion_matrix, ConfusionMatrixDisplay
-from sklearn.preprocessing import LabelEncoder
+from sklearn.metrics import accuracy_score, f1_score, roc_curve, auc, confusion_matrix, ConfusionMatrixDisplay, roc_auc_score
+from sklearn.preprocessing import LabelEncoder, StandardScaler
 from sklearn.base import BaseEstimator, ClassifierMixin
 import shap
 import matplotlib.pyplot as plt
+import seaborn as sns
 import warnings
 import sys
 import contextlib
@@ -215,7 +216,7 @@ class VAE_MLP(BaseEstimator, ClassifierMixin):
         self.create_mlp_model(use_batchnorm)
 
         # Split training data into training and validation for VAE
-        X_train_vae, X_val_vae = train_test_split(X, test_size=0.2, random_state=42)
+        X_train_vae, X_val_vae, _, _ = train_test_split(X, y, test_size=0.2, random_state=42)
         X_train_vae_tensor = torch.from_numpy(X_train_vae).float().to(self.device)
         X_val_vae_tensor = torch.from_numpy(X_val_vae).float().to(self.device)
         dataset_train_vae = torch.utils.data.TensorDataset(X_train_vae_tensor)
@@ -394,121 +395,141 @@ def vae(inp, prefix):
     # One-hot encode labels
     y_binarized = pd.get_dummies(y).values
 
-    # Define Optuna's objective function
-    def objective(trial):
-        # Suggest hyperparameters
-        latent_dim = trial.suggest_int('latent_dim', 2, 512, log=True)
-        dropout_rate = trial.suggest_float('dropout_rate', 0.1, 0.5, step=0.1)
-        early_stopping_patience = trial.suggest_int('early_stopping_patience', 5, 20)
-        early_stopping_min_delta = trial.suggest_float('early_stopping_min_delta', 0.0, 0.1, step=0.01)
-        # Suggest number of encoder layers and units
-        num_encoder_layers = trial.suggest_int('num_encoder_layers', 1, 5)
-        encoder_layers = []
-        for i in range(num_encoder_layers):
-            units = trial.suggest_int(f'encoder_units_l{i}', 16, 512, log=True)
-            encoder_layers.append(units)
+    # Define outer cross-validation
+    outer_skf = StratifiedKFold(n_splits=5, shuffle=True, random_state=42)
 
-        # Suggest number of decoder layers and units
-        num_decoder_layers = trial.suggest_int('num_decoder_layers', 1, 5)
-        decoder_layers = []
-        for i in range(num_decoder_layers):
-            units = trial.suggest_int(f'decoder_units_l{i}', 16, 512, log=True)
-            decoder_layers.append(units)
-
-        # Suggest number of MLP layers and units
-        num_mlp_layers = trial.suggest_int('num_mlp_layers', 1, 5)
-        mlp_layers = []
-        for i in range(num_mlp_layers):
-            units = trial.suggest_int(f'mlp_units_l{i}', 16, 512, log=True)
-            mlp_layers.append(units)
-
-        # Suggest learning rates, epochs, and batch size
-        vae_learning_rate = trial.suggest_float('vae_learning_rate', 1e-5, 0.05, log=True)
-        mlp_learning_rate = trial.suggest_float('mlp_learning_rate', 1e-5, 0.05, log=True)
-        epochs = trial.suggest_int('epochs', 10, 200)
-        batch_size = trial.suggest_int('batch_size', 2, 256, log=True)  # Minimum batch_size=2 to avoid batch_size=1
-
-        # Perform 5-fold cross-validation
-        skf = StratifiedKFold(n_splits=5, shuffle=True, random_state=42)
-        accuracies = []
-        f1_scores = []
-
-        # Define a function to train and evaluate on a fold
-        def train_evaluate_fold(train_index, val_index):
-            X_train, X_val = X[train_index], X[val_index]
-            y_train, y_val = y[train_index], y[val_index]
-            # Create a new model instance for each fold
-            fold_model = VAE_MLP(
-                input_dim=X.shape[1],
-                num_classes=num_classes,
-                latent_dim=latent_dim,
-                encoder_layers=encoder_layers,
-                decoder_layers=decoder_layers,
-                mlp_layers=mlp_layers,
-                dropout_rate=dropout_rate,
-                early_stopping_patience=early_stopping_patience,
-                early_stopping_min_delta=early_stopping_min_delta,
-                vae_learning_rate=vae_learning_rate,
-                mlp_learning_rate=mlp_learning_rate,
-                epochs=epochs,
-                batch_size=batch_size
-            )
-            fold_model.fit(X_train, y_train)
-            y_pred = fold_model.predict(X_val)
-            accuracy = accuracy_score(y_val, y_pred)
-            f1 = f1_score(y_val, y_pred, average='macro' if num_classes > 2 else 'binary')
-            return accuracy, f1
-
-        # Parallelize the fold training and evaluation
-        results = Parallel(n_jobs=-1)(
-            delayed(train_evaluate_fold)(train_idx, val_idx) for train_idx, val_idx in skf.split(X, y)
-        )
-
-        for accuracy, f1 in results:
-            accuracies.append(accuracy)
-            f1_scores.append(f1)
-
-        # Return the mean accuracy as the objective to maximize
-        return np.mean(accuracies)
-
-    # Use Optuna for hyperparameter optimization with fixed random seed
-    study = optuna.create_study(direction='maximize', sampler=optuna.samplers.TPESampler(seed=42))
-    with SuppressOutput():
-        study.optimize(objective, n_trials=20)
-
-    best_params = study.best_params
-    # Extract hyperparameters from best_params
-    latent_dim = best_params['latent_dim']
-    dropout_rate = best_params['dropout_rate']
-    early_stopping_patience = best_params['early_stopping_patience']
-    early_stopping_min_delta = best_params['early_stopping_min_delta']
-    encoder_layers = [best_params[f'encoder_units_l{i}'] for i in range(best_params['num_encoder_layers'])]
-    decoder_layers = [best_params[f'decoder_units_l{i}'] for i in range(best_params['num_decoder_layers'])]
-    mlp_layers = [best_params[f'mlp_units_l{i}'] for i in range(best_params['num_mlp_layers'])]
-    vae_learning_rate = best_params['vae_learning_rate']
-    mlp_learning_rate = best_params['mlp_learning_rate']
-    epochs = best_params['epochs']
-    batch_size = best_params['batch_size']
-
-    # Print best hyperparameters
-    print("Best hyperparameters found by Optuna:")
-    for key, value in best_params.items():
-        print(f"{key}: {value}")
-
-    # Perform final 5-fold cross-validation with best hyperparameters
-    skf_final = StratifiedKFold(n_splits=5, shuffle=True, random_state=42)
+    # Initialize lists to store metrics
     accuracies_final = []
     f1_scores_final = []
+    auc_scores_final = []
     sensitivities_final = []
     specificities_final = []
     cm_total_final = np.zeros((num_classes, num_classes), dtype=int)
 
-    # Define a function to evaluate a fold
-    def evaluate_fold(train_index, test_index):
-        X_train, X_test = X[train_index], X[test_index]
-        y_train, y_test = y[train_index], y[test_index]
-        # Create a new model instance for each fold
-        fold_model = VAE_MLP(
+    # Initialize lists to store ROC data
+    all_y_test = []
+    all_y_pred_proba = []
+
+    # Initialize StandardScaler for final model
+    scaler_final = StandardScaler()
+
+    # Iterate over each outer fold
+    fold_number = 1
+    for train_index, test_index in outer_skf.split(X, y):
+        print(f"Starting outer fold {fold_number}...")
+        X_train_outer, X_test_outer = X[train_index], X[test_index]
+        y_train_outer, y_test_outer = y[train_index], y[test_index]
+
+        # Standardize the data within the outer fold
+        scaler_outer = StandardScaler()
+        X_train_outer_scaled = scaler_outer.fit_transform(X_train_outer)
+        X_test_outer_scaled = scaler_outer.transform(X_test_outer)
+
+        # Define Optuna's objective function for inner CV
+        def objective(trial):
+            # Suggest hyperparameters
+            latent_dim = trial.suggest_int('latent_dim', 2, 512, log=True)
+            dropout_rate = trial.suggest_float('dropout_rate', 0.1, 0.5, step=0.1)
+            early_stopping_patience = trial.suggest_int('early_stopping_patience', 5, 20)
+            early_stopping_min_delta = trial.suggest_float('early_stopping_min_delta', 0.0, 0.1, step=0.01)
+            # Suggest number of encoder layers and units
+            num_encoder_layers = trial.suggest_int('num_encoder_layers', 1, 5)
+            encoder_layers = []
+            for i in range(num_encoder_layers):
+                units = trial.suggest_int(f'encoder_units_l{i}', 16, 512, log=True)
+                encoder_layers.append(units)
+
+            # Suggest number of decoder layers and units
+            num_decoder_layers = trial.suggest_int('num_decoder_layers', 1, 5)
+            decoder_layers = []
+            for i in range(num_decoder_layers):
+                units = trial.suggest_int(f'decoder_units_l{i}', 16, 512, log=True)
+                decoder_layers.append(units)
+
+            # Suggest number of MLP layers and units
+            num_mlp_layers = trial.suggest_int('num_mlp_layers', 1, 5)
+            mlp_layers = []
+            for i in range(num_mlp_layers):
+                units = trial.suggest_int(f'mlp_units_l{i}', 16, 512, log=True)
+                mlp_layers.append(units)
+
+            # Suggest learning rates, epochs, and batch size
+            vae_learning_rate = trial.suggest_float('vae_learning_rate', 1e-5, 0.05, log=True)
+            mlp_learning_rate = trial.suggest_float('mlp_learning_rate', 1e-5, 0.05, log=True)
+            epochs = trial.suggest_int('epochs', 10, 200)
+            batch_size = trial.suggest_int('batch_size', 2, 256, log=True)  # Minimum batch_size=2 to avoid batch_size=1
+
+            # Perform inner cross-validation
+            inner_skf = StratifiedKFold(n_splits=5, shuffle=True, random_state=42)
+            accuracies = []
+
+            # Define a function to train and evaluate on a fold
+            def train_evaluate_inner_fold(train_idx_inner, val_idx_inner):
+                X_train_inner, X_val_inner = X_train_outer_scaled[train_idx_inner], X_train_outer_scaled[val_idx_inner]
+                y_train_inner, y_val_inner = y_train_outer[train_idx_inner], y_train_outer[val_idx_inner]
+                
+                # Standardize the data within the inner fold
+                scaler_inner = StandardScaler()
+                X_train_inner_scaled = scaler_inner.fit_transform(X_train_inner)
+                X_val_inner_scaled = scaler_inner.transform(X_val_inner)
+                
+                # Create a new model instance for each fold
+                fold_model = VAE_MLP(
+                    input_dim=X.shape[1],
+                    num_classes=num_classes,
+                    latent_dim=latent_dim,
+                    encoder_layers=encoder_layers,
+                    decoder_layers=decoder_layers,
+                    mlp_layers=mlp_layers,
+                    dropout_rate=dropout_rate,
+                    early_stopping_patience=early_stopping_patience,
+                    early_stopping_min_delta=early_stopping_min_delta,
+                    vae_learning_rate=vae_learning_rate,
+                    mlp_learning_rate=mlp_learning_rate,
+                    epochs=epochs,
+                    batch_size=batch_size
+                )
+                fold_model.fit(X_train_inner_scaled, y_train_inner)
+                y_pred = fold_model.predict(X_val_inner_scaled)
+                accuracy = accuracy_score(y_val_inner, y_pred)
+                return accuracy
+
+            # Parallelize the fold training and evaluation
+            results = Parallel(n_jobs=-1)(
+                delayed(train_evaluate_inner_fold)(train_idx, val_idx) for train_idx, val_idx in inner_skf.split(X_train_outer_scaled, y_train_outer)
+            )
+
+            for accuracy in results:
+                accuracies.append(accuracy)
+
+            # Return the mean accuracy as the objective to maximize
+            return np.mean(accuracies)
+
+        # Use Optuna for hyperparameter optimization with fixed random seed
+        study = optuna.create_study(direction='maximize', sampler=optuna.samplers.TPESampler(seed=42))
+        with SuppressOutput():
+            study.optimize(objective, n_trials=20)
+
+        best_params = study.best_params
+        # Extract hyperparameters from best_params
+        latent_dim = best_params['latent_dim']
+        dropout_rate = best_params['dropout_rate']
+        early_stopping_patience = best_params['early_stopping_patience']
+        early_stopping_min_delta = best_params['early_stopping_min_delta']
+        encoder_layers = [best_params[f'encoder_units_l{i}'] for i in range(best_params['num_encoder_layers'])]
+        decoder_layers = [best_params[f'decoder_units_l{i}'] for i in range(best_params['num_decoder_layers'])]
+        mlp_layers = [best_params[f'mlp_units_l{i}'] for i in range(best_params['num_mlp_layers'])]
+        vae_learning_rate = best_params['vae_learning_rate']
+        mlp_learning_rate = best_params['mlp_learning_rate']
+        epochs = best_params['epochs']
+        batch_size = best_params['batch_size']
+
+        print(f"Best hyperparameters for outer fold {fold_number}:")
+        for key, value in best_params.items():
+            print(f"{key}: {value}")
+
+        # Train the model on the outer training set with the best hyperparameters
+        outer_model = VAE_MLP(
             input_dim=X.shape[1],
             num_classes=num_classes,
             latent_dim=latent_dim,
@@ -523,25 +544,26 @@ def vae(inp, prefix):
             epochs=epochs,
             batch_size=batch_size
         )
-        fold_model.fit(X_train, y_train)
-        y_pred = fold_model.predict(X_test)
-        y_pred_proba = fold_model.predict_proba(X_test)
+        outer_model.fit(X_train_outer_scaled, y_train_outer)
+        y_pred_outer = outer_model.predict(X_test_outer_scaled)
+        y_pred_proba_outer = outer_model.predict_proba(X_test_outer_scaled)
 
-        accuracy = accuracy_score(y_test, y_pred)
-        f1 = f1_score(y_test, y_pred, average='macro' if num_classes > 2 else 'binary')
-        cm = confusion_matrix(y_test, y_pred, labels=np.arange(num_classes))
+        # Calculate metrics
+        accuracy = accuracy_score(y_test_outer, y_pred_outer)
+        f1 = f1_score(y_test_outer, y_pred_outer, average='macro' if num_classes > 2 else 'binary')
+        
+        if num_classes == 2:
+            auc_score = roc_auc_score(y_test_outer, y_pred_proba_outer[:, 1])
+        else:
+            auc_score = roc_auc_score(y_test_outer, y_pred_proba_outer, multi_class='ovr')
 
-        return accuracy, f1, cm, y_pred_proba
+        cm = confusion_matrix(y_test_outer, y_pred_outer, labels=np.arange(num_classes))
 
-    # Parallelize the fold evaluation
-    results_final = Parallel(n_jobs=-1)(
-        delayed(evaluate_fold)(train_idx, test_idx) for train_idx, test_idx in skf_final.split(X, y)
-    )
-
-    for accuracy, f1, cm, y_pred_proba in results_final:
         accuracies_final.append(accuracy)
         f1_scores_final.append(f1)
-        cm_total_final += cm  # Ensure consistent shape
+        auc_scores_final.append(auc_score)
+        cm_total_final += cm
+
         if num_classes == 2:
             if cm.size == 4:
                 tn, fp, fn, tp = cm.ravel()
@@ -566,19 +588,135 @@ def vae(inp, prefix):
             sensitivities_final.append(np.mean(sensitivities_per_class))
             specificities_final.append(np.mean(specificities_per_class))
 
+        # Store ROC data
+        all_y_test.extend(y_test_outer)
+        all_y_pred_proba.append(y_pred_proba_outer)
+
+        print(f"Completed outer fold {fold_number}")
+        fold_number +=1
+
     # Average confusion matrix
     disp = ConfusionMatrixDisplay(confusion_matrix=cm_total_final, display_labels=le.classes_)
     fig, ax = plt.subplots(figsize=(8, 6))
     disp.plot(ax=ax, cmap=plt.cm.Blues, values_format='d')  # Set values_format='d' to avoid scientific notation
     plt.title('Confusion Matrix for VAE')
-    plt.savefig(f"{prefix}_vae_confusion_matrix.png",dpi=300)
+    plt.savefig(f"{prefix}_vae_confusion_matrix.png", dpi=300)
     plt.close()
 
-    # Predict and calculate ROC data
-    # For SHAP, we'll need to train a final model on the entire dataset
-    # Hence, we'll train a final model on the entire dataset
+    # Aggregate ROC data
+    all_y_test = np.array(all_y_test)
+    all_y_pred_proba = np.vstack(all_y_pred_proba)
 
-    # Create a final model trained on the entire dataset
+    fpr = {}
+    tpr = {}
+    roc_auc = {}
+    if num_classes == 2:
+        # Binary classification
+        fpr[0], tpr[0], _ = roc_curve(all_y_test, all_y_pred_proba[:, 1])
+        roc_auc[0] = auc(fpr[0], tpr[0])
+    else:
+        # Multi-class classification
+        for i in range(y_binarized.shape[1]):
+            fpr[i], tpr[i], _ = roc_curve(y_binarized[:, i], all_y_pred_proba[:, i])
+            roc_auc[i] = auc(fpr[i], tpr[i])
+
+        fpr["micro"], tpr["micro"], _ = roc_curve(y_binarized.ravel(), all_y_pred_proba.ravel())
+        roc_auc["micro"] = auc(fpr["micro"], tpr["micro"])
+
+    roc_data = {
+        'fpr': fpr,
+        'tpr': tpr,
+        'roc_auc': roc_auc
+    }
+    np.save(f"{prefix}_vae_roc_data.npy", roc_data)
+
+    # Create DataFrame with SampleID, original labels, and predicted labels
+    # Since predictions are across folds, collect them
+    # To align SampleIDs with predictions, sort indices
+    sorted_indices = np.argsort(np.concatenate([test_index for _, test_index in outer_skf.split(X, y)]))
+    sorted_sample_ids = sample_ids.iloc[sorted_indices].values
+    sorted_y_test = all_y_test[sorted_indices]
+    sorted_y_pred_proba = all_y_pred_proba[sorted_indices]
+    sorted_y_pred = sorted_y_pred_proba.argmax(axis=1)
+    sorted_y_pred_labels = le.inverse_transform(sorted_y_pred)
+
+    results_df = pd.DataFrame({
+        'SampleID': sorted_sample_ids,
+        'Original Label': le.inverse_transform(sorted_y_test),
+        'Predicted Label': sorted_y_pred_labels
+    })
+    results_df.to_csv(f"{prefix}_vae_predictions.csv", index=False)
+
+    # Calculate average evaluation metrics
+    mean_accuracy = np.mean(accuracies_final)
+    mean_f1 = np.mean(f1_scores_final)
+    mean_auc = np.mean(auc_scores_final)
+    mean_sensitivity = np.mean(sensitivities_final)
+    mean_specificity = np.mean(specificities_final)
+
+    metrics_df = pd.DataFrame({
+        'Metric': ['Accuracy', 'F1 Score', 'AUC', 'Sensitivity', 'Specificity'],
+        'Score': [mean_accuracy, mean_f1, mean_auc, mean_sensitivity, mean_specificity]
+    })
+    print(metrics_df)
+    
+    sns.set(style="whitegrid")
+
+    plt.figure(figsize=(10, 6))
+    barplot = sns.barplot(x='Metric', y='Score', data=metrics_df)
+    
+    for p in barplot.patches:
+        height = p.get_height()
+        barplot.annotate(f'{height:.2f}',
+                         (p.get_x() + p.get_width() / 2., height),
+                         ha='center', va='bottom',
+                         fontsize=11, color='black', xytext=(0, 5),
+                         textcoords='offset points')
+    
+    plt.title('Average Evaluation Metrics for VAE')
+    plt.ylabel('Score')
+    plt.ylim(0, 1.05)  
+    plt.savefig(f"{prefix}_vae_metrics.png", dpi=300)
+    plt.close()
+
+    # Plot evaluation metrics line chart
+    # folds = np.arange(1, len(f1_scores_final) + 1)
+    # plt.figure(figsize=(12, 8))
+    # plt.plot(folds, f1_scores_final, marker='o', label='F1 Score')
+    # plt.plot(folds, auc_scores_final, marker='s', label='AUC')
+    # plt.title('F1 Score and AUC Across Folds for VAE')
+    # plt.xlabel('Fold Number')
+    # plt.ylabel('Score')
+    # plt.xticks(folds)
+    # plt.ylim(0, 1.05)
+    # plt.legend()
+    # plt.grid(True)
+    # plt.savefig(f"{prefix}_vae_nested_cv_f1_auc.png", dpi=300)
+    # plt.close()
+
+    # Plot overall ROC curves
+    plt.figure(figsize=(10, 8))
+    if num_classes == 2:
+        plt.plot(fpr[0], tpr[0], label=f'ROC curve (AUC = {roc_auc[0]:.2f})')
+    else:
+        for i in range(y_binarized.shape[1]):
+            plt.plot(fpr[i], tpr[i], label=f'Class {le.inverse_transform([i])[0]} (AUC = {roc_auc[i]:.2f})')
+        plt.plot(fpr["micro"], tpr["micro"], label=f'Overall (AUC = {roc_auc["micro"]:.2f})', linestyle='--')
+    plt.plot([0, 1], [0, 1], 'k--')
+    plt.xlim([0.0, 1.0])
+    plt.ylim([0.0, 1.05])
+    plt.xlabel('False Positive Rate')
+    plt.ylabel('True Positive Rate')
+    plt.title('ROC Curves for VAE')
+    plt.legend(loc="lower right")
+    plt.savefig(f"{prefix}_vae_roc_curve.png", dpi=300)
+    plt.close()
+
+    # Train final model on the entire dataset with the best hyperparameters from the last outer fold
+    # Fit scaler_final on the entire dataset
+    scaler_final = StandardScaler()
+    X_scaled_final = scaler_final.fit_transform(X)
+
     final_model = VAE_MLP(
         input_dim=X.shape[1],
         num_classes=num_classes,
@@ -594,85 +732,85 @@ def vae(inp, prefix):
         epochs=epochs,
         batch_size=batch_size
     )
-    final_model.fit(X, y)
+    final_model.fit(X_scaled_final, y)
 
     # Predict probabilities using the final model
-    y_pred_prob_final = final_model.predict_proba(X)
+    y_pred_prob_final = final_model.predict_proba(X_scaled_final)
 
     # Compute ROC curves and AUC
-    fpr = {}
-    tpr = {}
-    roc_auc = {}
+    fpr_final = {}
+    tpr_final = {}
+    roc_auc_final = {}
     if num_classes == 2:
         # Binary classification
-        fpr[0], tpr[0], _ = roc_curve(y_binarized[:,1], y_pred_prob_final[:, 1])
-        roc_auc[0] = auc(fpr[0], tpr[0])
+        fpr_final[0], tpr_final[0], _ = roc_curve(y_binarized[:,1], y_pred_prob_final[:, 1])
+        roc_auc_final[0] = auc(fpr_final[0], tpr_final[0])
     else:
         # Multi-class classification
         for i in range(y_binarized.shape[1]):
-            fpr[i], tpr[i], _ = roc_curve(y_binarized[:, i], y_pred_prob_final[:, i])
-            roc_auc[i] = auc(fpr[i], tpr[i])
+            fpr_final[i], tpr_final[i], _ = roc_curve(y_binarized[:, i], y_pred_prob_final[:, i])
+            roc_auc_final[i] = auc(fpr_final[i], tpr_final[i])
 
-        fpr["micro"], tpr["micro"], _ = roc_curve(y_binarized.ravel(), y_pred_prob_final.ravel())
-        roc_auc["micro"] = auc(fpr["micro"], tpr["micro"])
+        fpr_final["micro"], tpr_final["micro"], _ = roc_curve(y_binarized.ravel(), y_pred_prob_final.ravel())
+        roc_auc_final["micro"] = auc(fpr_final["micro"], tpr_final["micro"])
 
-    roc_data = {
-        'fpr': fpr,
-        'tpr': tpr,
-        'roc_auc': roc_auc
+    roc_data_final = {
+        'fpr': fpr_final,
+        'tpr': tpr_final,
+        'roc_auc': roc_auc_final
     }
-    np.save(f"{prefix}_vae_roc_data.npy", roc_data)
+    np.save(f"{prefix}_vae_roc_data.npy", roc_data_final)
 
-    # Save the final model and data
+    # Save the final model, scaler, and data
     joblib.dump(final_model, f"{prefix}_vae_model.pkl")
+    joblib.dump(scaler_final, f"{prefix}_vae_scaler.pkl")
     joblib.dump((X, y, le), f"{prefix}_vae_data.pkl")
 
     # Create DataFrame with SampleID, original labels, and predicted labels
-    y_pred_final = final_model.predict(X)
-    results_df = pd.DataFrame({
+    y_pred_final = final_model.predict(X_scaled_final)
+    results_final_df = pd.DataFrame({
         'SampleID': sample_ids,
-        'Original Label': data['Label'],
+        'Original Label': le.inverse_transform(y),
         'Predicted Label': le.inverse_transform(y_pred_final)
     })
-    results_df.to_csv(f"{prefix}_vae_predictions.csv", index=False)
+    results_final_df.to_csv(f"{prefix}_vae_predictions.csv", index=False)
 
-    # Calculate average evaluation metrics
-    mean_accuracy = np.mean(accuracies_final)
-    mean_f1 = np.mean(f1_scores_final)
-    mean_sensitivity = np.mean(sensitivities_final)
-    mean_specificity = np.mean(specificities_final)
+    # Calculate average evaluation metrics (already calculated above)
+    mean_accuracy_final = mean_accuracy
+    mean_f1_final = mean_f1
+    mean_auc_final = mean_auc
+    mean_sensitivity_final = mean_sensitivity
+    mean_specificity_final = mean_specificity
 
-    metrics_df = pd.DataFrame({
-        'Metric': ['Accuracy', 'F1 Score', 'Sensitivity', 'Specificity'],
-        'Score': [mean_accuracy, mean_f1, mean_sensitivity, mean_specificity]
+    metrics_final_df = pd.DataFrame({
+        'Metric': ['Accuracy', 'F1 Score', 'AUC', 'Sensitivity', 'Specificity'],
+        'Score': [mean_accuracy_final, mean_f1_final, mean_auc_final, mean_sensitivity_final, mean_specificity_final]
     })
-    print(metrics_df)
+    print(metrics_final_df)
 
-    # Plot evaluation metrics bar chart
-    metrics = ['Accuracy', 'F1 Score', 'Sensitivity', 'Specificity']
-    mean_scores = [mean_accuracy, mean_f1, mean_sensitivity, mean_specificity]
-
+    # Plot evaluation metrics line chart
+    folds = np.arange(1, len(f1_scores_final) + 1)
     plt.figure(figsize=(12, 8))
-    bars = plt.bar(metrics, mean_scores)
-
-    # Add value labels on top of bars
-    for bar, score in zip(bars, mean_scores):
-        yval = bar.get_height()
-        plt.text(bar.get_x() + bar.get_width() / 2, yval, round(score, 3), ha='center', va='bottom', fontsize=12)
-
-    plt.title('Evaluation Metrics for VAE')
+    plt.plot(folds, f1_scores_final, marker='o', label='F1 Score')
+    plt.plot(folds, auc_scores_final, marker='s', label='AUC')
+    plt.title('F1 Score and AUC Across Folds for VAE')
+    plt.xlabel('Fold Number')
     plt.ylabel('Score')
-    plt.savefig(f"{prefix}_vae_metrics.png",dpi=300)
+    plt.xticks(folds)
+    plt.ylim(0, 1.05)
+    plt.legend()
+    plt.grid(True)
+    plt.savefig(f"{prefix}_vae_nested_cv_f1_auc.png", dpi=300)
     plt.close()
 
-    # Plot ROC curves
+    # Plot overall ROC curves
     plt.figure(figsize=(10, 8))
     if num_classes == 2:
-        plt.plot(fpr[0], tpr[0], label=f'ROC curve (AUC = {roc_auc[0]:.2f})')
+        plt.plot(fpr_final[0], tpr_final[0], label=f'ROC curve (AUC = {roc_auc_final[0]:.2f})')
     else:
         for i in range(y_binarized.shape[1]):
-            plt.plot(fpr[i], tpr[i], label=f'Class {le.inverse_transform([i])[0]} (AUC = {roc_auc[i]:.2f})')
-        plt.plot(fpr["micro"], tpr["micro"], label=f'Overall (AUC = {roc_auc["micro"]:.2f})', linestyle='--')
+            plt.plot(fpr_final[i], tpr_final[i], label=f'Class {le.inverse_transform([i])[0]} (AUC = {roc_auc_final[i]:.2f})')
+        plt.plot(fpr_final["micro"], tpr_final["micro"], label=f'Overall (AUC = {roc_auc_final["micro"]:.2f})', linestyle='--')
     plt.plot([0, 1], [0, 1], 'k--')
     plt.xlim([0.0, 1.0])
     plt.ylim([0.0, 1.05])
@@ -680,7 +818,7 @@ def vae(inp, prefix):
     plt.ylabel('True Positive Rate')
     plt.title('ROC Curves for VAE')
     plt.legend(loc="lower right")
-    plt.savefig(f"{prefix}_vae_roc_curve.png",dpi=300)
+    plt.savefig(f"{prefix}_vae_roc_curve.png", dpi=300)
     plt.close()
 
     # Calculate SHAP feature importance using PermutationExplainer with parallelization
@@ -693,8 +831,8 @@ def vae(inp, prefix):
             background = X
 
         # Initialize PermutationExplainer with all available CPU cores
-        explainer = shap.PermutationExplainer(final_model.predict_proba, background, n_repeats=10, random_state=42, n_jobs=-1)
-        shap_values = explainer.shap_values(X)  # Shape: (classes, samples, features) or (samples, features) depending on SHAP version
+        explainer = shap.PermutationExplainer(final_model.predict_proba, scaler_final.transform(background), n_repeats=10, random_state=42, n_jobs=-1)
+        shap_values = explainer.shap_values(scaler_final.transform(X))  # Shape: (classes, samples, features) or (samples, features) depending on SHAP version
 
         # Ensure shap_values is in (samples, features, classes) format
         if isinstance(shap_values, list):

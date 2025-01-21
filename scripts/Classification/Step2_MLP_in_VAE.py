@@ -5,7 +5,7 @@ import pandas as pd
 import numpy as np
 from sklearn.model_selection import StratifiedKFold, train_test_split
 from sklearn.metrics import accuracy_score, f1_score, roc_curve, auc, confusion_matrix, ConfusionMatrixDisplay
-from sklearn.preprocessing import LabelEncoder
+from sklearn.preprocessing import LabelEncoder, StandardScaler
 from sklearn.base import BaseEstimator, ClassifierMixin
 import shap
 import matplotlib.pyplot as plt
@@ -325,8 +325,7 @@ class VAE_MLP(BaseEstimator, ClassifierMixin):
         self.vae.eval()
         self.mlp_model.eval()
         X_tensor = torch.from_numpy(X).float().to(self.device)
-        dataset = torch.utils.data.TensorDataset(X_tensor)
-        dataloader = torch.utils.data.DataLoader(dataset, batch_size=self.batch_size, shuffle=False, drop_last=False)
+        dataloader = torch.utils.data.DataLoader(torch.utils.data.TensorDataset(X_tensor), batch_size=self.batch_size, shuffle=False, drop_last=False)
         with torch.no_grad():
             X_encoded = []
             for data in dataloader:
@@ -335,8 +334,7 @@ class VAE_MLP(BaseEstimator, ClassifierMixin):
                 X_encoded.append(z_mean.cpu())
             X_encoded = torch.cat(X_encoded, dim=0).numpy()
             y_pred = []
-            dataset_mlp = torch.utils.data.TensorDataset(torch.from_numpy(X_encoded).float().to(self.device))
-            dataloader_mlp = torch.utils.data.DataLoader(dataset_mlp, batch_size=self.batch_size, shuffle=False, drop_last=False)
+            dataloader_mlp = torch.utils.data.DataLoader(torch.utils.data.TensorDataset(torch.from_numpy(X_encoded).float().to(self.device)), batch_size=self.batch_size, shuffle=False, drop_last=False)
             for data in dataloader_mlp:
                 x_batch = data[0].to(self.device)
                 logits = self.mlp_model(x_batch)
@@ -350,8 +348,7 @@ class VAE_MLP(BaseEstimator, ClassifierMixin):
         self.vae.eval()
         self.mlp_model.eval()
         X_tensor = torch.from_numpy(X).float().to(self.device)
-        dataset = torch.utils.data.TensorDataset(X_tensor)
-        dataloader = torch.utils.data.DataLoader(dataset, batch_size=self.batch_size, shuffle=False, drop_last=False)
+        dataloader = torch.utils.data.DataLoader(torch.utils.data.TensorDataset(X_tensor), batch_size=self.batch_size, shuffle=False, drop_last=False)
         with torch.no_grad():
             X_encoded = []
             for data in dataloader:
@@ -360,8 +357,7 @@ class VAE_MLP(BaseEstimator, ClassifierMixin):
                 X_encoded.append(z_mean.cpu())
             X_encoded = torch.cat(X_encoded, dim=0).numpy()
             y_proba = []
-            dataset_mlp = torch.utils.data.TensorDataset(torch.from_numpy(X_encoded).float().to(self.device))
-            dataloader_mlp = torch.utils.data.DataLoader(dataset_mlp, batch_size=self.batch_size, shuffle=False, drop_last=False)
+            dataloader_mlp = torch.utils.data.DataLoader(torch.utils.data.TensorDataset(torch.from_numpy(X_encoded).float().to(self.device)), batch_size=self.batch_size, shuffle=False, drop_last=False)
             for data in dataloader_mlp:
                 x_batch = data[0].to(self.device)
                 logits = self.mlp_model(x_batch)
@@ -386,145 +382,35 @@ def vae(inp, prefix):
     # One-hot encode labels
     y_binarized = pd.get_dummies(y).values
 
-    # Define Optuna's objective function
-    def objective(trial):
-        # Suggest hyperparameters
-        latent_dim = trial.suggest_int('latent_dim', 2, 512, log=True)
-        dropout_rate = trial.suggest_float('dropout_rate', 0.1, 0.5, step=0.1)
-        early_stopping_patience = trial.suggest_int('early_stopping_patience', 5, 20)
-        early_stopping_min_delta = trial.suggest_float('early_stopping_min_delta', 0.0, 0.1, step=0.01)
-        
-        # Suggest encoder layers
-        num_encoder_layers = trial.suggest_int('num_encoder_layers', 1, 5)
-        encoder_layers = []
-        for i in range(num_encoder_layers):
-            units = trial.suggest_int(f'encoder_units_l{i}', 16, 512, log=True)
-            encoder_layers.append(units)
-        
-        # Suggest decoder layers
-        num_decoder_layers = trial.suggest_int('num_decoder_layers', 1, 5)
-        decoder_layers = []
-        for i in range(num_decoder_layers):
-            units = trial.suggest_int(f'decoder_units_l{i}', 16, 512, log=True)
-            decoder_layers.append(units)
-        
-        # Suggest MLP layers
-        num_mlp_layers = trial.suggest_int('num_mlp_layers', 1, 5)
-        mlp_layers = []
-        for i in range(num_mlp_layers):
-            units = trial.suggest_int(f'mlp_units_l{i}', 16, 512, log=True)
-            mlp_layers.append(units)
-        
-        # Suggest learning rates, epochs, and batch size
-        vae_learning_rate = trial.suggest_float('vae_learning_rate', 1e-5, 0.05, log=True)
-        mlp_learning_rate = trial.suggest_float('mlp_learning_rate', 1e-5, 0.05, log=True)
-        epochs = trial.suggest_int('epochs', 10, 200)
-        batch_size = trial.suggest_int('batch_size', 2, 256, log=True)  # Set minimum batch_size=2 to avoid batch_size=1
-        
-        # Create the model
-        model = VAE_MLP(
-            input_dim=X.shape[1],
-            num_classes=num_classes,
-            latent_dim=latent_dim,
-            encoder_layers=encoder_layers,
-            decoder_layers=decoder_layers,
-            mlp_layers=mlp_layers,
-            dropout_rate=dropout_rate,
-            early_stopping_patience=early_stopping_patience,
-            early_stopping_min_delta=early_stopping_min_delta,
-            vae_learning_rate=vae_learning_rate,
-            mlp_learning_rate=mlp_learning_rate,
-            epochs=epochs,
-            batch_size=batch_size
-        )
-        
-        # Perform 5-fold cross-validation
-        skf = StratifiedKFold(n_splits=5, shuffle=True, random_state=42)
-        f1_scores = []
-
-        def evaluate_fold(train_idx, val_idx):
-            X_train, X_val = X[train_idx], X[val_idx]
-            y_train, y_val = y[train_idx], y[val_idx]
-            # Each fold uses a separate instance to prevent shared state issues
-            fold_model = VAE_MLP(
-                input_dim=model.input_dim,
-                num_classes=model.num_classes,
-                latent_dim=model.latent_dim,
-                encoder_layers=model.encoder_layers,
-                decoder_layers=model.decoder_layers,
-                mlp_layers=model.mlp_layers,
-                dropout_rate=model.dropout_rate,
-                early_stopping_patience=model.early_stopping_patience,
-                early_stopping_min_delta=model.early_stopping_min_delta,
-                vae_learning_rate=model.vae_learning_rate,
-                mlp_learning_rate=model.mlp_learning_rate,
-                epochs=model.epochs,
-                batch_size=model.batch_size
-            )
-            fold_model.fit(X_train, y_train)
-            y_pred = fold_model.predict(X_val)
-            if num_classes > 2:
-                f1 = f1_score(y_val, y_pred, average='macro')
-            else:
-                f1 = f1_score(y_val, y_pred, average='binary')
-            return f1
-
-        # Parallelize the evaluation of each fold
-        f1_scores = Parallel(n_jobs=-1)(
-            delayed(evaluate_fold)(train_idx, val_idx) for train_idx, val_idx in skf.split(X, y)
-        )
-
-        return np.mean(f1_scores)
-
-    # Use Optuna for hyperparameter optimization with parallelization
-    study = optuna.create_study(direction='maximize', sampler=optuna.samplers.TPESampler(seed=42))
-    with SuppressOutput():
-        study.optimize(objective, n_trials=20, n_jobs=-1)  # n_jobs=-1 uses all available cores
-
-    best_params = study.best_params
-    # Extract hyperparameters from best_params
-    latent_dim = best_params['latent_dim']
-    dropout_rate = best_params['dropout_rate']
-    early_stopping_patience = best_params['early_stopping_patience']
-    early_stopping_min_delta = best_params['early_stopping_min_delta']
-    encoder_layers = [best_params[f'encoder_units_l{i}'] for i in range(best_params['num_encoder_layers'])]
-    decoder_layers = [best_params[f'decoder_units_l{i}'] for i in range(best_params['num_decoder_layers'])]
-    mlp_layers = [best_params[f'mlp_units_l{i}'] for i in range(best_params['num_mlp_layers'])]
-    vae_learning_rate = best_params['vae_learning_rate']
-    mlp_learning_rate = best_params['mlp_learning_rate']
-    epochs = best_params['epochs']
-    batch_size = best_params['batch_size']
-
-    # Print best hyperparameters
-    print("Best hyperparameters found by Optuna:")
-    for key, value in best_params.items():
-        print(f"{key}: {value}")
-
-    # Define a function to create a new model instance with best hyperparameters
-    def create_best_model():
+    # Define a function to create a new model instance with given hyperparameters
+    def create_model_from_params(params):
         return VAE_MLP(
             input_dim=X.shape[1],
             num_classes=num_classes,
-            latent_dim=latent_dim,
-            encoder_layers=encoder_layers,
-            decoder_layers=decoder_layers,
-            mlp_layers=mlp_layers,
-            dropout_rate=dropout_rate,
-            early_stopping_patience=early_stopping_patience,
-            early_stopping_min_delta=early_stopping_min_delta,
-            vae_learning_rate=vae_learning_rate,
-            mlp_learning_rate=mlp_learning_rate,
-            epochs=epochs,
-            batch_size=batch_size
+            latent_dim=params['latent_dim'],
+            encoder_layers=[params[f'encoder_units_l{i}'] for i in range(params['num_encoder_layers'])],
+            decoder_layers=[params[f'decoder_units_l{i}'] for i in range(params['num_decoder_layers'])],
+            mlp_layers=[params[f'mlp_units_l{i}'] for i in range(params['num_mlp_layers'])],
+            dropout_rate=params['dropout_rate'],
+            early_stopping_patience=params['early_stopping_patience'],
+            early_stopping_min_delta=params['early_stopping_min_delta'],
+            vae_learning_rate=params['vae_learning_rate'],
+            mlp_learning_rate=params['mlp_learning_rate'],
+            epochs=params['epochs'],
+            batch_size=params['batch_size']
         )
 
-    # Perform 5-fold cross-validation with separate model instances
-    skf = StratifiedKFold(n_splits=5, shuffle=True, random_state=42)
-    accuracies = []
-    f1_scores_final = []
-    sensitivities = []
-    specificities = []
-    cm_total = np.zeros((num_classes, num_classes), dtype=float)  # Initialize as float to avoid casting issues
+    # Initialize outer cross-validation
+    outer_cv = StratifiedKFold(n_splits=5, shuffle=True, random_state=42)
+    outer_fold = 0
+
+    # Initialize metrics
+    outer_accuracies = []
+    outer_f1_scores = []
+    outer_aucs = []
+    outer_sensitivities = []
+    outer_specificities = []
+    outer_cm_total = np.zeros((num_classes, num_classes), dtype=float)
 
     # Lists to collect predictions and probabilities
     all_X = []
@@ -532,24 +418,179 @@ def vae(inp, prefix):
     all_y_pred = []
     all_y_pred_proba = []
 
-    def evaluate_fold_final(train_idx, test_idx, fold_num):
-        X_train, X_test = X[train_idx], X[test_idx]
-        y_train, y_test = y[train_idx], y[test_idx]
+    # Lists to collect per-fold F1 and AUC
+    per_fold_f1 = []
+    per_fold_auc = []
 
-        # Create a new model instance for each fold
-        fold_model = create_best_model()
-        fold_model.fit(X_train, y_train)
-        y_pred = fold_model.predict(X_test)
-        y_pred_proba = fold_model.predict_proba(X_test)
+    for train_idx, test_idx in outer_cv.split(X, y):
+        outer_fold +=1
+        print(f"Starting Outer Fold {outer_fold}")
+        X_train_outer, X_test_outer = X[train_idx], X[test_idx]
+        y_train_outer, y_test_outer = y[train_idx], y[test_idx]
+        y_binarized_outer_train = y_binarized[train_idx]
+        y_binarized_outer_test = y_binarized[test_idx]
+        sample_ids_test_outer = sample_ids[test_idx]
 
-        accuracy = accuracy_score(y_test, y_pred)
+        # Standardize the data within the outer fold
+        scaler_outer = StandardScaler()
+        X_train_outer_scaled = scaler_outer.fit_transform(X_train_outer)
+        X_test_outer_scaled = scaler_outer.transform(X_test_outer)
+
+        # Define inner cross-validation for hyperparameter tuning
+        inner_cv = StratifiedKFold(n_splits=5, shuffle=True, random_state=42)
+
+        # Define Optuna's objective function for the inner CV
+        def objective(trial):
+            # Suggest hyperparameters
+            latent_dim = trial.suggest_int('latent_dim', 2, 512, log=True)
+            dropout_rate = trial.suggest_float('dropout_rate', 0.1, 0.5, step=0.1)
+            early_stopping_patience = trial.suggest_int('early_stopping_patience', 5, 20)
+            early_stopping_min_delta = trial.suggest_float('early_stopping_min_delta', 0.0, 0.1, step=0.01)
+            
+            # Suggest encoder layers
+            num_encoder_layers = trial.suggest_int('num_encoder_layers', 1, 5)
+            encoder_layers = []
+            for i in range(num_encoder_layers):
+                units = trial.suggest_int(f'encoder_units_l{i}', 16, 512, log=True)
+                encoder_layers.append(units)
+            
+            # Suggest decoder layers
+            num_decoder_layers = trial.suggest_int('num_decoder_layers', 1, 5)
+            decoder_layers = []
+            for i in range(num_decoder_layers):
+                units = trial.suggest_int(f'decoder_units_l{i}', 16, 512, log=True)
+                decoder_layers.append(units)
+            
+            # Suggest MLP layers
+            num_mlp_layers = trial.suggest_int('num_mlp_layers', 1, 5)
+            mlp_layers = []
+            for i in range(num_mlp_layers):
+                units = trial.suggest_int(f'mlp_units_l{i}', 16, 512, log=True)
+                mlp_layers.append(units)
+            
+            # Suggest learning rates, epochs, and batch size
+            vae_learning_rate = trial.suggest_float('vae_learning_rate', 1e-5, 0.05, log=True)
+            mlp_learning_rate = trial.suggest_float('mlp_learning_rate', 1e-5, 0.05, log=True)
+            epochs = trial.suggest_int('epochs', 10, 200)
+            batch_size = trial.suggest_int('batch_size', 2, 256, log=True)  # Set minimum batch_size=2 to avoid batch_size=1
+            
+            # Collect all hyperparameters
+            params = {
+                'latent_dim': latent_dim,
+                'dropout_rate': dropout_rate,
+                'early_stopping_patience': early_stopping_patience,
+                'early_stopping_min_delta': early_stopping_min_delta,
+                'num_encoder_layers': num_encoder_layers,
+                'encoder_units_l0': encoder_layers[0] if num_encoder_layers >0 else 16,
+                'encoder_units_l1': encoder_layers[1] if num_encoder_layers >1 else 16,
+                'encoder_units_l2': encoder_layers[2] if num_encoder_layers >2 else 16,
+                'encoder_units_l3': encoder_layers[3] if num_encoder_layers >3 else 16,
+                'encoder_units_l4': encoder_layers[4] if num_encoder_layers >4 else 16,
+                'num_decoder_layers': num_decoder_layers,
+                'decoder_units_l0': decoder_layers[0] if num_decoder_layers >0 else 16,
+                'decoder_units_l1': decoder_layers[1] if num_decoder_layers >1 else 16,
+                'decoder_units_l2': decoder_layers[2] if num_decoder_layers >2 else 16,
+                'decoder_units_l3': decoder_layers[3] if num_decoder_layers >3 else 16,
+                'decoder_units_l4': decoder_layers[4] if num_decoder_layers >4 else 16,
+                'num_mlp_layers': num_mlp_layers,
+                'mlp_units_l0': mlp_layers[0] if num_mlp_layers >0 else 16,
+                'mlp_units_l1': mlp_layers[1] if num_mlp_layers >1 else 16,
+                'mlp_units_l2': mlp_layers[2] if num_mlp_layers >2 else 16,
+                'mlp_units_l3': mlp_layers[3] if num_mlp_layers >3 else 16,
+                'mlp_units_l4': mlp_layers[4] if num_mlp_layers >4 else 16,
+                'vae_learning_rate': vae_learning_rate,
+                'mlp_learning_rate': mlp_learning_rate,
+                'epochs': epochs,
+                'batch_size': batch_size
+            }
+
+            # Create the model
+            model = create_model_from_params(params)
+
+            # Perform inner cross-validation
+            inner_f1_scores = []
+
+            def evaluate_inner_fold(inner_train_idx, inner_val_idx):
+                X_inner_train, X_inner_val = X_train_outer_scaled[inner_train_idx], X_train_outer_scaled[inner_val_idx]
+                y_inner_train, y_inner_val = y_train_outer[inner_train_idx], y_train_outer[inner_val_idx]
+                
+                # Standardize within inner fold
+                scaler_inner = StandardScaler()
+                X_inner_train_scaled = scaler_inner.fit_transform(X_inner_train)
+                X_inner_val_scaled = scaler_inner.transform(X_inner_val)
+                
+                # Create a new model instance for each inner fold
+                inner_model = create_model_from_params(params)
+                inner_model.fit(X_inner_train_scaled, y_inner_train)
+                y_inner_pred = inner_model.predict(X_inner_val_scaled)
+                if num_classes > 2:
+                    f1 = f1_score(y_inner_val, y_inner_pred, average='macro')
+                else:
+                    f1 = f1_score(y_inner_val, y_inner_pred, average='binary')
+                return f1
+
+            # Parallelize the evaluation of each inner fold
+            inner_f1_scores = Parallel(n_jobs=-1)(
+                delayed(evaluate_inner_fold)(inner_train_idx, inner_val_idx) for inner_train_idx, inner_val_idx in inner_cv.split(X_train_outer_scaled, y_train_outer)
+            )
+
+            return np.mean(inner_f1_scores)
+
+        # Use Optuna for hyperparameter optimization with parallelization
+        study = optuna.create_study(direction='maximize', sampler=optuna.samplers.TPESampler(seed=42))
+        with SuppressOutput():
+            study.optimize(objective, n_trials=20, n_jobs=-1)  # n_jobs=-1 uses all available cores
+
+        best_params = study.best_params
+        # Extract hyperparameters from best_params
+        latent_dim = best_params['latent_dim']
+        dropout_rate = best_params['dropout_rate']
+        early_stopping_patience = best_params['early_stopping_patience']
+        early_stopping_min_delta = best_params['early_stopping_min_delta']
+        encoder_layers = [best_params[f'encoder_units_l{i}'] for i in range(best_params['num_encoder_layers'])]
+        decoder_layers = [best_params[f'decoder_units_l{i}'] for i in range(best_params['num_decoder_layers'])]
+        mlp_layers = [best_params[f'mlp_units_l{i}'] for i in range(best_params['num_mlp_layers'])]
+        vae_learning_rate = best_params['vae_learning_rate']
+        mlp_learning_rate = best_params['mlp_learning_rate']
+        epochs = best_params['epochs']
+        batch_size = best_params['batch_size']
+
+        # Print best hyperparameters for the current outer fold
+        print(f"Best hyperparameters for Outer Fold {outer_fold} found by Optuna:")
+        for key, value in best_params.items():
+            print(f"{key}: {value}")
+
+        # Create and train the model with best hyperparameters on the outer training set
+        best_model = VAE_MLP(
+            input_dim=X.shape[1],
+            num_classes=num_classes,
+            latent_dim=latent_dim,
+            encoder_layers=encoder_layers,
+            decoder_layers=decoder_layers,
+            mlp_layers=mlp_layers,
+            dropout_rate=dropout_rate,
+            early_stopping_patience=early_stopping_patience,
+            early_stopping_min_delta=early_stopping_min_delta,
+            vae_learning_rate=vae_learning_rate,
+            mlp_learning_rate=mlp_learning_rate,
+            epochs=epochs,
+            batch_size=batch_size
+        )
+        best_model.fit(X_train_outer_scaled, y_train_outer)
+
+        # Predict on the outer test set
+        y_pred_outer = best_model.predict(X_test_outer_scaled)
+        y_pred_proba_outer = best_model.predict_proba(X_test_outer_scaled)
+
+        # Calculate metrics
+        accuracy = accuracy_score(y_test_outer, y_pred_outer)
         if num_classes > 2:
-            f1 = f1_score(y_test, y_pred, average='macro')
+            f1 = f1_score(y_test_outer, y_pred_outer, average='macro')
         else:
-            f1 = f1_score(y_test, y_pred, average='binary')
+            f1 = f1_score(y_test_outer, y_pred_outer, average='binary')
 
         # Compute confusion matrix
-        cm = confusion_matrix(y_test, y_pred, labels=np.arange(num_classes))
+        cm = confusion_matrix(y_test_outer, y_pred_outer, labels=np.arange(num_classes))
         # Ensure cm_sum shape consistency
         cm_sum = np.zeros((num_classes, num_classes), dtype=float)
         cm_sum[:cm.shape[0], :cm.shape[1]] = cm
@@ -577,48 +618,44 @@ def vae(inp, prefix):
             sensitivity = np.mean(sensitivities_per_class)
             specificity = np.mean(specificities_per_class)
 
+        # Calculate AUC
+        if num_classes == 2:
+            # Binary classification
+            if y_pred_proba_outer.shape[1] >= 2:
+                fpr_val, tpr_val, _ = roc_curve(y_test_outer, y_pred_proba_outer[:, 1])
+                auc_val = auc(fpr_val, tpr_val)
+            else:
+                auc_val = 0
+        else:
+            # Multiclass classification
+            auc_val = 0
+            for i in range(num_classes):
+                fpr_val, tpr_val, _ = roc_curve(y_binarized_outer_test[:, i], y_pred_proba_outer[:, i])
+                auc_val += auc(fpr_val, tpr_val)
+            auc_val /= num_classes  # Average AUC over classes
+
         # Collect metrics
-        metrics = {
-            'accuracy': accuracy,
-            'f1': f1,
-            'sensitivity': sensitivity,
-            'specificity': specificity,
-            'confusion_matrix': cm_sum
-        }
+        outer_accuracies.append(accuracy)
+        outer_f1_scores.append(f1)
+        outer_aucs.append(auc_val)
+        outer_sensitivities.append(sensitivity)
+        outer_specificities.append(specificity)
+        outer_cm_total += cm_sum
 
         # Collect predictions
-        predictions = {
-            'X_test': X_test,
-            'y_test': y_test,
-            'y_pred': y_pred,
-            'y_pred_proba': y_pred_proba
-        }
+        all_X.append(X_test_outer_scaled)
+        all_y_true.append(y_test_outer)
+        all_y_pred.append(y_pred_outer)
+        all_y_pred_proba.append(y_pred_proba_outer)
 
-        print(f"Fold {fold_num}: Accuracy={accuracy:.4f}, F1 Score={f1:.4f}, Sensitivity={sensitivity:.4f}, Specificity={specificity:.4f}")
+        # Collect per-fold F1 and AUC
+        per_fold_f1.append(f1)
+        per_fold_auc.append(auc_val)
 
-        return metrics, predictions
-
-    # Parallelize the evaluation of each fold
-    results = Parallel(n_jobs=-1)(
-        delayed(evaluate_fold_final)(train_idx, test_idx, fold_num)
-        for fold_num, (train_idx, test_idx) in enumerate(skf.split(X, y), 1)
-    )
-
-    # Aggregate results
-    for metrics, predictions in results:
-        accuracies.append(metrics['accuracy'])
-        f1_scores_final.append(metrics['f1'])
-        sensitivities.append(metrics['sensitivity'])
-        specificities.append(metrics['specificity'])
-        cm_total += metrics['confusion_matrix']
-        
-        all_X.append(predictions['X_test'])
-        all_y_true.append(predictions['y_test'])
-        all_y_pred.append(predictions['y_pred'])
-        all_y_pred_proba.append(predictions['y_pred_proba'])
+    # After all outer folds, aggregate results
 
     # Plot the average confusion matrix
-    disp = ConfusionMatrixDisplay(confusion_matrix=cm_total, display_labels=le.classes_)
+    disp = ConfusionMatrixDisplay(confusion_matrix=outer_cm_total, display_labels=le.classes_)
     disp.plot(cmap=plt.cm.Blues)
     # Manually set ScalarFormatter to avoid scientific notation
     ax = plt.gca()
@@ -626,7 +663,7 @@ def vae(inp, prefix):
     ax.yaxis.set_major_formatter(mticker.ScalarFormatter())  # Use ScalarFormatter for y-axis
     # Ensure tick labels are not in scientific notation
     ax.ticklabel_format(style='plain', axis='both')
-    plt.title('Confusion Matrix for VAE_MLP')
+    plt.title('Average Confusion Matrix for VAE_MLP (Nested CV)')
     plt.savefig(f"{prefix}_vaemlp_confusion_matrix.png", dpi=300)
     plt.close()
 
@@ -646,7 +683,7 @@ def vae(inp, prefix):
         # If this is not the case, additional handling is required
         # Create a list of test indices in the order they were evaluated
         test_indices = []
-        for _, (train_idx, test_idx) in enumerate(skf.split(X, y)):
+        for _, (train_idx, test_idx) in enumerate(outer_cv.split(X, y)):
             test_indices.extend(test_idx)
         test_indices = np.array(test_indices)
         sorted_order = np.argsort(test_indices)
@@ -668,11 +705,11 @@ def vae(inp, prefix):
     if num_classes == 2:
         # Binary classification
         if y_all_pred_proba.shape[1] >= 2:
-            fpr[0], tpr[0], _ = roc_curve(y_binarized[:,1], y_all_pred_proba[:, 1])
+            fpr[0], tpr[0], _ = roc_curve(y_all_true, y_all_pred_proba[:, 1])
             roc_auc[0] = auc(fpr[0], tpr[0])
     else:
         # Multiclass classification
-        for i in range(y_binarized.shape[1]):
+        for i in range(num_classes):
             if y_all_pred_proba.shape[1] > i:
                 fpr[i], tpr[i], _ = roc_curve(y_binarized[:, i], y_all_pred_proba[:, i])
                 roc_auc[i] = auc(fpr[i], tpr[i])
@@ -687,24 +724,27 @@ def vae(inp, prefix):
         'roc_auc': roc_auc
     }
     np.save(f"{prefix}_vaemlp_roc_data.npy", roc_data)
-    joblib.dump(study, f"{prefix}_vaemlp_study.pkl")  # Save Optuna study for future reference
-    joblib.dump((X, y, le), f"{prefix}_vaemlp_data.pkl", compress=True)
+    # Since Optuna studies were performed within each outer fold, saving all studies might be complex.
+    # Instead, you can save the best hyperparameters per outer fold if needed.
+    # joblib.dump(study, f"{prefix}_vaemlp_study.pkl")  # Optional: Save Optuna study for the last outer fold
+    # joblib.dump((X, y, le), f"{prefix}_vaemlp_data.pkl", compress=True)
 
     # Calculate average evaluation metrics
-    mean_accuracy = np.mean(accuracies) if accuracies else 0
-    mean_f1 = np.mean(f1_scores_final) if f1_scores_final else 0
-    mean_sensitivity = np.mean(sensitivities) if sensitivities else 0
-    mean_specificity = np.mean(specificities) if specificities else 0
+    mean_accuracy = np.mean(outer_accuracies) if outer_accuracies else 0
+    mean_f1 = np.mean(outer_f1_scores) if outer_f1_scores else 0
+    mean_auc = np.mean(outer_aucs) if outer_aucs else 0
+    mean_sensitivity = np.mean(outer_sensitivities) if outer_sensitivities else 0
+    mean_specificity = np.mean(outer_specificities) if outer_specificities else 0
 
     metrics_df = pd.DataFrame({
-        'Metric': ['Accuracy', 'F1 Score', 'Sensitivity', 'Specificity'],
-        'Score': [mean_accuracy, mean_f1, mean_sensitivity, mean_specificity]
+        'Metric': ['Accuracy', 'F1 Score', 'AUC', 'Sensitivity', 'Specificity'],
+        'Score': [mean_accuracy, mean_f1, mean_auc, mean_sensitivity, mean_specificity]
     })
     print(metrics_df)
 
     # Plot the evaluation metrics bar chart
-    metrics = ['Accuracy', 'F1 Score', 'Sensitivity', 'Specificity']
-    mean_scores = [mean_accuracy, mean_f1, mean_sensitivity, mean_specificity]
+    metrics = ['Accuracy', 'F1 Score', 'AUC', 'Sensitivity', 'Specificity']
+    mean_scores = [mean_accuracy, mean_f1, mean_auc, mean_sensitivity, mean_specificity]
 
     plt.figure(figsize=(12, 8))
     bars = plt.bar(metrics, mean_scores)
@@ -714,7 +754,7 @@ def vae(inp, prefix):
         yval = bar.get_height()
         plt.text(bar.get_x() + bar.get_width() / 2, yval, round(score, 3), ha='center', va='bottom', fontsize=12)
 
-    plt.title('Evaluation Metrics for VAE_MLP')
+    plt.title('Average Evaluation Metrics for VAE_MLP (Nested CV)')
     plt.ylabel('Score')
     plt.savefig(f"{prefix}_vaemlp_metrics.png", dpi=300)
     plt.close()
@@ -724,7 +764,7 @@ def vae(inp, prefix):
     if num_classes == 2 and 0 in roc_auc:
         plt.plot(fpr[0], tpr[0], label=f'ROC curve (AUC = {roc_auc[0]:.2f})')
     else:
-        for i in range(y_binarized.shape[1]):
+        for i in range(num_classes):
             if i in roc_auc:
                 plt.plot(fpr[i], tpr[i], label=f'Class {le.inverse_transform([i])[0]} (AUC = {roc_auc[i]:.2f})')
         if "micro" in roc_auc:
@@ -734,7 +774,7 @@ def vae(inp, prefix):
     plt.ylim([0.0, 1.05])
     plt.xlabel('False Positive Rate')
     plt.ylabel('True Positive Rate')
-    plt.title('ROC Curves for VAE_MLP')
+    plt.title('ROC Curves for VAE_MLP (Nested CV)')
     plt.legend(loc="lower right")
 
     # Ensure ScalarFormatter is used to avoid AttributeError
@@ -746,32 +786,76 @@ def vae(inp, prefix):
     plt.savefig(f"{prefix}_vaemlp_roc_curve.png", dpi=300)
     plt.close()
 
+    # Plot F1 and AUC scores per fold as line plots
+    folds = np.arange(1, outer_fold + 1)
+    
+    plt.figure(figsize=(10, 6))
+    plt.plot(folds, per_fold_f1, marker='o', linestyle='-', color='b', label='F1 Score')
+    plt.plot(folds, per_fold_auc, marker='s', linestyle='--', color='g', label='AUC Score')
+    plt.title('F1 and AUC Scores Across Outer Folds')
+    plt.xlabel('Fold Number')
+    plt.ylabel('Score')
+    plt.xticks(folds)
+    plt.ylim(0, 1)
+    
+    # Add value labels for F1 scores
+    for i, f1 in zip(folds, per_fold_f1):
+        plt.text(i, f1 + 0.01, f"{f1:.2f}", ha='center', va='bottom', fontsize=10, color='b')
+    
+    # Add value labels for AUC scores
+    for i, auc_val in zip(folds, per_fold_auc):
+        plt.text(i, auc_val - 0.05, f"{auc_val:.2f}", ha='center', va='top', fontsize=10, color='g')
+    
+    plt.legend()
+    plt.grid(True)
+    plt.savefig(f"{prefix}_vaemlp_nested_cv_f1_auc.png", dpi=300)
+    plt.close()
+
     # Calculate SHAP feature importance using PermutationExplainer with parallel processing
-    if num_classes > 2:
-        try:
-            # Set a reasonable background data size to speed up computation
-            background_size = 100
-            background_indices = np.random.choice(X.shape[0], min(background_size, X.shape[0]), replace=False)
-            background = X[background_indices]
+    try:
+        # Set a reasonable background data size to speed up computation
+        background_size = 100
+        if X_all.shape[0] < background_size:
+            background_size = X_all.shape[0]
+        background_indices = np.random.choice(X_all.shape[0], background_size, replace=False)
+        background = X_all[background_indices]
 
-            # Create and train a final model on the entire dataset for SHAP
-            final_model = create_best_model()
-            final_model.fit(X, y)
+        # Create and train a final model on the entire dataset for SHAP
+        final_model = VAE_MLP(
+            input_dim=X.shape[1],
+            num_classes=num_classes,
+            latent_dim=latent_dim,
+            encoder_layers=encoder_layers,
+            decoder_layers=decoder_layers,
+            mlp_layers=mlp_layers,
+            dropout_rate=dropout_rate,
+            early_stopping_patience=early_stopping_patience,
+            early_stopping_min_delta=early_stopping_min_delta,
+            vae_learning_rate=vae_learning_rate,
+            mlp_learning_rate=mlp_learning_rate,
+            epochs=epochs,
+            batch_size=batch_size
+        )
+        # Fit the scaler on the entire dataset
+        scaler_final = StandardScaler()
+        X_scaled_final = scaler_final.fit_transform(X)
+        final_model.fit(X_scaled_final, y)
 
-            # Define a prediction probability function based on original features
-            def model_predict_proba(X_input):
-                return final_model.predict_proba(X_input)
+        # Define a prediction probability function based on original features
+        def model_predict_proba(X_input):
+            return final_model.predict_proba(X_input)
 
-            # Initialize PermutationExplainer with n_jobs=-1 to use all available CPU cores
-            explainer = shap.PermutationExplainer(model_predict_proba, background, n_repeats=10, random_state=42, n_jobs=-1)
+        # Initialize PermutationExplainer with n_jobs=-1 to use all available CPU cores
+        explainer = shap.PermutationExplainer(model_predict_proba, background, n_repeats=10, random_state=42, n_jobs=-1)
 
-            # Calculate SHAP values
-            shap_values = explainer.shap_values(X)  # Shape: (classes, samples, features) or (samples, features, classes) depending on SHAP version
+        # Calculate SHAP values
+        shap_values = explainer.shap_values(X_all)  # Shape: (samples, features, classes) or (classes, samples, features)
 
-            # Ensure shap_values is in (samples, features, classes) format
-            if isinstance(shap_values, list):
-                shap_values = np.stack(shap_values, axis=-1)  # Convert list to numpy array
+        # Ensure shap_values is in (samples, features, classes) format
+        if isinstance(shap_values, list):
+            shap_values = np.stack(shap_values, axis=-1)  # Convert list to numpy array
 
+        if num_classes > 2:
             # Prepare all (class, feature) combinations
             class_feature_tuples = [(class_idx, feature_idx) for class_idx in range(num_classes) for feature_idx in range(len(feature_names))]
 
@@ -801,34 +885,7 @@ def vae(inp, prefix):
 
             print(f"SHAP values per class have been saved to {prefix}_vaemlp_shap_values.csv")
 
-        except Exception as e:
-            print(f"SHAP computation was skipped due to an error: {e}")
-            # Continue execution to ensure other results are still output
-    else:
-        try:
-            # Set a reasonable background data size to speed up computation
-            background_size = 100
-            background_indices = np.random.choice(X.shape[0], min(background_size, X.shape[0]), replace=False)
-            background = X[background_indices]
-
-            # Create and train a final model on the entire dataset for SHAP
-            final_model = create_best_model()
-            final_model.fit(X, y)
-
-            # Define a prediction probability function based on original features
-            def model_predict_proba(X_input):
-                return final_model.predict_proba(X_input)
-
-            # Initialize PermutationExplainer with n_jobs=-1 to use all available CPU cores
-            explainer = shap.PermutationExplainer(model_predict_proba, background, n_repeats=10, random_state=42, n_jobs=-1)
-
-            # Calculate SHAP values
-            shap_values = explainer.shap_values(X)  # Shape: (samples, features, classes)
-
-            # Ensure shap_values is in (samples, features, classes) format
-            if isinstance(shap_values, list):
-                shap_values = np.stack(shap_values, axis=-1)  # Convert list to numpy array
-
+        else:
             # Compute mean SHAP values for the positive class
             shap_val = shap_values[:, :, 1]  # Shape: (samples, features)
             mean_shap = np.mean(np.abs(shap_val), axis=0)  # Shape: (features,)
@@ -842,9 +899,9 @@ def vae(inp, prefix):
 
             print(f"SHAP values have been saved to {prefix}_vaemlp_shap_values.csv")
 
-        except Exception as e:
-            print(f"SHAP computation was skipped due to an error: {e}")
-            # Continue execution to ensure other results are still output
+    except Exception as e:
+        print(f"SHAP computation was skipped due to an error: {e}")
+        # Continue execution to ensure other results are still output
 
 if __name__ == "__main__":
     args = parse_arguments()
@@ -852,3 +909,4 @@ if __name__ == "__main__":
     if args.prefix:
         prefix = args.prefix
     vae(args.csv, prefix)
+
