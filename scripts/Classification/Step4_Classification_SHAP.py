@@ -139,17 +139,17 @@ class PLSDAClassifier(BaseEstimator, ClassifierMixin):
 
 # Model mapping
 model_map = {
-    "RF": "random_forest",
     "KNN": "knn",
+    "RF": "random_forest",
     "NN": "neural_network",
     "SVM": "svm",
     "XGB": "xgboost",
     "PLSDA": "plsda",
     "VAE": "vae",
     "LGBM": "lightgbm",
-    "LogisticRegression": "logistic_regression",
-    "GaussianNB": "gaussiannb",
-    "MLP-VAE": "vaemlp",
+    "LR": "logistic_regression",
+    "MLPVAE": "vaemlp",
+    "NB": "gaussiannb",
 }
 
 # Define all transformers that alter feature counts
