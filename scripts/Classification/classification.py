@@ -19,7 +19,7 @@ def parse_arguments():
     parser = argparse.ArgumentParser(description='Script to run classifiers')
     parser.add_argument('-i', '--csv', type=str, required=True, help='Input file in CSV format')
     parser.add_argument('-m', '--model', type=str, nargs='+', required=True,
-                        choices=['KNN', 'RF', 'NN', 'SVM', 'XGB', 'PLSDA', 'VAE', 'LGBM', 'LR', 'MLPVAE', 'NB'],
+                        choices=['KNN', 'RF', 'NN', 'SVM', 'XGB', 'PLSDA', 'VAE', 'LGBM', 'LR', 'MLPVAE', 'GNB'],
                         help='Name of the model(s)')
     parser.add_argument('-p', '--prefix', type=str, help='Output prefix')
     parser.add_argument('-f', '--feature_selection', type=str,
@@ -54,7 +54,7 @@ def run_model(model, csv, prefix, feature_selection):
     elif model == "MLPVAE":
         # MLPVAE does not take feature_selection
         mlpvae(csv, prefix)
-    elif model == "NB":
+    elif model == "GNB":
         gaussian_nb(csv, prefix, feature_selection)
     else:
         raise ValueError(f"Unsupported model: {model}")
