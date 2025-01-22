@@ -149,7 +149,7 @@ model_map = {
     "LGBM": "lightgbm",
     "LR": "logistic_regression",
     "MLPVAE": "vaemlp",
-    "NB": "gaussiannb",
+    "GNB": "gaussiannb",
 }
 
 # Define all transformers that alter feature counts

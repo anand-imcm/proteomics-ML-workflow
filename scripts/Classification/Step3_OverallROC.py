@@ -18,14 +18,14 @@ model_map = {
     "LR": "logistic_regression",     # Logistic Regression
     "GNB": "gaussiannb",             # Gaussian Naive Bayes
     "LGBM": "lightgbm",               # LightGBM
-    "MLP-VAE": "vaemlp"
+    "MLPVAE": "vaemlp"
 }
 
 def parse_arguments():
     # Set up command line argument parsing
     parser = argparse.ArgumentParser(description="Plot ROC curves for selected models.")
     parser.add_argument('-m', '--models', type=str, nargs='+', 
-                        choices=['KNN', 'RF', 'NN', 'SVM', 'XGB', 'PLSDA', 'VAE', 'LR', 'GNB', 'LGBM','MLP-VAE'], 
+                        choices=['KNN', 'RF', 'NN', 'SVM', 'XGB', 'PLSDA', 'VAE', 'LR', 'GNB', 'LGBM','MLPVAE'], 
                         help='Name of the model(s)', required=True)
     parser.add_argument('-p', '--prefix', type=str, required=True, help='Output prefix (include path and prefix name)')
     return parser.parse_args()
