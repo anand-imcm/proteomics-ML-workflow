@@ -9,6 +9,8 @@ workflow main {
         String regression_choices = "NNR"
         String mode = "Classification" # choices: Classification, Regression, Summary
         Boolean calculate_shap = false
+        Int shap_features = 20
+        Int number_of_dimensions = 3
     }
     String pipeline_version = "1.0.2"
     String container_gen = "ghcr.io/anand-imcm/proteomics-ml-workflow-gen:~{pipeline_version}"
@@ -20,14 +22,6 @@ workflow main {
             mode = mode,
             shap = calculate_shap
     }
-    if (!run_plan.use_dim){
-        call std_preprocessing {
-            input: 
-                input_csv = input_csv,
-                output_prefix = output_prefix,
-                docker = container_gen,
-        }
-    }
     if (run_plan.use_dim){
         scatter (dim_method in run_plan.dim_opt) {
             call dim_reduction {
@@ -35,21 +29,24 @@ workflow main {
                     input_csv = input_csv,
                     output_prefix = output_prefix,
                     dim_method = dim_method,
+                    num_dimensions = number_of_dimensions,
                     docker = container_gen
             }
         }
     }
-    Array[File] std_out = if (!run_plan.use_dim) then flatten(select_all([std_preprocessing.out])) else default_arr
+    # Array[File] std_out = if (!run_plan.use_dim) then flatten(select_all([std_preprocessing.out])) else default_arr
     Array[File] dim_out = if (run_plan.use_dim) then flatten(select_all([dim_reduction.out])) else default_arr
     Array[File] dim_png = if (run_plan.use_dim) then flatten(select_all([dim_reduction.png])) else default_arr
-    Array[File] processed_csv = flatten([std_out, dim_out])
+    # Array[File] processed_csv = flatten([std_out, dim_out])
+    # Array[File] processed_csv = flatten([dim_out])
     if (run_plan.use_gen) {
         scatter (gen_method in run_plan.gen_opt) {
             call ml_gen {
                 input:
                     model = gen_method,
-                    input_csv = processed_csv[0],
+                    input_csv = input_csv,
                     output_prefix = output_prefix,
+                    dim_opt = run_plan.dim_opt[0],
                     docker = container_gen
             }
         }
@@ -59,36 +56,49 @@ workflow main {
             call ml_vae {
                 input:
                     model = vae_method,
-                    input_csv = processed_csv[0],
+                    input_csv = input_csv,
                     output_prefix = output_prefix,
+                    dim_opt = run_plan.dim_opt[0],
                     docker = container_gen
             }
         }
     }
-    Array[File] gen_ml_out = if (run_plan.use_gen) then flatten(select_all([ml_gen.out])) else default_arr
-    Array[File] vae_ml_out = if (run_plan.use_vae) then flatten(select_all([ml_vae.out])) else default_arr
+    Array[File] gen_ml_out = if (run_plan.use_gen) then flatten(select_all([ml_gen.data])) else default_arr
+    Array[File] vae_ml_out = if (run_plan.use_vae) then flatten(select_all([ml_vae.data])) else default_arr
     Array[File] classification_out = flatten([gen_ml_out, vae_ml_out])
     if (run_plan.use_reg) {
         scatter (vae_method in run_plan.reg_opt) {
             call reg {
-                input: model = vae_method, data = processed_csv[0]
+                input: model = vae_method, data = input_csv
             }
         }
     }
     Array[File] reg_out = if (run_plan.use_reg) then flatten(select_all([reg.out])) else default_arr
-
-    Array[File] all_results = flatten([dim_out, dim_png, classification_out, reg_out])
-
+    Array[String] model_opts = flatten([run_plan.gen_opt, run_plan.vae_opt])
+    Array[File] model_data = if (!run_plan.use_dim) then flatten([classification_out, reg_out]) else default_arr
+    if (!run_plan.use_dim){
+        call summary {
+            input:
+                dataset = model_data,
+                model = model_opts,
+                output_prefix = output_prefix,
+                use_shap = run_plan.use_shap,
+                shap_num_feat = shap_features,
+                docker = container_gen
+        }
+    }
+    Array[File] summary_files = if (!run_plan.use_dim) then select_all([summary.results]) else default_arr
+    Array[File] all_results = flatten([dim_out, dim_png, summary_files])
     call pdf_report {
         input:
             summary_set = all_results,
             output_prefix = output_prefix,
             docker = container_gen
     }
-
+    
     output {
-        Array[File] std_preprocessing_out = std_out
-        Array[File] dim_reduction_out = dim_out
+        # Array[File] std_preprocessing_out = std_out
+        # Array[File] dim_reduction_out = dim_out
         Array[String] dim_plan = run_plan.dim_opt
         Array[String] vae_plan = run_plan.vae_opt
         Array[String] gen_plan = run_plan.gen_opt
@@ -98,9 +108,12 @@ workflow main {
         Boolean use_gen = run_plan.use_gen
         Boolean use_reg = run_plan.use_reg
         Boolean use_shap = run_plan.use_shap
+        
+        # Array[File] ml_classification_out = classification_out
+        # Array[File] regression_out = reg_out
+
         File report = pdf_report.out
-        Array[File] ml_classification_out = classification_out
-        Array[File] regression_out = reg_out
+        File results = pdf_report.results
     }
 }
 
@@ -142,10 +155,11 @@ task run_plan {
                 else:
                     run_mode = "regression"
                     if any(dim_options):
-                        dim_opt.write("true")
-                        dim_plan.write(dim_options[0])
+                        dim_opt.write("false")
+                        dim_plan.write(dim_options[0].replace("-", "").lower())
                     else:
                         dim_opt.write("false")
+                        dim_plan.write("none")
                     gen_opt.write("false")
                     vae_opt.write("false")
                     if any(reg_options):
@@ -175,10 +189,11 @@ task run_plan {
                     shap_opt.write("false")
                     reg_opt.write("false")
                     if any(dim_options):
-                        dim_opt.write("true")
-                        dim_plan.write(dim_options[0])
+                        dim_opt.write("false")
+                        dim_plan.write(dim_options[0].replace("-", "").lower())
                     else:
                         dim_opt.write("false")
+                        dim_plan.write("none")
                     if any(gen_choices):
                         gen_opt.write("true")
                         for ml in gen_choices:
@@ -244,7 +259,6 @@ task std_preprocessing {
     >>>
     output {
         Array[File] out = glob("*.csv")
-        # File out = output_prefix + ".csv"
     }
     runtime {
         docker: "~{docker}"
@@ -290,6 +304,7 @@ task ml_gen {
         String model
         File input_csv
         String output_prefix
+        String dim_opt
         String docker
         Int memory_gb = 24
         Int cpu = 16
@@ -298,11 +313,12 @@ task ml_gen {
     command <<<
         set -euo pipefail
         echo "running ML task with ~{model}" > ~{model}.txt
-        python /scripts/classification.py \
+        python /scripts/Classification/classification.py \
             -i ~{input_csv} \
             -p ~{output_prefix} \
-            -m ~{model}
-        tar -czvf ~{output_prefix}_~{model}_results.tar.gz *.{png,pkl,npy,csv}
+            -m ~{model} \
+            -f ~{dim_opt}
+        tar -czvf ~{output_prefix}_~{model}_results.tar.gz --ignore-failed-read *.{png,pkl,npy,csv}
     >>>
     output {
         File confusion_matrix_plot = glob("*_confusion_matrix.png")[0]
@@ -321,11 +337,13 @@ task ml_gen {
         disks: "local-disk ~{disk_size_gb} HDD"
     }
 }
+
 task ml_vae {
     input {
         String model
         File input_csv
         String output_prefix
+        String dim_opt
         String docker
         Int memory_gb = 24
         Int cpu = 16
@@ -337,8 +355,9 @@ task ml_vae {
         python /scripts/Classification/classification.py \
             -i ~{input_csv} \
             -p ~{output_prefix} \
-            -m ~{model}
-        tar -czvf ~{output_prefix}_~{model}_results.tar.gz *.{png,pkl,npy,csv}
+            -m ~{model} \
+            -f ~{dim_opt}
+        tar -czvf ~{output_prefix}_~{model}_results.tar.gz --ignore-failed-read *.{png,pkl,npy,csv}
     >>>
     output {
         File confusion_matrix_plot = glob("*_confusion_matrix.png")[0]
@@ -348,7 +367,6 @@ task ml_vae {
         File out = glob("*_predictions.csv")[0]
         File roc_curve_plot = glob("*_roc_curve.png")[0]
         File roc_data = glob("*_roc_data.npy")[0]
-        File shap = glob("*_shap_values.csv")[0]
         File data = output_prefix + "_" + model + "_results.tar.gz"
     }
     runtime {
@@ -373,6 +391,51 @@ task reg {
     }
 }
 
+task summary {
+    input {
+        Array[File] dataset
+        Array[String] model
+        String output_prefix
+        Boolean use_shap
+        Int shap_num_feat = 20
+        String docker
+        Int memory_gb = 24
+        Int cpu = 16
+    }
+    Array[File] all_data = flatten([dataset])
+    Int disk_size_gb = ceil(size(all_data, "GB")) + 2
+    command <<<
+        set -euo pipefail
+        for file_name in ~{sep=' ' all_data}; do
+            cp $file_name $(basename $file_name)
+        done
+        if ls *.tar.gz 1> /dev/null 2>&1; then
+            for archive in *.tar.gz; do
+                tar -xzvf "$archive"
+            done
+        fi
+        python /scripts/Classification/Step3_OverallROC.py \
+            -m ~{sep=' ' model} \
+            -p ~{output_prefix}
+        if [ "~{use_shap}" = "true" ]; then
+            python /scripts/Classification/Step4_Classification_SHAP.py \
+                -p ~{output_prefix} \
+                -m ~{sep=' ' model} \
+                -f ~{shap_num_feat}
+        fi
+        tar -czvf ~{output_prefix}_results.tar.gz --ignore-failed-read *.{png,pkl,npy,csv}
+    >>>
+    output {
+        File results = output_prefix + "_results.tar.gz"
+    }
+    runtime {
+        docker: "~{docker}"
+        cpu: "~{cpu}"
+        memory: "~{memory_gb}GB"
+        disks: "local-disk ~{disk_size_gb} HDD"
+    }
+}
+
 task pdf_report {
     input {
         Array[File] summary_set
@@ -388,11 +451,19 @@ task pdf_report {
         for file_name in ~{sep=' ' all_data}; do
             cp $file_name $(basename $file_name)
         done
+        if ls *.tar.gz 1> /dev/null 2>&1; then
+            for archive in *.tar.gz; do
+                tar -xzvf "$archive"
+            done
+            rm *.tar.gz
+        fi
         python /scripts/Step5_PDF_summary_analysis.py \
             -p ~{output_prefix}
+        tar -czvf ~{output_prefix}_results.tar.gz --ignore-failed-read *.{png,pkl,npy,csv}
     >>>
     output {
         File out = "model_reports.pdf"
+        File results = output_prefix + "_results.tar.gz"
     }
     runtime {
         docker: "~{docker}"
