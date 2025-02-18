@@ -40,9 +40,9 @@ def run_model(model, csv, prefix, feature_selection):
     elif model == "XGB":
         xgboost(csv, prefix, feature_selection)
     elif model == "PLSDA":
-        # Only allow 'umap' or 'elasticnet' for feature selection in PLSDA
-        if feature_selection not in ['umap', 'elasticnet']:
-            raise ValueError("PLSDA only supports 'umap' and 'elasticnet' for feature selection.")
+        # Allow 'umap', 'elasticnet', or 'none' for feature selection in PLSDA
+        if feature_selection not in ['umap', 'elasticnet', 'none']:
+            raise ValueError("PLSDA only supports 'umap', 'elasticnet', and 'none' for feature selection.")
         plsda(csv, prefix, feature_selection)
     elif model == "VAE":
         # VAE does not take feature_selection
@@ -72,8 +72,8 @@ def main():
 
     # Validate feature selection method for PLSDA
     if 'PLSDA' in args.model:
-        if args.feature_selection not in ['umap', 'elasticnet']:
-            sys.exit("Error: PLSDA only supports 'umap' and 'elasticnet' as feature selection methods.")
+        if args.feature_selection not in ['umap', 'elasticnet', 'none']:
+            sys.exit("Error: PLSDA only supports 'umap', 'elasticnet', and 'none' as feature selection methods.")
 
     # Run models in parallel
     Parallel(n_jobs=-1, backend='multiprocessing', verbose=100)(
