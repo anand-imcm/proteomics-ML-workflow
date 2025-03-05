@@ -30,7 +30,7 @@ def parse_arguments():
     """Set up command line argument parsing."""
     parser = argparse.ArgumentParser(description="Script to perform dimensionality reduction or feature selection on the dataset.")
     parser.add_argument('-i', '--csv', type=str, help='Input file in CSV format', required=True)
-    parser.add_argument('-m', '--methods', type=str, nargs='+', choices=['PCA', 'UMAP', 't-SNE', 'KPCA', 'PLS', 'ElasticNet'], help='Name of the method(s)', required=True)
+    parser.add_argument('-m', '--methods', type=str, nargs='+', choices=['pca', 'umap', 'tsne', 'kpca', 'pls', 'elasticnet'], help='Name of the method(s)', required=True)
     parser.add_argument('-p', '--prefix', type=str, help='Output prefix')
     parser.add_argument('-d', '--dimensions', type=int, help='Number of dimensions (for dimensionality reduction methods)', default=3)
     return parser.parse_args()
@@ -114,7 +114,7 @@ def plot_pairplot(data, plot_prefix, labels, method, dims, label_type):
     g.fig.suptitle(f"Dimensions' view from {method}", size=16)
     
     # Adjust axis tick labels for KPCA plots with large numbers
-    if method == 'KPCA':
+    if method == 'kpca':
         for ax in g.axes.flatten():
             if ax is not None:
                 # Use scientific notation for large numbers
@@ -158,12 +158,12 @@ def perform_pca(data, out_prefix, labels, sample_ids, dims=3, random_state=42, l
     
     pca = PCA(n_components=dims, svd_solver='full', random_state=random_state)
     pca_result = pca.fit_transform(data_scaled)
-    plot_pairplot(pca_result, out_prefix, labels, "PCA", dims, label_type)
+    plot_pairplot(pca_result, out_prefix, labels, "pca", dims, label_type)
     df_result = pd.DataFrame(pca_result, columns=[f"PC{i+1}" for i in range(dims)])
     if sample_ids is not None:
         df_result['SampleID'] = sample_ids
     df_result['Label'] = labels
-    df_result.to_csv(f"{out_prefix}_PCA_result.csv", index=False)
+    df_result.to_csv(f"{out_prefix}_pca_result.csv", index=False)
     explained_var = pca.explained_variance_ratio_
     print(f"PCA explained variance by component: {explained_var}")
 
@@ -197,12 +197,12 @@ def perform_umap(data, out_prefix, labels, sample_ids, dims=3, random_state=42, 
     
     umap_model = UMAP(n_components=dims, **best_params, random_state=random_state, n_jobs=1)
     umap_result = umap_model.fit_transform(data_scaled)
-    plot_pairplot(umap_result, out_prefix, labels, "UMAP", dims, label_type)
+    plot_pairplot(umap_result, out_prefix, labels, "umap", dims, label_type)
     df_result = pd.DataFrame(umap_result, columns=[f"UMAP{i+1}" for i in range(dims)])
     if sample_ids is not None:
         df_result['SampleID'] = sample_ids
     df_result['Label'] = labels
-    df_result.to_csv(f"{out_prefix}_UMAP_result.csv", index=False)
+    df_result.to_csv(f"{out_prefix}_umap_result.csv", index=False)
     print(f"Best UMAP params: {best_params}")
 
 def perform_tsne(data, out_prefix, labels, sample_ids, dims=3, random_state=42, label_type='categorical'):
@@ -234,12 +234,12 @@ def perform_tsne(data, out_prefix, labels, sample_ids, dims=3, random_state=42, 
     
     tsne = TSNE(n_components=dims, perplexity=best_perplexity, random_state=random_state, method='exact')
     tsne_result = tsne.fit_transform(data_scaled)
-    plot_pairplot(tsne_result, out_prefix, labels, "t-SNE", dims, label_type)
+    plot_pairplot(tsne_result, out_prefix, labels, "tsne", dims, label_type)
     df_result = pd.DataFrame(tsne_result, columns=[f"t-SNE{i+1}" for i in range(dims)])
     if sample_ids is not None:
         df_result['SampleID'] = sample_ids
     df_result['Label'] = labels
-    df_result.to_csv(f"{out_prefix}_t-SNE_result.csv", index=False)
+    df_result.to_csv(f"{out_prefix}_tsne_result.csv", index=False)
     print(f"Best t-SNE perplexity: {best_perplexity}")
 
 def perform_kernel_pca(data, out_prefix, labels, sample_ids, dims=3, random_state=42, label_type='categorical'):
@@ -279,12 +279,12 @@ def perform_kernel_pca(data, out_prefix, labels, sample_ids, dims=3, random_stat
         print(f"KernelPCA fitting failed with best parameters: {best_params}. Error: {e}")
         return  # Exit the function as further steps depend on successful KernelPCA
     
-    plot_pairplot(kpca_result, out_prefix, labels, "KPCA", dims, label_type)
+    plot_pairplot(kpca_result, out_prefix, labels, "kpca", dims, label_type)
     df_result = pd.DataFrame(kpca_result, columns=[f"KPCA{i+1}" for i in range(dims)])
     if sample_ids is not None:
         df_result['SampleID'] = sample_ids
     df_result['Label'] = labels
-    df_result.to_csv(f"{out_prefix}_KPCA_result.csv", index=False)
+    df_result.to_csv(f"{out_prefix}_kpca_result.csv", index=False)
     print(f"Best KPCA params: {best_params}")
 
 def perform_pls(data, out_prefix, labels, sample_ids, dims=3, random_state=42, label_type='categorical'):
@@ -305,12 +305,12 @@ def perform_pls(data, out_prefix, labels, sample_ids, dims=3, random_state=42, l
     if pls_result.shape[1] != dims:
         raise ValueError(f"PLS result dimensions ({pls_result.shape[1]}) do not match the expected dimensions ({dims})")
 
-    plot_pairplot(pls_result, out_prefix, labels, "PLS", dims, label_type)
+    plot_pairplot(pls_result, out_prefix, labels, "pls", dims, label_type)
     df_result = pd.DataFrame(pls_result, columns=[f"PLS{i+1}" for i in range(dims)])
     if sample_ids is not None:
         df_result['SampleID'] = sample_ids
     df_result['Label'] = labels
-    df_result.to_csv(f"{out_prefix}_PLS_result.csv", index=False)
+    df_result.to_csv(f"{out_prefix}_pls_result.csv", index=False)
 
 def perform_elastic_net(data, out_prefix, labels, sample_ids, random_state=42, label_type='categorical'):
     """Perform Elastic Net feature selection and save selected features."""
@@ -375,7 +375,7 @@ def perform_elastic_net(data, out_prefix, labels, sample_ids, random_state=42, l
     if sample_ids is not None:
         selected_features_df['SampleID'] = sample_ids
     selected_features_df['Label'] = labels
-    selected_features_df.to_csv(f'{out_prefix}_ElasticNet_selected_features_with_labels.csv', index=False)
+    selected_features_df.to_csv(f'{out_prefix}_elasticnet_selected_features_with_labels.csv', index=False)
 
 def perform_dimensionality_reduction(file_path, file_prefix, method, dims=3, standardize=True, random_state=42):
     """Load data, preprocess, and perform the specified dimensionality reduction method."""
@@ -413,22 +413,22 @@ def perform_dimensionality_reduction(file_path, file_prefix, method, dims=3, sta
     else:
         sample_ids_clean = None
     
-    if method == 'PCA':
+    if method == 'pca':
         perform_pca(data_clean, file_prefix, labels_clean, sample_ids_clean, dims, random_state, label_type)
-    elif method == 'UMAP':
+    elif method == 'umap':
         perform_umap(data_clean, file_prefix, labels_clean, sample_ids_clean, dims, random_state, label_type)
-    elif method == 't-SNE':
+    elif method == 'tsne':
         perform_tsne(data_clean, file_prefix, labels_clean, sample_ids_clean, dims, random_state, label_type)
-    elif method == 'KPCA':
+    elif method == 'kpca':
         perform_kernel_pca(data_clean, file_prefix, labels_clean, sample_ids_clean, dims, random_state, label_type)
-    elif method == 'PLS':
+    elif method == 'pls':
         perform_pls(data_clean, file_prefix, labels_clean, sample_ids_clean, dims, random_state, label_type)
-    elif method == 'ElasticNet':
+    elif method == 'elasticnet':
         if label_type == 'categorical':
             print("Warning: ElasticNet is being applied to categorical labels treated as numeric.")
         perform_elastic_net(data_clean, file_prefix, labels_clean, sample_ids_clean, random_state, label_type)
     else:
-        raise ValueError("Unsupported method. Choose from 'PCA', 'UMAP', 't-SNE', 'KPCA', 'PLS', or 'ElasticNet'.")
+        raise ValueError("Unsupported method. Choose from 'pca', 'umap', 'tsne', 'kpca', 'pls', or 'elasticnet'.")
 
 if __name__ == "__main__":
     args = parse_arguments()
