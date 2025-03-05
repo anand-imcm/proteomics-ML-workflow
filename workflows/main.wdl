@@ -219,7 +219,7 @@ task run_plan {
                 if any(dim_options):
                     dim_opt.write("true")
                     for dim in dim_options:
-                        dim_plan.write(dim + "\n")
+                        dim_plan.write(dim.replace("-", "").lower() + "\n")
                 else:
                     dim_opt.write("false")
                 gen_opt.write("false")
