@@ -138,7 +138,7 @@ analysis_images = {
     'KPCA': ('Kernel Principal Component Analysis (KPCA)', 'KPCA results providing a non-linear dimensionality reduction view.'),
     'PCA': ('Principal Component Analysis (PCA)', 'PCA results showing the distribution of data points in reduced dimensions PCs.'),
     'PLS': ('Partial Least Squares (PLS)', 'PLS results demonstrating the relationship between features and target variables in LVs.'),
-    't-SNE': ('t-Distributed Stochastic Neighbor Embedding (t-SNE)', 't-SNE results visualizing the data in a lower-dimensional space.'),
+    'tSNE': ('t-Distributed Stochastic Neighbor Embedding (t-SNE)', 't-SNE results visualizing the data in a lower-dimensional space.'),
     'UMAP': ('Uniform Manifold Approximation and Projection (UMAP)', 'UMAP results displaying the clustering of data points.')
 }
 # Dimensionality reduction images are identified by their specific model names with '_result.png'
