@@ -286,6 +286,7 @@ task dim_reduction {
             -m ~{dim_method} \
             -d ~{num_dimensions} \
             -p ~{output_prefix}
+        touch ~{output_prefix}"_"~{dim_method}"_result.png"
     >>>
     output {
         File out = output_prefix + "_" + dim_method +"_result.csv"
@@ -457,6 +458,7 @@ task pdf_report {
             done
             rm *.tar.gz
         fi
+        rm ~{output_prefix}_elasticnet_result.png
         python /scripts/Step5_PDF_summary_analysis.py \
             -p ~{output_prefix}
         tar -czvf ~{output_prefix}_results.tar.gz --ignore-failed-read *.{png,pkl,npy,csv}
