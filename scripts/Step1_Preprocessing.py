@@ -375,7 +375,7 @@ def perform_elastic_net(data, out_prefix, labels, sample_ids, random_state=42, l
     if sample_ids is not None:
         selected_features_df['SampleID'] = sample_ids
     selected_features_df['Label'] = labels
-    selected_features_df.to_csv(f'{out_prefix}_elasticnet_selected_features_with_labels.csv', index=False)
+    selected_features_df.to_csv(f'{out_prefix}_elasticnet_result.csv', index=False)
 
 def perform_dimensionality_reduction(file_path, file_prefix, method, dims=3, standardize=True, random_state=42):
     """Load data, preprocess, and perform the specified dimensionality reduction method."""
