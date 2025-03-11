@@ -458,7 +458,9 @@ task pdf_report {
             done
             rm *.tar.gz
         fi
-        rm ~{output_prefix}_elasticnet_result.png
+        if [ -f ~{output_prefix}_elasticnet_result.png ]; then
+            rm ~{output_prefix}_elasticnet_result.png
+        fi
         python /scripts/Step5_PDF_summary_analysis.py \
             -p ~{output_prefix}
         tar -czvf ~{output_prefix}_results.tar.gz --ignore-failed-read *.{png,pkl,npy,csv}
