@@ -265,15 +265,13 @@ pdf.chapter_title_centered("Biological Analysis")
 all_models = list(classification_models.keys()) + list(regression_models.keys())
 
 biological_image_types = {
-    'PPI': 'Protein-Protein Interaction (PPI) network visualization.',
-    'Function_Enrichment_S': 'Function Enrichment S plot based on STRING database.',
-    'Function_Enrichment_M': 'Function Enrichment M plot based on tree models.'
+    'PPI_S': 'Protein-Protein Interaction (PPI) network visualization. S plot based on STRING database.',
+    'PPI_M': 'Protein-Protein Interaction (PPI) network visualization. M plot based on tree models.'
 }
 
 biological_titles = {
-    'PPI': 'Protein-Protein Interaction (PPI) Network',
-    'Function_Enrichment_S': 'Function Enrichment S Plot',
-    'Function_Enrichment_M': 'Function Enrichment M Plot'
+    'PPI_S': 'Function Enrichment S Plot',
+    'PPI_M': 'Function Enrichment M Plot'
 }
 
 for model_name in all_models:
