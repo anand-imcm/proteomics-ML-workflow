@@ -96,15 +96,6 @@ workflow main {
     }
     
     output {
-        Array[String] dim_plan = run_plan.dim_opt
-        Array[String] vae_plan = run_plan.vae_opt
-        Array[String] gen_plan = run_plan.gen_opt
-        Array[String] reg_plan = run_plan.reg_opt
-        Boolean use_dim = run_plan.use_dim
-        Boolean use_vae = run_plan.use_vae
-        Boolean use_gen = run_plan.use_gen
-        Boolean use_reg = run_plan.use_reg
-        Boolean use_shap = run_plan.use_shap
         File report = pdf_report.out
         File results = pdf_report.results
     }
