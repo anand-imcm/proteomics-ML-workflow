@@ -36,7 +36,6 @@ workflow main {
             }
         }
     }
-    # Array[File] std_out = if (!run_plan.use_dim) then flatten(select_all([std_preprocessing.out])) else default_arr
     Array[File] dim_out = if (run_plan.use_dim) then flatten(select_all([dim_reduction.out])) else default_arr
     Array[File] dim_png = if (run_plan.use_dim) then flatten(select_all([dim_reduction.png])) else default_arr
     # Array[File] processed_csv = flatten([std_out, dim_out])
@@ -99,7 +98,6 @@ workflow main {
     }
     
     output {
-        # Array[File] std_preprocessing_out = std_out
         # Array[File] dim_reduction_out = dim_out
         Array[String] dim_plan = run_plan.dim_opt
         Array[String] vae_plan = run_plan.vae_opt
@@ -116,33 +114,6 @@ workflow main {
 
         File report = pdf_report.out
         File results = pdf_report.results
-    }
-}
-
-task std_preprocessing {
-    input {
-        File input_csv
-        String output_prefix
-        String docker
-        Int memory_gb = 8
-        Int cpu = 8
-        
-    }
-    Int disk_size_gb = ceil(size(input_csv, "GB")) + 2
-    command <<<
-        set -euo pipefail
-        python /scripts/Step1_Zscores.py \
-            -i ~{input_csv} \
-            -p ~{output_prefix}
-    >>>
-    output {
-        Array[File] out = glob("*.csv")
-    }
-    runtime {
-        docker: "~{docker}"
-        cpu: "~{cpu}"
-        memory: "~{memory_gb}GB"
-        disks: "local-disk ~{disk_size_gb} HDD"
     }
 }
 
