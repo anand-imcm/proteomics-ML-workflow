@@ -122,4 +122,10 @@ task run_plan {
         Array[String] reg_opt = read_lines("reg_options.txt")
         Boolean use_shap = read_boolean("use_shap.txt")
     }
+    runtime {
+        docker: "python:3.12-slim"
+        cpu: "2"
+        memory: "2GB"
+        disks: "local-disk 2 HDD"
+    }
 }
