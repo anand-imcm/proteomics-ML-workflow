@@ -38,8 +38,6 @@ workflow main {
     }
     Array[File] dim_out = if (run_plan.use_dim) then flatten(select_all([dim_reduction.out])) else default_arr
     Array[File] dim_png = if (run_plan.use_dim) then flatten(select_all([dim_reduction.png])) else default_arr
-    # Array[File] processed_csv = flatten([std_out, dim_out])
-    # Array[File] processed_csv = flatten([dim_out])
     if (run_plan.use_gen) {
         scatter (gen_method in run_plan.gen_opt) {
             call ml_gen {
@@ -98,7 +96,6 @@ workflow main {
     }
     
     output {
-        # Array[File] dim_reduction_out = dim_out
         Array[String] dim_plan = run_plan.dim_opt
         Array[String] vae_plan = run_plan.vae_opt
         Array[String] gen_plan = run_plan.gen_opt
@@ -108,10 +105,6 @@ workflow main {
         Boolean use_gen = run_plan.use_gen
         Boolean use_reg = run_plan.use_reg
         Boolean use_shap = run_plan.use_shap
-        
-        # Array[File] ml_classification_out = classification_out
-        # Array[File] regression_out = reg_out
-
         File report = pdf_report.out
         File results = pdf_report.results
     }
@@ -162,7 +155,6 @@ task ml_gen {
     Int disk_size_gb = ceil(size(input_csv, "GB")) + 5
     command <<<
         set -euo pipefail
-        echo "running ML task with ~{model}" > ~{model}.txt
         python /scripts/Classification/classification.py \
             -i ~{input_csv} \
             -p ~{output_prefix} \
@@ -201,7 +193,6 @@ task ml_vae {
     Int disk_size_gb = ceil(size(input_csv, "GB")) + 5
     command <<<
         set -euo pipefail
-        echo "running ML task with ~{model}" > ~{model}.txt
         python /scripts/Classification/classification.py \
             -i ~{input_csv} \
             -p ~{output_prefix} \
@@ -233,6 +224,7 @@ task reg {
         File data
     }
     command <<<
+        set -euo pipefail
         wc -l ~{data}
         echo "running REG task with ~{model}" > ~{model}.txt
     >>>
