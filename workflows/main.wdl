@@ -72,9 +72,12 @@ workflow main {
     Array[File] vae_ml_out = if (run_plan.use_vae) then flatten(select_all([ml_vae.data])) else default_arr
     Array[File] classification_out = flatten([gen_ml_out, vae_ml_out])
     if (run_plan.use_reg) {
-        scatter (vae_method in run_plan.reg_opt) {
+        scatter (reg_method in run_plan.reg_opt) {
             call MLREG.ml_reg {
-                input: model = vae_method, data = input_csv
+                input:
+                    model = reg_method,
+                    data = input_csv,
+                    docker = container_gen
             }
         }
     }
