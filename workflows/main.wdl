@@ -12,12 +12,12 @@ workflow main {
     input {
         File input_csv
         String output_prefix
-        String? dimensionality_reduction_choices # t-SNE PCA
-        String model_choices = "RF"
-        String regression_choices = "NNR"
+        String? dimensionality_reduction_choices # PCA ELASTICNET KPCA UMAP TSNE PLS
+        String model_choices = "RF" # KNN NN SVM XGB PLSDA VAE LR GNB LGBM MLPVAE
+        String regression_choices = "RF_reg" # NN_reg SVM_reg XGB_reg PLS_reg KNN_reg LightGBM_reg VAE_reg MLPVAE_reg
         String mode = "Classification" # choices: Classification, Regression, Summary
         Boolean calculate_shap = false
-        Int shap_features = 20
+        Int shap_features = 10
         Int number_of_dimensions = 3
     }
     String pipeline_version = "1.0.2"
