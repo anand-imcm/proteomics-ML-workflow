@@ -106,18 +106,3 @@ workflow main {
         File results = pdf_report.results
     }
 }
-
-# task reg {
-#     input {
-#         String model
-#         File data
-#     }
-#     command <<<
-#         set -euo pipefail
-#         wc -l ~{data}
-#         echo "running REG task with ~{model}" > ~{model}.txt
-#     >>>
-#     output {
-#         File out = "~{model}.txt"
-#     }
-# }
