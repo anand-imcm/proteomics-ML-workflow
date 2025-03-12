@@ -95,16 +95,20 @@ def main():
                        list(vae_mlp_model_map.keys()) +
                        list(mlp_in_vae_model_map.keys()))
 
+    user_choices = args.models
     # Check for invalid models
-    for m in args.models:
-        if m not in valid_models:
-            print(f"Error: Invalid model '{m}'.")
-            sys.exit(1)
+    for i, m in enumerate(user_choices):
+        for choice in valid_models:
+            if m.casefold() == choice.casefold():
+                user_choices[i] = choice
+            else:
+                print(f"Error: Invalid model '{m}'.")
+
 
     # Separate models based on the script they should be handled by
-    workflow_models = [workflow_model_map[m] for m in args.models if m in workflow_model_map]
-    vae_mlp_models = [vae_mlp_model_map[m] for m in args.models if m in vae_mlp_model_map]
-    mlp_in_vae_models = [mlp_in_vae_model_map[m] for m in args.models if m in mlp_in_vae_model_map]
+    workflow_models = [workflow_model_map[m] for m in user_choices if m in workflow_model_map]
+    vae_mlp_models = [vae_mlp_model_map[m] for m in user_choices if m in vae_mlp_model_map]
+    mlp_in_vae_models = [mlp_in_vae_model_map[m] for m in user_choices if m in mlp_in_vae_model_map]
 
     # Prepare parallel jobs
     jobs = []
