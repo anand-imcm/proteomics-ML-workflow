@@ -6,6 +6,7 @@ import "./tasks/ml_general.wdl" as MLGEN
 import "./tasks/ml_vae.wdl" as MLVAE
 import "./tasks/summary.wdl" as SUMM
 import "./tasks/pdf_report.wdl" as REP
+import "./tasks/ml_reg.wdl" as MLREG
 
 workflow main {
     input {
@@ -72,12 +73,12 @@ workflow main {
     Array[File] classification_out = flatten([gen_ml_out, vae_ml_out])
     if (run_plan.use_reg) {
         scatter (vae_method in run_plan.reg_opt) {
-            call reg {
+            call MLREG.ml_reg {
                 input: model = vae_method, data = input_csv
             }
         }
     }
-    Array[File] reg_out = if (run_plan.use_reg) then flatten(select_all([reg.out])) else default_arr
+    Array[File] reg_out = if (run_plan.use_reg) then flatten(select_all([ml_reg.out])) else default_arr
     Array[String] model_opts = flatten([run_plan.gen_opt, run_plan.vae_opt])
     Array[File] model_data = if (!run_plan.use_dim) then flatten([classification_out, reg_out]) else default_arr
     if (!run_plan.use_dim){
@@ -106,17 +107,17 @@ workflow main {
     }
 }
 
-task reg {
-    input {
-        String model
-        File data
-    }
-    command <<<
-        set -euo pipefail
-        wc -l ~{data}
-        echo "running REG task with ~{model}" > ~{model}.txt
-    >>>
-    output {
-        File out = "~{model}.txt"
-    }
-}
+# task reg {
+#     input {
+#         String model
+#         File data
+#     }
+#     command <<<
+#         set -euo pipefail
+#         wc -l ~{data}
+#         echo "running REG task with ~{model}" > ~{model}.txt
+#     >>>
+#     output {
+#         File out = "~{model}.txt"
+#     }
+# }
