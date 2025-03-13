@@ -71,19 +71,6 @@ workflow main {
     Array[File] gen_ml_out = if (run_plan.use_gen) then flatten(select_all([ml_gen.data])) else default_arr
     Array[File] vae_ml_out = if (run_plan.use_vae) then flatten(select_all([ml_vae.data])) else default_arr
     Array[File] classification_out = flatten([gen_ml_out, vae_ml_out])
-    # if (run_plan.use_reg) {
-    #     scatter (reg_method in run_plan.reg_opt) {
-    #         call MLREG.ml_reg {
-    #             input:
-    #                 model = reg_method,
-    #                 input_csv = input_csv,
-    #                 output_prefix = output_prefix,
-    #                 dim_opt = run_plan.dim_opt[0],
-    #                 docker = container_gen
-    #         }
-    #     }
-    # }
-    # Array[File] reg_out = if (run_plan.use_reg) then flatten(select_all([ml_reg.out])) else default_arr
     if (run_plan.use_reg) {
         call MLREG.ml_reg {
             input:
@@ -95,7 +82,7 @@ workflow main {
         }
     }
     Array[File] reg_out = if (run_plan.use_reg) then select_all([ml_reg.results]) else default_arr
-    Array[String] model_opts = flatten([run_plan.gen_opt, run_plan.vae_opt])
+    Array[String] model_opts = flatten([run_plan.gen_opt, run_plan.vae_opt, run_plan.reg_opt])
     Array[File] model_data = if (!run_plan.use_dim) then flatten([classification_out, reg_out]) else default_arr
     if (!run_plan.use_dim){
         call SUMM.summary {
