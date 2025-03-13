@@ -26,6 +26,8 @@ from joblib import Parallel, delayed
 import os
 from PIL import Image
 
+script_dir = os.path.dirname(os.path.abspath(__file__))
+
 def parse_arguments():
     parser = argparse.ArgumentParser(
         description="Run multiple regression models (including VAE-based) in parallel."
@@ -101,8 +103,8 @@ def main():
         for choice in valid_models:
             if m.casefold() == choice.casefold():
                 user_choices[i] = choice
-            else:
-                print(f"Error: Invalid model '{m}'.")
+            # else:
+            #     print(f"Error: Invalid model '{m}'.")
 
 
     # Separate models based on the script they should be handled by
@@ -115,8 +117,9 @@ def main():
 
     if workflow_models:
         # Step2_Regression_workflow.py call with all workflow_models
+        Regression_workflow = f"{script_dir}/Step2_Regression_workflow.py"
         cmd = [
-            "python", "Step2_Regression_workflow.py",
+            "python", Regression_workflow,
             "-i", args.csv,
             "-p", args.prefix,
             "-m"
@@ -128,8 +131,9 @@ def main():
 
     for model in vae_mlp_models:
         # Step2_VAE_MLP_reg.py call
+        VAE_MLP_reg = f"{script_dir}/Step2_VAE_MLP_reg.py"
         cmd = [
-            "python", "Step2_VAE_MLP_reg.py",
+            "python", VAE_MLP_reg,
             "-i", args.csv,
             "-p", args.prefix
         ]
@@ -138,8 +142,9 @@ def main():
 
     for model in mlp_in_vae_models:
         # Step2_MLP_in_VAE_reg.py call
+        MLP_in_VAE_reg = f"{script_dir}/Step2_MLP_in_VAE_reg.py"
         cmd = [
-            "python", "Step2_MLP_in_VAE_reg.py",
+            "python", MLP_in_VAE_reg,
             "-i", args.csv,
             "-p", args.prefix
         ]
