@@ -32,9 +32,9 @@ task summary {
         if [ "~{use_shap}" = "true" ]; then
             if [ "~{use_reg}" = "true" ]; then
                 python /scripts/Regression/Step3_Regression_SHAP.py \
-                    -p ~{output_prefix} \
-                    -m ~{sep=' ' model} \
-                    -f ~{shap_num_feat}
+                    --p ~{output_prefix} \
+                    --m ~{sep=' ' model} \
+                    --f ~{shap_num_feat}
             else
                 python /scripts/Classification/Step4_Classification_SHAP.py \
                     -p ~{output_prefix} \
