@@ -14,7 +14,7 @@ workflow main {
         String output_prefix
         String? dimensionality_reduction_choices # PCA ELASTICNET KPCA UMAP TSNE PLS
         String model_choices = "RF" # KNN NN SVM XGB PLSDA VAE LR GNB LGBM MLPVAE
-        String regression_choices = "RF_reg" # NN_reg SVM_reg XGB_reg PLS_reg KNN_reg LightGBM_reg VAE_reg MLPVAE_reg
+        String regression_choices = "RF_reg" # NN_reg SVM_reg XGB_reg PLS_reg KNN_reg LGBM_reg VAE_reg MLPVAE_reg
         String mode = "Classification" # choices: Classification, Regression, Summary
         Boolean calculate_shap = false
         Int shap_features = 10
@@ -71,17 +71,30 @@ workflow main {
     Array[File] gen_ml_out = if (run_plan.use_gen) then flatten(select_all([ml_gen.data])) else default_arr
     Array[File] vae_ml_out = if (run_plan.use_vae) then flatten(select_all([ml_vae.data])) else default_arr
     Array[File] classification_out = flatten([gen_ml_out, vae_ml_out])
+    # if (run_plan.use_reg) {
+    #     scatter (reg_method in run_plan.reg_opt) {
+    #         call MLREG.ml_reg {
+    #             input:
+    #                 model = reg_method,
+    #                 input_csv = input_csv,
+    #                 output_prefix = output_prefix,
+    #                 dim_opt = run_plan.dim_opt[0],
+    #                 docker = container_gen
+    #         }
+    #     }
+    # }
+    # Array[File] reg_out = if (run_plan.use_reg) then flatten(select_all([ml_reg.out])) else default_arr
     if (run_plan.use_reg) {
-        scatter (reg_method in run_plan.reg_opt) {
-            call MLREG.ml_reg {
-                input:
-                    model = reg_method,
-                    data = input_csv,
-                    docker = container_gen
-            }
+        call MLREG.ml_reg {
+            input:
+                model = run_plan.reg_opt,
+                input_csv = input_csv,
+                output_prefix = output_prefix,
+                dim_opt = run_plan.dim_opt[0],
+                docker = container_gen
         }
     }
-    Array[File] reg_out = if (run_plan.use_reg) then flatten(select_all([ml_reg.out])) else default_arr
+    Array[File] reg_out = if (run_plan.use_reg) then select_all([ml_reg.results]) else default_arr
     Array[String] model_opts = flatten([run_plan.gen_opt, run_plan.vae_opt])
     Array[File] model_data = if (!run_plan.use_dim) then flatten([classification_out, reg_out]) else default_arr
     if (!run_plan.use_dim){
@@ -91,6 +104,7 @@ workflow main {
                 model = model_opts,
                 output_prefix = output_prefix,
                 use_shap = run_plan.use_shap,
+                use_reg = run_plan.use_reg,
                 shap_num_feat = shap_features,
                 docker = container_gen
         }
