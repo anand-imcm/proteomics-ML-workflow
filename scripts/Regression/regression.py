@@ -52,7 +52,7 @@ def parse_arguments():
         required=True,
         help=(
             "List of model shortcuts to run in parallel. Possible values: "
-            "NN_reg, RF_reg, SVM_reg, XGB_reg, PLS_reg, KNN_reg, LightGBM_reg, "
+            "NN_reg, RF_reg, SVM_reg, XGB_reg, PLS_reg, KNN_reg, LGBM_reg, "
             "VAE_reg, MLPVAE_reg"
         )
     )
@@ -103,8 +103,6 @@ def main():
         for choice in valid_models:
             if m.casefold() == choice.casefold():
                 user_choices[i] = choice
-            # else:
-            #     print(f"Error: Invalid model '{m}'.")
 
 
     # Separate models based on the script they should be handled by

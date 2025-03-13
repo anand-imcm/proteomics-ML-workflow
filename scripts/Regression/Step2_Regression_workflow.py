@@ -776,7 +776,7 @@ def main_regression():
         "XGB_reg": "XGBoost_reg",
         "PLS_reg": "PLS_reg",
         "KNN_reg": "KNN_reg",
-        "LightGBM_reg": "LightGBM_reg"
+        "LGBM_reg": "LightGBM_reg"
     }
 
     # Convert any shorthand models in args.models to full names if applicable

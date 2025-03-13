@@ -191,7 +191,7 @@ def main():
     parser.add_argument("--p", type=str, required=True,
                         help="Prefix for the output filenames from regression models.")
     parser.add_argument("--m", type=str, nargs="+", required=True,
-                        help='List of model names to analyze, e.g. "Neural_Network_reg".')
+                        help='List of model names to analyze, e.g. "NN_reg".')
     parser.add_argument("--f", type=int, default=20,
                         help="Number of top components (features) to display in SHAP plots.")
 
