@@ -77,7 +77,7 @@ def main():
         "XGB_reg": "XGBoost_reg",
         "PLS_reg": "PLS_reg",
         "KNN_reg": "KNN_reg",
-        "LightGBM_reg": "LightGBM_reg",
+        "LGBM_reg": "LightGBM_reg",
     }
 
     # Models handled by Step2_VAE_MLP_reg.py

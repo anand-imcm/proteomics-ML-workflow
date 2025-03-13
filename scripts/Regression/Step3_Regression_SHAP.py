@@ -197,12 +197,30 @@ def main():
 
     args = parser.parse_args()
     output_prefix = args.p
-    model_names = args.m
     num_features = args.f
+
+    model_aliases = {
+        "NN_reg": "Neural_Network_reg",
+        "RF_reg": "Random_Forest_reg",
+        "SVM_reg": "SVM_reg",
+        "XGB_reg": "XGBoost_reg",
+        "PLS_reg": "PLS_reg",
+        "KNN_reg": "KNN_reg",
+        "LGBM_reg": "LightGBM_reg",
+        "VAE_reg": "VAE_MLP_reg",
+        "MLPVAE_reg": "MLP_in_VAE_reg",
+    }
+
+    user_choices = args.m
+    model_names = list(model_aliases.keys())
+    for i, m in enumerate(user_choices):
+        for choice in model_names:
+            if m.casefold() == choice.casefold():
+                user_choices[i] = model_aliases[choice]
 
     Parallel(n_jobs=-1)(
         delayed(calculate_shap_values)(model_name, num_features, output_prefix)
-        for model_name in model_names
+        for model_name in user_choices
     )
     print("All SHAP analyses completed.")
 
