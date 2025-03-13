@@ -22,7 +22,6 @@ task ml_reg {
         tar -czvf ~{output_prefix}_results.tar.gz --ignore-failed-read *.{png,pkl,npy,csv}
     >>>
     output {
-        File out = "REG.txt"
         File results = output_prefix + "_results.tar.gz"
     }
     runtime {
