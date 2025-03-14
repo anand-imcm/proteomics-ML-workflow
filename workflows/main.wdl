@@ -12,21 +12,21 @@ workflow main {
     input {
         File input_csv
         String output_prefix
+        String mode = "Summary" # choices: Classification, Regression, Summary
         String? dimensionality_reduction_choices # PCA ELASTICNET KPCA UMAP TSNE PLS
-        String model_choices = "RF" # KNN NN SVM XGB PLSDA VAE LR GNB LGBM MLPVAE
-        String regression_choices = "RF_reg" # NN_reg SVM_reg XGB_reg PLS_reg KNN_reg LGBM_reg VAE_reg MLPVAE_reg
-        String mode = "Classification" # choices: Classification, Regression, Summary
+        Int number_of_dimensions = 3
+        String classification_model_choices = "RF" # KNN NN SVM XGB PLSDA VAE LR GNB LGBM MLPVAE
+        String regression_model_choices = "RF_reg" # NN_reg SVM_reg XGB_reg PLS_reg KNN_reg LGBM_reg VAE_reg MLPVAE_reg
         Boolean calculate_shap = false
         Int shap_features = 10
-        Int number_of_dimensions = 3
     }
     String pipeline_version = "1.0.2"
     String container_gen = "ghcr.io/anand-imcm/proteomics-ml-workflow-gen:~{pipeline_version}"
     Array[File] default_arr = []
     call RP.run_plan {
-        input: model_choices = model_choices,
+        input: model_choices = classification_model_choices,
             dimensionality_reduction_choices = dimensionality_reduction_choices,
-            regression_choices = regression_choices,
+            regression_choices = regression_model_choices,
             mode = mode,
             shap = calculate_shap
     }
