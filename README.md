@@ -20,23 +20,39 @@ The workflow is implemented in Python, R and Workflow Description Language (WDL)
 
 - **Preprocessing** : By default, Z-score standardisation is applied to the input data. Optionally, users can choose to apply dimensionality reduction to the dataset. Display scatter plots for every two dimensions based on the selected number of output dimensions. The available methods include:
   - `PCA` (Principal Component Analysis for linear data)
+  - `ELASTICNET` (ElasticNet Regularization)
   - `UMAP` (Uniform Manifold Approximation and Projection)
-  - `t-SNE` (t-Distributed Stochastic Neighbor Embedding)
+  - `TSNE` (t-Distributed Stochastic Neighbor Embedding)
   - `KPCA` (Kernel Principal Component Analysis for non-linear data)
-  - `PLS` (Partial Least Squares)
+  - `PLS` (Partial Least Squares Regression)
 
 - **Classification** : This step applies the machine learning models to the standardized data and generates a confusion matrix, ROC plots for all classes and averages, and other relevant evaluation metrics (Accuracy, F1, sensitivity, specificity) for all the models. The available algorithms are as follows:
-  - `KNN` (K-Nearest Neighbors)
   - `RF` (Random Forest)
+  - `KNN` (K-Nearest Neighbors)
   - `NN` (Neural Network)
   - `SVM` (Support Vector Machine)
   - `XGB` (XGBoost)
   - `PLSDA` (Partial Least Squares Discriminant Analysis)
-  - `VAE` (Variational autoencoder)
+  - `VAE` (Variational Autoencoder with Multilayer Perceptron)
+  - `LR` (Logistic Regression)
+  - `GNB` (Gaussian Naive Bayes)
+  - `LGBM` (LightGBM)
+  - `MLPVAE` (Multilayer Perceptron inside Variational Autoencoder)
+  
+- **Regression** : This step applies the machine learning models to the standardized data and generates a confusion matrix, ROC plots for all classes and averages, and other relevant evaluation metrics (Accuracy, F1, sensitivity, specificity) for all the models. The available algorithms are as follows:
+  - `RF_REG` (Random Forest Regression)
+  - `NN_REG` (Neural Network Regression)
+  - `SVM_REG` (Support Vector Regression)
+  - `XGB_REG` (XGBoost Regression)
+  - `PLS_REG` (Partial Least Squares Regression)
+  - `KNN_REG` (K-Nearest Neighbors Regression)
+  - `LGBM_REG` (LightGBM Regression)
+  - `VAE_REG` (Variational Autoencoder with Multilayer Perceptron)
+  - `MLPVAE_reg` (Multilayer Perceptron inside Variational Autoencoder)
 
-- **SHAP summary** : This step calculates SHapley Additive exPlanations (SHAP) values for variable importance (CSV file and radar plot for top features) and plots ROC curves for all the models specified by the user.
+- **SHAP analysis** : (Optional) This step calculates SHapley Additive exPlanations (SHAP) values for variable importance (CSV file and radar plot for top features) and plots ROC curves for all the models specified by the user.
 
-- **Combined report** : This step aggregates all output plots from the previous steps and compiles them into a `.pdf` report.
+- **Report generation** : This step aggregates all output plots from the previous steps and compiles them into a `.pdf` report.
 
 ## Inputs
 
@@ -52,26 +68,24 @@ User can run multiple dimensionality reduction methods on the input dataset, and
   - **`main.output_prefix`** : [String] Analysis ID. This will be used as prefix for all the output files.
 
 > [!WARNING]
-It is recommended to select only one dimensionality reduction method when using it alongside ML models. Set the `skip_ML_models` option to `true` if applying multiple dimensionality reduction methods. If `skip_ML_models` is `false` while using multiple dimensionality reduction methods, the pipeline will automatically select one of the output files from the dimensionality reduction step for classification.
+It is recommended to select only one dimensionality reduction method when using it alongside ML models. If multiple dimensionality reduction methods are specified, the pipeline will run only the specified methods and then proceed directly to the final report generation step.
 
 - **Optional**
-  - **`main.use_dimensionality_reduction`** : [Boolean] Use this option to apply dimensionality reduction to the input data. Default value: `false`
+  - **`main.mode`** : [String] Specify the dimensionality method name(s) to use. Options include `Classification`, `Regression`, and `Summary`. Default value: `Summary`.
+  - **`main.dimensionality_reduction_choices`** : [String] Specify the dimensionality method name(s) to use. Options include `PCA`, `UMAP`, `t-SNE`, `KPCA` and `PLS`. Multiple methods can be entered together, separated by a space. Default value: `PCA`
   - **`main.num_of_dimensions`**: [Int] Total number of expected dimensions after applying dimensionality reduction. Default value: `3`.
   - **`main.skip_ML_models`** : [Boolean] Use this option to skip running ML models. Default value: `false`
-  - **`main.model_choices`** : [String] Specify the model name(s) to use. Options include `KNN`, `RF`, `NN`, `XGB`, `PLSDA`, `VAE`, and `SVM`. Multiple model names can be entered together, separated by a space. Default value: `RF`
-  - **`main.dimensionality_reduction_choices`** : [String] Specify the dimensionality method name(s) to use. Options include `PCA`, `UMAP`, `t-SNE`, `KPCA` and `PLS`. Multiple methods can be entered together, separated by a space. Default value: `PCA`
-  - **`main.shap_radar_num_features`**: [Int] Top features to display on the radar chart. Default value: `10`
-  - **`main.memory_*`** : [Int] Amount of memory in GB needed to execute the specific task. Default value: `128`
-  - **`*main.cpu_*`** : [Int] Number of CPUs needed to execute the specific task. Default value: `64`
+  - **`main.classification_model_choices`** : [String] Specify the classification model name(s) to use. Options include `RF`, `KNN`, `NN`, `SVM`, `XGB`, `PLSDA`, `VAE`, `LR`, `GNB`, `LGBM` and `MLPVAE`. Multiple model names can be entered together, separated by a space. Default value: `RF`
+  - **`main.regression_model_choices`** : [String] Specify the regression model name(s) to use. Options include `RF_reg`, `NN_reg`, `SVM_reg`, `XGB_reg`, `PLS_reg`, `KNN_reg`, `LGBM_reg`, `VAE_reg` and `MLPVAE_reg`. Multiple model names can be entered together, separated by a space. Default value: `RF_reg`
+  - **`main.calculate_shap`**: [Boolean] Top features to display on the radar chart. Default value: `false`
+  - **`main.shap_features`**: [Int] Top features to display on the radar chart. Default value: `10`
+  - **`*.memory_gb`** : [Int] Amount of memory in GB needed to execute the specific task. Default value: `128`
+  - **`*.cpu`** : [Int] Number of CPUs needed to execute the specific task. Default value: `64`
 
 ## Outputs
 
-- `report` : [File] A `.pdf` file containing the result plots from all the required analyses.
-- `plots` : [File] A `.gz` file containing the result plots from all the required analyses.
-- `shap_csv` : Array[File] A list of `.csv` files containing SHAP values for each input variable.
-- `std_preprocessing_csv` : [File] A `.csv` file with data standardized using the default method.
-- `dimensionality_reduction_csv` : [File] A `.csv` file with the selected dimensional data using the user-selected dimensionality reduction method.
-- `dimensionality_reduction_plots` : Array[File] A list of `.png` files with the selected dimensional output plots using the user-selected dimensionality reduction method.
+- `report` : [File] A `.pdf` file containing the final reports, including the plots generated through the analyses.
+- `results` : [File] A `.gz` file containing the results and plots from all steps in the workflow.
 
 ## Components
 
@@ -87,7 +101,8 @@ It is recommended to select only one dimensionality reduction method when using 
 | [xgboost](https://github.com/dmlc/xgboost) |  Apache-2.0 |
 | [shap](https://github.com/shap/shap) |  MIT |
 | [pillow](https://github.com/python-pillow/Pillow) |  Open Source HPND |
-| [tensorflow](https://github.com/tensorflow/tensorflow) |  Apache-2.0 |
+| [PyTorch](https://github.com/pytorch/pytorch) |  BSD |
+| [Optuna](https://github.com/optuna) | MIT |
 | [fpdf](https://github.com/reingart/pyfpdf) |  LGPL-3.0 |
 | [seaborn](https://github.com/mwaskom/seaborn) |  BSD-3-Clause |
 | [umap-learn](https://github.com/lmcinnes/umap) |  BSD-3-Clause |

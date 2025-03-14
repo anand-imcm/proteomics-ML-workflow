@@ -7,11 +7,12 @@ dependencies:
 - python
 - libtiff=4.0.*
 - joblib<=1.4.0
+- lightgbm<=4.5.0
 - matplotlib<=3.9.0
 - numpy<=1.23.5
+- optuna<=4.0.0
 - pandas<=2.2.2
-- scikit-learn<=1.4.2
+- scikit-learn<=1.5.1
+- seaborn<=0.13.2
+- shap<=0.46.0
 - xgboost<=2.1.0
-- shap<=0.45.0
-- pillow<=10.3.0
-- tensorflow<=2.12.0
