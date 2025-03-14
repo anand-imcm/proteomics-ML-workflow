@@ -72,7 +72,7 @@ It is recommended to select only one dimensionality reduction method when using 
 
 - **Optional**
   - **`main.mode`** : [String] Specify the dimensionality method name(s) to use. Options include `Classification`, `Regression`, and `Summary`. Default value: `Summary`.
-  - **`main.dimensionality_reduction_choices`** : [String] Specify the dimensionality method name(s) to use. Options include `PCA`, `UMAP`, `t-SNE`, `KPCA` and `PLS`. Multiple methods can be entered together, separated by a space. Default value: `PCA`
+  - **`main.dimensionality_reduction_choices`** : [String] Specify the dimensionality method name(s) to use. Options include `PCA`, `UMAP`, `TSNE`, `KPCA` and `PLS`. Multiple methods can be entered together, separated by a space. Default value: `PCA`
   - **`main.num_of_dimensions`**: [Int] Total number of expected dimensions after applying dimensionality reduction. Default value: `3`.
   - **`main.skip_ML_models`** : [Boolean] Use this option to skip running ML models. Default value: `false`
   - **`main.classification_model_choices`** : [String] Specify the classification model name(s) to use. Options include `RF`, `KNN`, `NN`, `SVM`, `XGB`, `PLSDA`, `VAE`, `LR`, `GNB`, `LGBM` and `MLPVAE`. Multiple model names can be entered together, separated by a space. Default value: `RF`
