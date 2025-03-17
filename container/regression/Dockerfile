@@ -1,6 +1,13 @@
 FROM mambaorg/micromamba:1.5.5
 
-COPY --chown=$MAMBA_USER:$MAMBA_USER ./container/vae/environment.yml /tmp/
+USER root
+
+RUN apt-get update && apt-get install -yq --no-install-recommends \
+    libx11-6 libx11-dev tk tk-dev
+
+USER $MAMBA_USER
+
+COPY --chown=$MAMBA_USER:$MAMBA_USER ./container/regression/environment.yml /tmp/
 
 COPY --chown=$MAMBA_USER:$MAMBA_USER ./scripts /scripts
 
