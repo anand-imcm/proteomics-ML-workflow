@@ -18,9 +18,9 @@ from Step2_NB import gaussian_nb_nested_cv as gaussian_nb
 def parse_arguments():
     parser = argparse.ArgumentParser(description='Script to run classifiers')
     parser.add_argument('-i', '--csv', type=str, required=True, help='Input file in CSV format')
-    parser.add_argument('-m', '--model', type=str, nargs='+', required=True,
-                        choices=['KNN', 'RF', 'NN', 'SVM', 'XGB', 'PLSDA', 'VAE', 'LGBM', 'LR', 'MLPVAE', 'GNB'],
-                        help='Name of the model(s)')
+    parser.add_argument('-m', '--model', type=str, nargs='+', default=['KNN', 'RF', 'NN', 'SVM', 'XGB', 'PLSDA', 'VAE', 'LGBM', 'LR', 'MLPVAE', 'NB'],
+                        choices=['KNN', 'RF', 'NN', 'SVM', 'XGB', 'PLSDA', 'VAE', 'LGBM', 'LR', 'MLPVAE', 'NB'],
+                        help='Name of the model(s), default is all models')
     parser.add_argument('-p', '--prefix', type=str, help='Output prefix')
     parser.add_argument('-f', '--feature_selection', type=str,
                         choices=['none', 'elasticnet', 'pca', 'kpca', 'umap', 'pls', 'tsne'],
@@ -40,9 +40,9 @@ def run_model(model, csv, prefix, feature_selection):
     elif model == "XGB":
         xgboost(csv, prefix, feature_selection)
     elif model == "PLSDA":
-        # Only allow 'umap' or 'elasticnet' for feature selection in PLSDA
-        if feature_selection not in ['umap', 'elasticnet']:
-            raise ValueError("PLSDA only supports 'umap' and 'elasticnet' for feature selection.")
+        # Allow 'umap', 'elasticnet', or 'none' for feature selection in PLSDA
+        if feature_selection not in ['umap', 'elasticnet', 'none']:
+            raise ValueError("PLSDA only supports 'umap', 'elasticnet', and 'none' for feature selection.")
         plsda(csv, prefix, feature_selection)
     elif model == "VAE":
         # VAE does not take feature_selection
@@ -54,7 +54,7 @@ def run_model(model, csv, prefix, feature_selection):
     elif model == "MLPVAE":
         # MLPVAE does not take feature_selection
         mlpvae(csv, prefix)
-    elif model == "GNB":
+    elif model == "NB":
         gaussian_nb(csv, prefix, feature_selection)
     else:
         raise ValueError(f"Unsupported model: {model}")
@@ -72,8 +72,8 @@ def main():
 
     # Validate feature selection method for PLSDA
     if 'PLSDA' in args.model:
-        if args.feature_selection not in ['umap', 'elasticnet']:
-            sys.exit("Error: PLSDA only supports 'umap' and 'elasticnet' as feature selection methods.")
+        if args.feature_selection not in ['umap', 'elasticnet', 'none']:
+            sys.exit("Error: PLSDA only supports 'umap', 'elasticnet', and 'none' as feature selection methods.")
 
     # Run models in parallel
     Parallel(n_jobs=-1, backend='multiprocessing', verbose=100)(
