@@ -21,13 +21,6 @@ task ml_vae {
         tar -czvf ~{output_prefix}_~{model}_results.tar.gz --ignore-failed-read *.{png,pkl,npy,csv}
     >>>
     output {
-        File confusion_matrix_plot = glob("*_confusion_matrix.png")[0]
-        File data_pkl = glob("*_data.pkl")[0]
-        File metrics_plot = glob("*_metrics.png")[0]
-        File model_pkl = glob("*_model.pkl")[0]
-        File out = glob("*_predictions.csv")[0]
-        File roc_curve_plot = glob("*_roc_curve.png")[0]
-        File roc_data = glob("*_roc_data.npy")[0]
         File data = output_prefix + "_" + model + "_results.tar.gz"
     }
     runtime {

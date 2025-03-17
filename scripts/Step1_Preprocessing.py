@@ -249,8 +249,8 @@ def perform_kernel_pca(data, out_prefix, labels, sample_ids, dims=3, random_stat
     
     def objective(trial):
         try:
-            gamma = trial.suggest_float('gamma', 1e-4, 1e4, log=True)
-            kernel = trial.suggest_categorical('kernel', ['linear', 'poly', 'rbf', 'sigmoid', 'cosine'])
+            gamma = trial.suggest_float('gamma', 1e-3, 1e-1, log=True)
+            kernel = trial.suggest_categorical('kernel', ['linear', 'poly', 'rbf', 'cosine'])
             kpca = KernelPCA(n_components=dims, kernel=kernel, gamma=gamma, random_state=random_state)
             kpca_result = kpca.fit_transform(data_scaled)
             score = kpca_result.var(axis=0).sum()

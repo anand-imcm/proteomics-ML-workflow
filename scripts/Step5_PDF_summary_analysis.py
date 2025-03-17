@@ -164,7 +164,7 @@ classification_image_types = {
     'roc_curve': 'ROC Curve',
     'shap_radar': 'Feature Importance - SHAP Radar Plot',
     'shap_bar': 'Feature Importance - SHAP Bar Plot for Multiclass',
-    'nested_cv_f1_auc': 'Nested CV F1 and AUC Scores Plot Showing Five-Fold Classification Results'
+    'nested_cv_f1_auc': 'Five-Fold Classification Results'
 }
 
 classification_models = {
