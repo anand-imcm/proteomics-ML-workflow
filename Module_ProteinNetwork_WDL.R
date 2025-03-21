@@ -365,12 +365,12 @@ if(converProId == TRUE){
     values = Full_SHAP_Ori,
     mart = ensembl
   )
-  SHAP_All <- sapply(Full_SHAP$uniprotswissprot, function(x) {Full_SHAP_F[which(rownames(Full_SHAP_F)==x), "SHAP"]})
-  Full_SHAP_F_Plot <- cbind(Full_SHAP$hgnc_symbol, SHAP_All) %>% as.data.frame()
+  SHAP_All <- sapply(Full_SHAP$uniprotswissprot, function(x) {Full_SHAP_F[which(rownames(Full_SHAP_F)==x), "CombinedShap"]})
+  Full_SHAP_F_Plot <- cbind(Full_SHAP$hgnc_symbol, SHAP_All) %>% as.data.frame() %>% mutate(SHAP_All = as.numeric(SHAP_All))
   
 }else{
   Pro_Plot_F <- cbind(rownames(SHAP_PlotF), SHAP_PlotF$CombinedShap)
-  Full_SHAP_F_Plot <- cbind(rownames(NewSHAP),NewSHAP) %>% as.data.frame()
+  Full_SHAP_F_Plot <- cbind(rownames(Full_SHAP_F),Full_SHAP_F$CombinedShap) %>% as.data.frame()
 }
 
 ###  Set the arbitrary colnames for the convenience of processing data.
@@ -378,7 +378,7 @@ colnames(Pro_Plot_F) <- colnames(Full_SHAP_F_Plot) <- c("proName", "SHAP")
 rownames(Pro_Plot_F) <- Pro_Plot_F$proName
 
 ### Tackle with the same UniProtID corresponding to different Entrez Symbols
-Full_SHAP_F_Plot %<>% group_by(proName) %>% summarise(SHAP = mean(SHAP, na.rm = TRUE), .groups = "drop")
+Full_SHAP_F_Plot %<>% group_by(proName) %<>% summarise(SHAP = mean(SHAP, na.rm = TRUE), .groups = "drop") %<>% as.data.frame()
 rownames(Full_SHAP_F_Plot) <- Full_SHAP_F_Plot$proName
 
 ###############
