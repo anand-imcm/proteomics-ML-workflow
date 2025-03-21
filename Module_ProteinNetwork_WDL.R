@@ -1,4 +1,14 @@
 # This script serves as module to perform bioinformatic characterizations for protein list provided by ML workflow
+# Command line: 
+# Rscript Module_ProteinNetwork_WDL.R \
+#     --inputPath "/home/rstudio/YD/ML_workflow/input/" \
+#     --outPath "/home/rstudio/YD/ML_workflow/output/" \
+#     --score_thresholdHere 400 \
+#     --combined_score_thresholdHere 800 \
+#     --SHAPthresh 100 \
+#     --patternChosen "Case1" \
+#     --converProId TRUE \
+#     >> "/home/rstudio/YD/ML_workflow/output/Network.log" 2>&1 &
 
 library(graphics)
 library(grDevices)
@@ -27,15 +37,13 @@ option_list <- list(
               help = "Path to input files.", metavar = "INPUT_PATH"),
   make_option(c("-o", "--outPath"), type = "character", default = "/home/rstudio/YD/ML_workflow/output/",
               help = "Path to output files.", metavar = "OUTPUT_PATH"),
-  make_option(c("-t", "--titleMessage"), type = "character", default = "Case1", 
-              help = "Input title message for the output plots.", metavar = "MESSAGE"),
   make_option(c("-s", "--score_thresholdHere"), type = "integer", default = 400, 
               help = "Score threshold for STRING database.", metavar = "SCORE"),
-  make_option(c("-c", "--combined_score_thresholdHere"), type = "integer", default = 500, 
+  make_option(c("-c", "--combined_score_thresholdHere"), type = "integer", default = 800, 
               help = "Combined score threshold to select the nodes to be plotted.", metavar = "SCORE"),
   make_option(c("-a", "--SHAPthresh"), type = "integer", default = 100, 
               help = "Shap threshhold to define the top important proteins.", metavar = "ShapThresh"),
-  make_option(c("-n", "--patternChosen"), type = "character", default = "Case1_lightgbm", 
+  make_option(c("-n", "--patternChosen"), type = "character", default = "", 
               help = "File name pattern defining which SHAP files to be included for analysis.", metavar = "FilePattern"),
   make_option(c("-v", "--converProId"), type = "logical", default = TRUE, 
               help = "Whether to perform the protein name mappin.", metavar = "converProId"),
@@ -44,10 +52,8 @@ option_list <- list(
   make_option(c("-K", "--KnodeHere"), type = "integer", default = 10, 
               help = "Number of random nodes selected per iteration for RF.", metavar = "NODES"),
   make_option(c("-N", "--nTreeHere"), type = "integer", default = 10, 
-              help = "Number of trees built per iteration for RF.", metavar = "TREE"),
-  make_option(c("-p","--proteinImportanceFile"), type = "character", default = "/home/rstudio/YD/ML_workflow/input/Case1_lightgbm_shap_values.csv", 
-              help = "Protein importance input file name.", metavar = "IMPORTANCE")
-  # make_option(c("-x","--proteinExpFile"), type = "character", default = "label_diagnosis_HCRBD2.csv", 
+              help = "Number of trees built per iteration for RF.", metavar = "TREE")
+  #make_option(c("-x","--proteinExpFile"), type = "character", default = "label_diagnosis_HCRBD2.csv", 
   #             help = "Protein expression input file name.", metavar = "EXPRESSION")
 )
 
@@ -60,13 +66,11 @@ args <- parse_args(parser)
 # Assign parsed values to variables
 inputPath <- args$inputPath
 outPath <- args$outPath
-proteinImportanceFile <- args$proteinImportanceFile
 score_thresholdHere <- args$score_thresholdHere
 combined_score_thresholdHere <- args$combined_score_thresholdHere
 SHAPthresh <- args$SHAPthresh
 patternChosen <- args$patternChosen 
 converProId = args$converProId
-titleMessage <- args$titleMessage
 # RFedge_threshold_here <- args$RFedge_threshold_here
 # KnodeHere <- args$KnodeHere
 # nTreeHere <- args$nTreeHere
@@ -105,9 +109,9 @@ getHubProTable <- function(LinkTable){
 # Full_SHAP_F_Plot: data frame of all the proteins with corresponding SHAP values, protein name must be Entrez Symbol; 
 # score_thresholdHere: score threshold to initialize STRING database;
 # combined_score_thresholdHere: score thresold to make network plot;
-# titleMessage: message to included in the title of network plot
+# patternChosen: message to included in the title of network plot
 # Output -- list(Hub_Proteins_STRING, Hub_Proteins_STRING_extended), protein centrality score for non extended and extended protein network.
-map2Srting <- function(Pro_Plot_F, Full_SHAP_F_Plot, score_thresholdHere, combined_score_thresholdHere, titleMessage){
+map2Srting <- function(Pro_Plot_F, Full_SHAP_F_Plot, score_thresholdHere, combined_score_thresholdHere, patternChosen){
   set.seed(42)
   
   ### Initialize STRING database
@@ -140,13 +144,12 @@ map2Srting <- function(Pro_Plot_F, Full_SHAP_F_Plot, score_thresholdHere, combin
   }))]
   
   ### Set node color based on SHAP values
+  # Color palette and node coloring
+  myPalette <- colorRampPalette(c("darkgreen", "lightgreen", "white", "pink", "darkred"))
   nodeValue <- Pro_Plot_F[nodeName2,"SHAP"]
   nodeColor <- myPalette(1000)[
     as.numeric(cut(nodeValue, breaks = 1000))
   ]
-  
-  # Color palette and node coloring
-  myPalette <- colorRampPalette(c("darkgreen", "lightgreen", "white", "pink", "darkred"))
   
   ### Plot the network
   plot(g, 
@@ -159,7 +162,7 @@ map2Srting <- function(Pro_Plot_F, Full_SHAP_F_Plot, score_thresholdHere, combin
        vertex.label.family = "sans", 
        vertex.label.dist = 0.8, 
        cex.main = 0.06, 
-       main = paste0("Protein-Protein Interaction Network", titleMessage, 
+       main = paste0("Protein-Protein Interaction Network ", patternChosen, 
                      "\nBased on STRING database"), 
        rescale = TRUE)
   
@@ -220,7 +223,7 @@ map2Srting <- function(Pro_Plot_F, Full_SHAP_F_Plot, score_thresholdHere, combin
     which(mapAll$STRING_id == x)[1]
   }))]
   
-  nodeValue_expanded <- NewSHAP[nodeName2, "CombinedShap"]
+  nodeValue_expanded <- Full_SHAP_F_Plot[nodeName2, "SHAP"]
   
   # Color palette and node coloring
   nodeColor_expanded <- myPalette(1000)[
@@ -238,7 +241,7 @@ map2Srting <- function(Pro_Plot_F, Full_SHAP_F_Plot, score_thresholdHere, combin
        vertex.label.family = "sans", 
        vertex.label.dist = 0.8, 
        cex.main = 0.06, 
-       main = paste0("Protein-Protein Interaction Network ", titleMessage, 
+       main = paste0("Protein-Protein Interaction Network ", patternChosen, 
                      "\nBased on STRING database"), 
        rescale = TRUE)
   
@@ -262,7 +265,7 @@ map2Srting <- function(Pro_Plot_F, Full_SHAP_F_Plot, score_thresholdHere, combin
 }
 
 ### Make network plot by applying GENEI3 Random Forrest Algorithm bsaed on protein expression data
-# regulatoryNet_WF <- function(ProImportanceF,proDFhere,KnodeHere,nTreeHere,RFedge_threshold_here,titleMessage){
+# regulatoryNet_WF <- function(ProImportanceF,proDFhere,KnodeHere,nTreeHere,RFedge_threshold_here,patternChosen){
 #   set.seed(42)
 #   ### expression profile of master regulators applied to GENIE3
 #   proName <- rownames(ProImportanceF)
@@ -289,7 +292,7 @@ map2Srting <- function(Pro_Plot_F, Full_SHAP_F_Plot, score_thresholdHere, combin
 #   nodeColor <- myPalette(1000)[as.numeric(cut(as.numeric(nodeColor), breaks=1000))]
 #   names(nodeColor) <- names(nodeValue)
 #   
-#   plot(gra, main=paste0("Protein Regulatory Network\n",titleMessage), cex.main=0.8,
+#   plot(gra, main=paste0("Protein Regulatory Network\n",patternChosen), cex.main=0.8,
 #        vertex.label=vertex.display,vertex.size=3, 
 #        vertex.color=nodeColor[vertex.display],vertex.label.font=0.5, vertex.label.cex=.5, vertex.label.color="darkgreen",
 #        edge.arrow.size=0.2, arrow.width=1, vertex.label.dist=1.5,rescale = TRUE)
@@ -313,6 +316,8 @@ map2Srting <- function(Pro_Plot_F, Full_SHAP_F_Plot, score_thresholdHere, combin
 ################
 # READ IN DATA
 ################
+print(paste0("Network plot for ",  patternChosen, " started at ", format(Sys.time(), "%H:%M:%S"), " on ", Sys.Date(),"."))
+
 # Choose which SHAP files and which SHAP threshold to make network plot
 proteinImportanceFile_list <- list.files(inputPath, pattern=patternChosen)
 ModelName <- gsub("_shap_values.csv", "",proteinImportanceFile_list)
@@ -385,17 +390,19 @@ rownames(Full_SHAP_F_Plot) <- Full_SHAP_F_Plot$proName
 # OUTPUT FILES
 ###############
 ### Output network plots and hub protein tables
-pdf(paste0(outPath, titleMessage, "_Network.pdf"))
-Hub_Proteins_STRING_List <- map2Srting(Pro_Plot_F, Full_SHAP_F_Plot, score_thresholdHere, combined_score_thresholdHere, titleMessage)
-Hub_Proteins_STRING <- Hub_Proteins_STRING_List[[1]] %>% arrange(Closeness)
-Hub_Proteins_STRING_WithExtention <- Hub_Proteins_STRING_List[[2]] %>% arrange(Closeness)
+pdf(paste0(outPath, patternChosen, "_Network.pdf"))
+Hub_Proteins_STRING_List <- map2Srting(Pro_Plot_F, Full_SHAP_F_Plot, score_thresholdHere, combined_score_thresholdHere, patternChosen)
+Hub_Proteins_STRING <- Hub_Proteins_STRING_List[[1]] %>% arrange(desc(Degree))
+Hub_Proteins_STRING_WithExtention <- Hub_Proteins_STRING_List[[2]] %>% arrange(desc(Degree))
 
-write.table(Hub_Proteins_STRING, file = paste0(outPath, titleMessage,"_Hub_Proteins_STRING.csv"))
-write.table(Hub_Proteins_STRING_WithExtention, file = paste0(outPath, titleMessage, "_Hub_Proteins_STRING_WithExtention.csv"))
+write.table(Hub_Proteins_STRING, file = paste0(outPath, patternChosen,"_Hub_Proteins_STRING.csv"))
+write.table(Hub_Proteins_STRING_WithExtention, file = paste0(outPath, patternChosen, "_Hub_Proteins_STRING_WithExtention.csv"))
 dev.off()
 
+print(paste0("Network plot for ",  patternChosen, " finished at ", format(Sys.time(), "%H:%M:%S"), " on ", Sys.Date(),"."))
+
 # png('PPI_M.png', res = 400)
-# Hub_Proteins_GENIE <- regulatoryNet_WF(ProImportanceF,proDFhere,KnodeHere,nTreeHere,RFedge_threshold_here,titleMessage)
+# Hub_Proteins_GENIE <- regulatoryNet_WF(ProImportanceF,proDFhere,KnodeHere,nTreeHere,RFedge_threshold_here,patternChosen)
 # Hub_Proteins_GENIE %<>% arrange(desc(Degree))
 # write.table(Hub_Proteins_GENIE, file = "Hub_Proteins_GENIE.csv")
 # dev.off()
@@ -403,11 +410,11 @@ dev.off()
 # use the long flag
 # Rscript Module_ProteinNetwork_WDL.R -s 400 -c 500 -R 0.04 -K 5 -n 1 -E proDFhere.csv > /Users/ydeng/Documents/IMCMCode/output/ProteinNetwork_WDL_log.csv 2>&1
 
-# Rscript Module_ProteinNetwork_WDL.R -s 400 -c 500 -R 0.04 -K 5 -n 1 -E proDFhere.csv > /Users/ydeng/Documents/IMCMCode/output/ProteinNetwork_WDL_log.csv 2>&1
 ######################################################
 ######################################################
 # For Yuhan to write in the paper only
-pdf(paste0(outPath,"YH_paper_only.pdf"))
+if(patternChosen == "Case1"){
+pdf(paste0(outPath, patternChosen, "_YH_paper_only.pdf"))
 ### The following is for Yuhan's 4 interested proteins
 interestPro <- c("HPX", "APOH", "PLG", "GLRX")
 ensembl <- useMart("ensembl", dataset = "hsapiens_gene_ensembl")
@@ -417,26 +424,26 @@ OverLap <- getBM(
   values = interestPro,
   mart = ensembl
 ) %>% filter(uniprotswissprot != "")
-rankInOurCombinedSHAP <- sapply(OverLap$uniprotswissprot, function(x) {which(rownames(NewSHAP)==x)})
+rankInOurCombinedSHAP <- sapply(OverLap$uniprotswissprot, function(x) {which(rownames(Full_SHAP_F)==x)})
 rankInLightgbm <- sapply(OverLap$uniprotswissprot, function(x) {which(rownames(ProImportance[[1]])==x)})
 rankInRF <- sapply(OverLap$uniprotswissprot, function(x) {which(rownames(ProImportance[[2]])==x)})
 whereInterestPro <- cbind(OverLap, rankInLightgbm, rankInRF, rankInOurCombinedSHAP)
-whereInterestPro
+write.table(whereInterestPro, file=paste0(outPath, patternChosen, "_whereInterestPro.csv"))
 
 library(ggridges)
 library(reshape2)  # For reshaping data
 # Convert data to long format for ggridges
-NewSHAP_long <- melt(NewSHAP, measure.vars = c("lightgbm", "random_forest", "CombinedShap"))
+NewSHAP_long <- melt(Full_SHAP_F, measure.vars = c("Case1_lightgbm", "Case1_random_forest", "CombinedShap"))
 
 # Ridge plot
-ggplot(NewSHAP_long, aes(x = value, y = variable, fill = variable)) +
+RidgeP <- ggplot(NewSHAP_long, aes(x = value, y = variable, fill = variable)) +
   geom_density_ridges(alpha = 0.7, scale = 1.2) +
   labs(title = "Ridge Plot of SHAP Distributions", x = "SHAP Value", y = "Model") +
   theme_minimal() +
   scale_fill_manual(values = c("red", "blue", "green"))  # Custom colors
+print(RidgeP)
 
-
-plot(NewSHAP$lightgbm,NewSHAP$random_forest, xlab="Lightgbm", ylab="random_forest", main="Comparisons of SHAP for all proteins")
+plot(Full_SHAP_F$Case1_lightgbm,Full_SHAP_F$Case1_random_forest, xlab="Lightgbm", ylab="random_forest", main="Comparisons of SHAP for all proteins")
 
 dev.off()
-
+}
