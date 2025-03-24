@@ -1,3 +1,5 @@
+#!/bin/bash
+
 Rscript Module_ProteinNetwork_WDL.R \
     --inputPath "/home/rstudio/YD/ML_workflow/input/" \
     --outPath "/home/rstudio/YD/ML_workflow/output/" \
