@@ -24,6 +24,7 @@ library(igraph)
 library(STRINGdb)
 library(fields)
 library(ggplot2)
+library(writexl)
 library(biomaRt)
 library(pdftools)
 #library(GENIE3)
@@ -328,8 +329,8 @@ print(paste0("Network plot for ",  patternChosen, " started at ", format(Sys.tim
 # Choose which SHAP files and which SHAP threshold to make network plot
 proteinImportanceFile_list <- list.files(inputPath, pattern=patternChosen)
 ModelName <- gsub("_shap_values.csv", "",proteinImportanceFile_list)
-ProImportance <- BiomarkerList <- ProteinName <- vector("list", length=length(proteinImportanceFile_list))
-names(ProImportance) <- names(ProImportance) <- names(BiomarkerList) <- names(ProteinName) <- ModelName
+ProImportance <- vector("list", length=length(proteinImportanceFile_list))
+names(ProImportance) <- ModelName
 
 for(fCt in 1:length(proteinImportanceFile_list)){
   ProImportance_temp <- read.csv(paste0(inputPath, proteinImportanceFile_list[fCt]), row.names=1)
@@ -352,8 +353,14 @@ NewSHAP$Protein <- NULL
 colnames(NewSHAP) <- ModelName
 
 ### Keep NewSHAP for further reference
-Full_SHAP_F <- NewSHAP %>% mutate(CombinedShap = rowMeans(across(everything(), abs))) %>% arrange(desc(CombinedShap))
+NewSHAP_scaled <- as.data.frame(lapply(NewSHAP, function(x) {
+  (x - min(x, na.rm = TRUE)) / (max(x, na.rm = TRUE) - min(x, na.rm = TRUE))
+})) ### if incorporating SHAP values from different models, standardize the magnitude per model to 0~1
+
+CombinedShap <- NewSHAP_scaled %>% mutate(CombinedShap = rowMeans(across(everything(), abs), na.rm = TRUE)) %>% dplyr::select("CombinedShap")
+Full_SHAP_F <- cbind(NewSHAP,CombinedShap) %>% arrange(desc(CombinedShap))
 Full_SHAP_Ori <- rownames(Full_SHAP_F)
+Full_SHAP_F_AllScaled <- cbind(NewSHAP_scaled,CombinedShap) %>% arrange(desc(CombinedShap))
 
 ### Prepare data frame of top proteins with highest importance
 SHAP_PlotF <- Full_SHAP_F %>% slice_head(n = SHAPthresh) 
@@ -407,8 +414,9 @@ Hub_Proteins_STRING_List <- map2Srting(Pro_Plot_F, Full_SHAP_F_Plot, score_thres
 Hub_Proteins_STRING <- Hub_Proteins_STRING_List[[1]] %>% arrange(desc(Degree))
 Hub_Proteins_STRING_WithExpansion <- Hub_Proteins_STRING_List[[2]] %>% arrange(desc(Degree))
 
-write.table(Hub_Proteins_STRING, file = paste0(outPath, patternChosen,"_Hub_Proteins_STRING.csv"))
-write.table(Hub_Proteins_STRING_WithExpansion, file = paste0(outPath, patternChosen, "_Hub_Proteins_STRING_WithExpansion.csv"))
+write_xlsx(Hub_Proteins_STRING, path = paste0(outPath, patternChosen, "_Hub_Proteins_STRING.xlsx"))
+write_xlsx(Hub_Proteins_STRING_WithExpansion, path = paste0(outPath, patternChosen, "_Hub_Proteins_STRING_WithExpansion.xlsx"))
+
 dev.off()
 
 num_pages <- pdf_info(pdf_filePath)$pages
@@ -433,47 +441,104 @@ print(paste0("Network plot for ",  patternChosen, " finished at ", format(Sys.ti
 ######################################################
 # Special for Case1,  look into four interesting proteins reported by other publications
 if(patternChosen == "Case1"){
-pdf(paste0(outPath, patternChosen, "_YH_paper_only.pdf"))
-### The following is for Yuhan's 4 interested proteins
-interestPro <- c("HPX", "APOH", "PLG", "GLRX")
-ensembl <- useMart("ensembl", dataset = "hsapiens_gene_ensembl")
-OverLap <- getBM(
-  attributes = c("uniprotswissprot", "hgnc_symbol"),
-  filters = "hgnc_symbol",
-  values = interestPro,
-  mart = ensembl
-) %>% filter(uniprotswissprot != "")
-rankInOurCombinedSHAP <- sapply(OverLap$uniprotswissprot, function(x) {which(rownames(Full_SHAP_F)==x)})
-rankInLightgbm <- sapply(OverLap$uniprotswissprot, function(x) {which(rownames(ProImportance[[1]])==x)})
-rankInRF <- sapply(OverLap$uniprotswissprot, function(x) {which(rownames(ProImportance[[2]])==x)})
-whereInterestPro <- cbind(OverLap, rankInLightgbm, rankInRF, rankInOurCombinedSHAP)
-write.table(whereInterestPro, file=paste0(outPath, patternChosen, "_whereInterestPro.csv"))
-
-library(ggridges)
-library(reshape2)  # For reshaping data
-# Convert data to long format for ggridges
-NewSHAP_long <- melt(Full_SHAP_F, measure.vars = c("Case1_lightgbm", "Case1_random_forest", "CombinedShap"))
-
-# Ridge plot
-RidgeP <- ggplot(NewSHAP_long, aes(x = value, y = variable, fill = variable)) +
-  geom_density_ridges(alpha = 0.7, scale = 1.2) +
-  labs(title = "Ridge Plot of SHAP Distributions", x = "SHAP Value", y = "Model") +
-  theme_minimal() +
-  scale_fill_manual(values = c("firebrick", "royalblue", "darkgreen"))  # Custom colors
-print(RidgeP)
-
-plot(Full_SHAP_F$Case1_lightgbm,Full_SHAP_F$Case1_random_forest, xlab="Lightgbm", ylab="random_forest", main="Comparisons of SHAP for all proteins")
-
-dev.off()
+  pdf(paste0(outPath, patternChosen, "_YH_paper_only.pdf"))
+  ### The following is for Yuhan's 4 interested proteins
+  interestPro <- c("HPX", "APOH", "PLG", "GLRX")
+  ensembl <- useMart("ensembl", dataset = "hsapiens_gene_ensembl")
+  OverLap <- getBM(
+    attributes = c("uniprotswissprot", "hgnc_symbol"),
+    filters = "hgnc_symbol",
+    values = interestPro,
+    mart = ensembl
+  ) %>% filter(uniprotswissprot != "")
+  rankInOurCombinedSHAP <- sapply(OverLap$uniprotswissprot, function(x) {which(rownames(Full_SHAP_F)==x)})
+  rankInLightgbm <- sapply(OverLap$uniprotswissprot, function(x) {which(rownames(ProImportance[[1]])==x)})
+  rankInRF <- sapply(OverLap$uniprotswissprot, function(x) {which(rownames(ProImportance[[2]])==x)})
+  whereInterestPro <- cbind(OverLap, rankInLightgbm, rankInRF, rankInOurCombinedSHAP)
+  write.table(whereInterestPro, file=paste0(outPath, patternChosen, "_whereInterestPro.csv"))
+  
+  library(ggridges)
+  library(reshape2)  # For reshaping data
+  # Convert data to long format for ggridges
+  NewSHAP_long <- melt(NewSHAP, measure.vars = colnames(NewSHAP))
+  RidgeP <- ggplot(NewSHAP_long, aes(x = value, y = variable, fill = variable)) +
+    geom_density_ridges(alpha = 0.7, scale = 1.2, rel_min_height = 0.01) +
+    labs(title = "Ridge Plot of Original SHAP Distributions", x = "SHAP Value", y = "Model") +
+    scale_fill_manual(values = c("firebrick", "darkgreen")) + xlim(0, NA) + 
+    theme_minimal()
+  print(RidgeP)
+  
+  NewSHAP_long_scaled <- melt(NewSHAP_scaled, measure.vars = colnames(NewSHAP_scaled)) %>% filter(!is.na(value))
+  RidgeP_scalaed <- 
+    ggplot(NewSHAP_long_scaled, aes(x = value, y = variable, fill = variable)) +
+    geom_density_ridges(alpha = 0.7, scale = 1, rel_min_height = 0.01) +
+    labs(title = "Ridge Plot of Scaled SHAP Distributions", x = "SHAP Value", y = "Model") +
+    scale_fill_manual(values = c("firebrick","darkgreen")) + xlim(0, NA) + 
+    theme_minimal()
+  print(RidgeP_scalaed)
+  
+  NewSHAP_long_all <- melt(Full_SHAP_F, measure.vars = colnames(Full_SHAP_F))
+  # Ridge plot
+  RidgeP_all <- ggplot(NewSHAP_long_all, aes(x = value, y = variable, fill = variable)) +
+    geom_density_ridges(alpha = 0.7, scale = 1.2, rel_min_height = 0.01) +
+    labs(title = "Ridge Plot of Original SHAP and Combined SHAP Distributions", x = "SHAP Value", y = "Model") +
+    scale_fill_manual(values = c("firebrick", "darkgreen", "purple")) + xlim(0, NA) +  # Custom colors
+    theme_minimal()
+  print(RidgeP_all)
+  
+  NewSHAP_long_all_scaled <- melt(Full_SHAP_F_AllScaled, measure.vars = colnames(Full_SHAP_F_AllScaled))
+  # Ridge plot
+  RidgeP_all_scaled <- ggplot(NewSHAP_long_all_scaled, aes(x = value, y = variable, fill = variable)) +
+    geom_density_ridges(alpha = 0.7, scale = 1.2, rel_min_height = 0.01) +
+    labs(title = "Ridge Plot of Scaled SHAP and Combined SHAP Distributions", x = "SHAP Value", y = "Model") +
+    scale_fill_manual(values = c("firebrick", "darkgreen", "purple")) + xlim(0, NA) +  # Custom colors
+    theme_minimal()
+  print(RidgeP_all_scaled)
+  
+  plot(Full_SHAP_F$Case1_lightgbm,Full_SHAP_F$Case1_random_forest, xlab="Lightgbm", ylab="random_forest", main="Comparisons of Original SHAP for all proteins")
+  plot(Full_SHAP_F_AllScaled$Case1_lightgbm,Full_SHAP_F_AllScaled$Case1_random_forest, xlab="Lightgbm", ylab="random_forest", main="Comparisons of Scaled SHAP for all proteins")
+  
+  dev.off()
 }
 
 if(patternChosen == "Case2"){
-# Convert data to long format for ggridges
-NewSHAP_long <- melt(NewSHAP, measure.vars = colnames(NewSHAP))
-RidgeP_case2 <- ggplot(NewSHAP_long, aes(x = value, y = variable, fill = variable)) +
-  geom_density_ridges(alpha = 0.7, scale = 1.2) +
-  labs(title = "Ridge Plot of SHAP Distributions", x = "SHAP Value", y = "Model") +
-  scale_fill_manual(values = c("gold", "firebrick","royalblue", "cyan", "darkgreen", "purple")) + 
-  theme_minimal()
-print(RidgeP_case2)
+  library(ggridges)
+  library(reshape2) 
+  
+  pdf(paste0(outPath, patternChosen, "_YH_paper_only.pdf"))
+  # Convert data to long format for ggridges
+  NewSHAP_long <- melt(NewSHAP, measure.vars = colnames(NewSHAP))
+  RidgeP_case2 <- ggplot(NewSHAP_long, aes(x = value, y = variable, fill = variable)) +
+    geom_density_ridges(alpha = 0.7, scale = 1.2, rel_min_height = 0.01) +
+    labs(title = "Ridge Plot of Original SHAP Distributions", x = "SHAP Value", y = "Model") +
+    scale_fill_manual(values = c("gold", "firebrick","royalblue", "cyan", "darkgreen", "pink")) + xlim(0, NA) + 
+    theme_minimal()
+  print(RidgeP_case2)
+  
+  NewSHAP_long_scaled <- melt(NewSHAP_scaled, measure.vars = colnames(NewSHAP_scaled)) %>% filter(!is.na(value))
+  RidgeP_case2_scalaed <- 
+    ggplot(NewSHAP_long_scaled, aes(x = value, y = variable, fill = variable)) +
+    geom_density_ridges(alpha = 0.7, scale = 1, rel_min_height = 0.01) +
+    labs(title = "Ridge Plot of Scaled SHAP Distributions", x = "SHAP Value", y = "Model") +
+    scale_fill_manual(values = c("gold", "firebrick","royalblue", "cyan", "darkgreen", "pink")) + xlim(0, NA) + 
+    theme_minimal()
+  print(RidgeP_case2_scalaed)
+  
+  NewSHAP_long_all <- melt(Full_SHAP_F, measure.vars = colnames(Full_SHAP_F))
+  RidgeP_case2_all <- ggplot(NewSHAP_long_all, aes(x = value, y = variable, fill = variable)) +
+    geom_density_ridges(alpha = 0.7, scale = 1.2, rel_min_height = 0.01) +
+    labs(title = "Ridge Plot of Original SHAP and Combined SHAP Distributions", x = "SHAP Value", y = "Model") +
+    scale_fill_manual(values = c("gold", "firebrick","royalblue", "cyan", "darkgreen", "pink", "purple")) + xlim(0, NA) + 
+    theme_minimal()
+  print(RidgeP_case2_all)
+  
+  NewSHAP_long_all_scaled <- melt(Full_SHAP_F_AllScaled, measure.vars = colnames(Full_SHAP_F_AllScaled))
+  RidgeP_case2_all_scaled <- ggplot(NewSHAP_long_all_scaled, aes(x = value, y = variable, fill = variable)) +
+    geom_density_ridges(alpha = 0.7, scale = 1.2, rel_min_height = 0.01) +
+    labs(title = "Ridge Plot of Scaled SHAP and Combined SHAP Distributions", x = "SHAP Value", y = "Model") +
+    scale_fill_manual(values = c("gold", "firebrick","royalblue", "cyan", "darkgreen", "pink", "purple")) + xlim(0, NA) + 
+    theme_minimal()
+  print(RidgeP_case2_all_scaled)
+  
+  dev.off()
 }
