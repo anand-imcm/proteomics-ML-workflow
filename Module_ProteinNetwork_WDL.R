@@ -48,13 +48,7 @@ option_list <- list(
   make_option(c("-n", "--patternChosen"), type = "character", default = "", 
               help = "File name pattern defining which SHAP files to be included for analysis.", metavar = "FilePattern"),
   make_option(c("-v", "--converProId"), type = "logical", default = TRUE, 
-              help = "Whether to perform the protein name mappin.", metavar = "converProId"),
-  make_option(c("-R", "--RFedge_threshold_here"), type = "numeric", default = 0.04, 
-              help = "RF edge threshold to be plotted.", metavar = "THRESHOLD"),
-  make_option(c("-K", "--KnodeHere"), type = "integer", default = 10, 
-              help = "Number of random nodes selected per iteration for RF.", metavar = "NODES"),
-  make_option(c("-N", "--nTreeHere"), type = "integer", default = 10, 
-              help = "Number of trees built per iteration for RF.", metavar = "TREE")
+              help = "Whether to perform the protein name mappin.", metavar = "converProId")
   #make_option(c("-x","--proteinExpFile"), type = "character", default = "label_diagnosis_HCRBD2.csv", 
   #             help = "Protein expression input file name.", metavar = "EXPRESSION")
 )
@@ -73,9 +67,6 @@ combined_score_thresholdHere <- args$combined_score_thresholdHere
 SHAPthresh <- args$SHAPthresh
 patternChosen <- args$patternChosen 
 converProId = args$converProId
-# RFedge_threshold_here <- args$RFedge_threshold_here
-# KnodeHere <- args$KnodeHere
-# nTreeHere <- args$nTreeHere
 #proteinExpFile <- args$proteinExpFile
 
 #--------------------------------
@@ -173,7 +164,8 @@ map2Srting <- function(Pro_Plot_F, Full_SHAP_F_Plot, score_thresholdHere, combin
   
   # Add a color legend
   image.plot(legend.only = TRUE, 
-             zlim = range(as.numeric(nodeValue[which(!is.na(nodeValue))])), 
+             #zlim = range(as.numeric(nodeValue[which(!is.na(nodeValue))])), 
+             zlim = c(0,1),
              col = myPalette(1000),
              horizontal = TRUE, 
              legend.width = 0.3, 
@@ -191,11 +183,23 @@ map2Srting <- function(Pro_Plot_F, Full_SHAP_F_Plot, score_thresholdHere, combin
   # Identify 1st-degree connections
   one_degree_nodes <- unique(c(interaction_network$from, interaction_network$to))
   
-  # Expand mapped list with 1-degree connections
-  expanded_proteins <- mapAll$alias[mapAll$STRING_id %in% one_degree_nodes]
+  # # Expand mapped list with 1-degree connections
+  # expanded_proteins <- mapAll$alias[mapAll$STRING_id %in% one_degree_nodes]
+  # 
+  # ### Only keep the 1-degree connections in user's own dataset
+  # expanded_proteins_keep  <- expanded_proteins[which(expanded_proteins %in% rownames(Full_SHAP_F_Plot))]
   
-  ### Only keep the 1-degree connections in user's own dataset
-  expanded_proteins_keep  <- expanded_proteins[which(expanded_proteins %in% rownames(Full_SHAP_F_Plot))]
+  expanded_proteins <- mapAll$STRING_id[mapAll$STRING_id %in% one_degree_nodes]
+  
+  ensembl <- useMart("ensembl", dataset = "hsapiens_gene_ensembl")
+  AllUserPro <- getBM(
+    attributes = c("hgnc_symbol", "ensembl_gene_id"),  # Mapping HGNC symbol to Ensembl ID
+    filters = "hgnc_symbol",
+    values = rownames(Full_SHAP_F_Plot),
+    mart = ensembl
+  )
+  
+  expanded_proteins_keep  <- expanded_proteins[which(gsub("9606.", "", expanded_proteins) %in% AllUserPro$ensembl_gene_id)]
   
   # Extract nodes without extension
   current_nodes <- unique(c(interaction_network$from, interaction_network$to))
@@ -255,7 +259,8 @@ map2Srting <- function(Pro_Plot_F, Full_SHAP_F_Plot, score_thresholdHere, combin
   
   # Add a color legend
   image.plot(legend.only = TRUE, 
-             zlim = range(as.numeric(nodeValue_expanded[which(!is.na(nodeValue_expanded))])), 
+             #zlim = range(as.numeric(nodeValue_expanded[which(!is.na(nodeValue_expanded))])), 
+             zlim = c(0,1),
              col = myPalette(1000),
              horizontal = TRUE, 
              legend.width = 0.3, 
@@ -272,50 +277,6 @@ map2Srting <- function(Pro_Plot_F, Full_SHAP_F_Plot, score_thresholdHere, combin
   return(list(Hub_Proteins_STRING, Hub_Proteins_STRING_expanded))
 }
 
-### Make network plot by applying GENEI3 Random Forrest Algorithm bsaed on protein expression data
-# regulatoryNet_WF <- function(ProImportanceF,proDFhere,KnodeHere,nTreeHere,RFedge_threshold_here,patternChosen){
-#   set.seed(42)
-#   ### expression profile of master regulators applied to GENIE3
-#   proName <- rownames(ProImportanceF)
-#   masterRexp = proDFhere[,intersect(proName,colnames(proDFhere))]
-#   
-#   ### construct the tree
-#   weightMat <- GENIE3(t(masterRexp), treeMethod="ET", K=KnodeHere, nTrees=nTreeHere)
-#   netRaw <- getLinkList(weightMat,threshold=RFedge_threshold_here)
-#   
-#   ### retrieve regulatory network nodes and edge information, plot network
-#   adjM <- as_adjacency_matrix(graph_from_edgelist(as.matrix(netRaw[,1:2]), directed=TRUE))
-#   gra <- graph_from_adjacency_matrix(adjM, mode = "directed", weighted = TRUE,diag = FALSE, add.colnames = NULL, add.rownames = NA)
-#   vertex.display <- V(gra)$name
-#   
-#   ### set node color
-#   nodeValue <- ProImportanceF[vertex.display,]
-#   names(nodeValue) <- vertex.display
-#   
-#   nodeColor <- nodeValueNorm <- sapply(nodeValue,function(x){
-#     (x - min(nodeValue)) / (max(nodeValue) - min(nodeValue))
-#   })
-#   
-#   myPalette <- colorRampPalette(c("darkgreen","lightgreen","white","pink","darkred"))
-#   nodeColor <- myPalette(1000)[as.numeric(cut(as.numeric(nodeColor), breaks=1000))]
-#   names(nodeColor) <- names(nodeValue)
-#   
-#   plot(gra, main=paste0("Protein Regulatory Network\n",patternChosen), cex.main=0.8,
-#        vertex.label=vertex.display,vertex.size=3, 
-#        vertex.color=nodeColor[vertex.display],vertex.label.font=0.5, vertex.label.cex=.5, vertex.label.color="darkgreen",
-#        edge.arrow.size=0.2, arrow.width=1, vertex.label.dist=1.5,rescale = TRUE)
-#   
-#   image.plot(legend.only=TRUE, zlim=range(nodeValue), col=myPalette(1000),
-#              horizontal = TRUE,legend.width=0.3, legend.shrink=0.3, legend.mar=3, 
-#              legend.args=list(text="Feature Importance Score", side=1, font=2, line=1, cex=0.5),
-#              axis.args = list(cex.axis = 0.5,mgp = c(3, 0.3, 0)))
-#   
-#   ### Generate table of centrality score to display hub proteins
-#   Hub_Proteins <- getHubProTable(netRaw)
-#   
-#   return(Hub_Proteins)
-# }
-
 #--------
 #--------
 # MAIN
@@ -327,7 +288,9 @@ map2Srting <- function(Pro_Plot_F, Full_SHAP_F_Plot, score_thresholdHere, combin
 print(paste0("Network plot for ",  patternChosen, " started at ", format(Sys.time(), "%H:%M:%S"), " on ", Sys.Date(),"."))
 
 # Choose which SHAP files and which SHAP threshold to make network plot
-proteinImportanceFile_list <- list.files(inputPath, pattern=patternChosen)
+if(patternChosen==""){proteinImportanceFile_list <- list.files(inputPath)
+}else{proteinImportanceFile_list <- list.files(inputPath, pattern=patternChosen)}
+
 ModelName <- gsub("_shap_values.csv", "",proteinImportanceFile_list)
 ProImportance <- vector("list", length=length(proteinImportanceFile_list))
 names(ProImportance) <- ModelName
@@ -355,190 +318,82 @@ colnames(NewSHAP) <- ModelName
 ### Keep NewSHAP for further reference
 NewSHAP_scaled <- as.data.frame(lapply(NewSHAP, function(x) {
   (x - min(x, na.rm = TRUE)) / (max(x, na.rm = TRUE) - min(x, na.rm = TRUE))
-})) ### if incorporating SHAP values from different models, standardize the magnitude per model to 0~1
+})) ### standardize the magnitude per model to 0~1
+rownames(NewSHAP_scaled) <- rownames(NewSHAP)
 
 CombinedShap <- NewSHAP_scaled %>% mutate(CombinedShap = rowMeans(across(everything(), abs), na.rm = TRUE)) %>% dplyr::select("CombinedShap")
 Full_SHAP_F <- cbind(NewSHAP,CombinedShap) %>% arrange(desc(CombinedShap))
 Full_SHAP_Ori <- rownames(Full_SHAP_F)
 Full_SHAP_F_AllScaled <- cbind(NewSHAP_scaled,CombinedShap) %>% arrange(desc(CombinedShap))
 
-### Prepare data frame of top proteins with highest importance
-SHAP_PlotF <- Full_SHAP_F %>% slice_head(n = SHAPthresh) 
-Pro_Plot_Ori <- rownames(SHAP_PlotF)
-
-### Entrez Symbol is used to display on the network plot, perform the protein name mapping
-if(converProId == TRUE){
-  ensembl <- useMart("ensembl", dataset = "hsapiens_gene_ensembl")
-  Pro_Plot <- getBM(
-    attributes = c("uniprotswissprot", "hgnc_symbol"),
-    filters = "uniprotswissprot",
-    values = Pro_Plot_Ori,
-    mart = ensembl
-  )
-  SHAP <- sapply(Pro_Plot$uniprotswissprot, function(x) {SHAP_PlotF[which(rownames(SHAP_PlotF)==x), "CombinedShap"]})
-  Pro_Plot_F <- Pro_Plot %>% dplyr::select(hgnc_symbol) %>% mutate("SHAP" = SHAP) %>% arrange(desc(SHAP))
-  
-  # Wait for a specified time (e.g., 10 seconds to avoid server Ensembl’s biomaRt API crush)
-  Sys.sleep(10)  
-  
-  Full_SHAP <- getBM(
-    attributes = c("uniprotswissprot", "hgnc_symbol"),
-    filters = "uniprotswissprot",
-    values = Full_SHAP_Ori,
-    mart = ensembl
-  )
-  SHAP_All <- sapply(Full_SHAP$uniprotswissprot, function(x) {Full_SHAP_F[which(rownames(Full_SHAP_F)==x), "CombinedShap"]})
-  Full_SHAP_F_Plot <- cbind(Full_SHAP$hgnc_symbol, SHAP_All) %>% as.data.frame() %>% mutate(SHAP_All = as.numeric(SHAP_All))
-  
-}else{
-  Pro_Plot_F <- cbind(rownames(SHAP_PlotF), SHAP_PlotF$CombinedShap)
-  Full_SHAP_F_Plot <- cbind(rownames(Full_SHAP_F),Full_SHAP_F$CombinedShap) %>% as.data.frame()
-}
-
-###  Set the arbitrary colnames for the convenience of processing data.
-colnames(Pro_Plot_F) <- colnames(Full_SHAP_F_Plot) <- c("proName", "SHAP")
-rownames(Pro_Plot_F) <- Pro_Plot_F$proName
-
-### Tackle with the same UniProtID corresponding to different Entrez Symbols
-Full_SHAP_F_Plot %<>% group_by(proName) %<>% summarise(SHAP = max(SHAP, na.rm = TRUE), .groups = "drop") %<>% as.data.frame()
-rownames(Full_SHAP_F_Plot) <- Full_SHAP_F_Plot$proName
-
-###############
-# OUTPUT FILES
-###############
 ### Output network plots and hub protein tables
-pdf_fileName <- paste0(patternChosen, "_Network.pdf")
+pdf_fileName <- paste0(colCt, "Network.pdf")
 pdf_filePath <- paste0(outPath, pdf_fileName)
 pdf(pdf_filePath)
-Hub_Proteins_STRING_List <- map2Srting(Pro_Plot_F, Full_SHAP_F_Plot, score_thresholdHere, combined_score_thresholdHere, patternChosen)
-Hub_Proteins_STRING <- Hub_Proteins_STRING_List[[1]] %>% arrange(desc(Degree))
-Hub_Proteins_STRING_WithExpansion <- Hub_Proteins_STRING_List[[2]] %>% arrange(desc(Degree))
 
-write_xlsx(Hub_Proteins_STRING, path = paste0(outPath, patternChosen, "_Hub_Proteins_STRING.xlsx"))
-write_xlsx(Hub_Proteins_STRING_WithExpansion, path = paste0(outPath, patternChosen, "_Hub_Proteins_STRING_WithExpansion.xlsx"))
+for(colCt in colnames(Full_SHAP_F_AllScaled)){
+  SHAP_PlotF <- Full_SHAP_F_AllScaled %>% dplyr::select(all_of(colCt)) %>% arrange(desc(!!sym(colCt))) %>%slice_head(n = SHAPthresh) 
+  
+  ### Prepare data frame of top proteins with highest importance
+  Pro_Plot_Ori <- rownames(SHAP_PlotF)
+  
+  ### Entrez Symbol is used to display on the network plot, perform the protein name mapping
+  if(converProId == TRUE){
+    ensembl <- useMart("ensembl", dataset = "hsapiens_gene_ensembl")
+    Pro_Plot <- getBM(
+      attributes = c("uniprotswissprot", "hgnc_symbol"),
+      filters = "uniprotswissprot",
+      values = Pro_Plot_Ori,
+      mart = ensembl
+    )
+    SHAP <- unlist(sapply(Pro_Plot$uniprotswissprot, function(x) {SHAP_PlotF[which(rownames(SHAP_PlotF)==x)[1], colCt]}))
+    Pro_Plot_F <- Pro_Plot %>% dplyr::select(hgnc_symbol) %>% mutate(SHAP = SHAP) %>% arrange(desc(SHAP))
+    
+    # Wait for a specified time (e.g., 10 seconds to avoid server Ensembl’s biomaRt API crush)
+    Sys.sleep(10)  
+    
+    ### We also need to retreive all the SHAP values for all the proteins for the purpose of expansion network plot
+    Full_SHAP <- getBM(
+      attributes = c("uniprotswissprot", "hgnc_symbol"),
+      filters = "uniprotswissprot",
+      values = Full_SHAP_Ori,
+      mart = ensembl
+    )
+    SHAP_All <- unlist(sapply(Full_SHAP$uniprotswissprot, function(x) {Full_SHAP_F[which(rownames(Full_SHAP_F)==x)[1], colCt]}))
+    Full_SHAP_F_Plot <- cbind(Full_SHAP$hgnc_symbol, SHAP_All) %>% as.data.frame() %>% mutate(SHAP_All = as.numeric(SHAP_All))
+    
+  }else{
+    Pro_Plot_F <- cbind(rownames(SHAP_PlotF), SHAP_PlotF[,colCt]) %>% as.data.frame()
+    Full_SHAP_F_Plot <- cbind(rownames(Full_SHAP_F),Full_SHAP_F[,colCt]) %>% as.data.frame()
+  }
+  
+  ###  Set the arbitrary colnames for the convenience of processing data.
+  colnames(Pro_Plot_F) <- colnames(Full_SHAP_F_Plot) <- c("proName", "SHAP")
+  rownames(Pro_Plot_F) <- Pro_Plot_F$proName
+  
+  ### Tackle with the same UniProtID corresponding to different Entrez Symbols
+  Full_SHAP_F_Plot %<>% group_by(proName) %<>% summarise(SHAP = max(SHAP, na.rm = TRUE), .groups = "drop") %<>% as.data.frame()
+  rownames(Full_SHAP_F_Plot) <- Full_SHAP_F_Plot$proName
+  
+  ###############
+  # OUTPUT FILES
+  ###############
+  Hub_Proteins_STRING_List <- map2Srting(Pro_Plot_F, Full_SHAP_F_Plot, score_thresholdHere, combined_score_thresholdHere, colCt)
+  Hub_Proteins_STRING <- Hub_Proteins_STRING_List[[1]] %>% arrange(desc(Degree))
+  Hub_Proteins_STRING_WithExpansion <- Hub_Proteins_STRING_List[[2]] %>% arrange(desc(Degree))
+  
+  write_xlsx(Hub_Proteins_STRING, path = paste0(outPath, colCt, "_Hub_Proteins_STRING.xlsx"))
+  write_xlsx(Hub_Proteins_STRING_WithExpansion, path = paste0(outPath, colCt, "_Hub_Proteins_STRING_WithExpansion.xlsx"))
+}
 
 dev.off()
 
+### Generate png for the convenience to combine into the final pdf
 num_pages <- pdf_info(pdf_filePath)$pages
 for (i in 1:num_pages) {
-  pdf_subset(paste0(outPath, pdf_fileName), pages = i, output = paste0(outPath, patternChosen, "_Network_", i, ".pdf"))
+  pdf_subset(paste0(outPath, pdf_fileName), pages = i, output = paste0(outPath, "Network_", i, ".pdf"))
   
-  pdf_convert(paste0(outPath, patternChosen, "_Network_", i, ".pdf"), format = "png", filenames = paste0(outPath, patternChosen, "_Network_", i, ".png"), dpi = 300)
+  pdf_convert(paste0(outPath, "Network_", i, ".pdf"), format = "png", filenames = paste0(outPath, "Network_", i, ".png"), dpi = 300)
 }
 
-print(paste0("Network plot for ",  patternChosen, " finished at ", format(Sys.time(), "%H:%M:%S"), " on ", Sys.Date(),"."))
-
-# png('PPI_M.png', res = 400)
-# Hub_Proteins_GENIE <- regulatoryNet_WF(ProImportanceF,proDFhere,KnodeHere,nTreeHere,RFedge_threshold_here,patternChosen)
-# Hub_Proteins_GENIE %<>% arrange(desc(Degree))
-# write.table(Hub_Proteins_GENIE, file = "Hub_Proteins_GENIE.csv")
-# dev.off()
-
-# use the long flag
-# Rscript Module_ProteinNetwork_WDL.R -s 400 -c 500 -R 0.04 -K 5 -n 1 -E proDFhere.csv > /Users/ydeng/Documents/IMCMCode/output/ProteinNetwork_WDL_log.csv 2>&1
-
-######################################################
-######################################################
-# Special for Case1,  look into four interesting proteins reported by other publications
-if(patternChosen == "Case1"){
-  pdf(paste0(outPath, patternChosen, "_YH_paper_only.pdf"))
-  ### The following is for Yuhan's 4 interested proteins
-  interestPro <- c("HPX", "APOH", "PLG", "GLRX")
-  ensembl <- useMart("ensembl", dataset = "hsapiens_gene_ensembl")
-  OverLap <- getBM(
-    attributes = c("uniprotswissprot", "hgnc_symbol"),
-    filters = "hgnc_symbol",
-    values = interestPro,
-    mart = ensembl
-  ) %>% filter(uniprotswissprot != "")
-  rankInOurCombinedSHAP <- sapply(OverLap$uniprotswissprot, function(x) {which(rownames(Full_SHAP_F)==x)})
-  rankInLightgbm <- sapply(OverLap$uniprotswissprot, function(x) {which(rownames(ProImportance[[1]])==x)})
-  rankInRF <- sapply(OverLap$uniprotswissprot, function(x) {which(rownames(ProImportance[[2]])==x)})
-  whereInterestPro <- cbind(OverLap, rankInLightgbm, rankInRF, rankInOurCombinedSHAP)
-  write.table(whereInterestPro, file=paste0(outPath, patternChosen, "_whereInterestPro.csv"))
-  
-  library(ggridges)
-  library(reshape2)  # For reshaping data
-  # Convert data to long format for ggridges
-  NewSHAP_long <- melt(NewSHAP, measure.vars = colnames(NewSHAP))
-  RidgeP <- ggplot(NewSHAP_long, aes(x = value, y = variable, fill = variable)) +
-    geom_density_ridges(alpha = 0.7, scale = 1.2, rel_min_height = 0.01) +
-    labs(title = "Ridge Plot of Original SHAP Distributions", x = "SHAP Value", y = "Model") +
-    scale_fill_manual(values = c("firebrick", "darkgreen")) + xlim(0, NA) + 
-    theme_minimal()
-  print(RidgeP)
-  
-  NewSHAP_long_scaled <- melt(NewSHAP_scaled, measure.vars = colnames(NewSHAP_scaled)) %>% filter(!is.na(value))
-  RidgeP_scalaed <- 
-    ggplot(NewSHAP_long_scaled, aes(x = value, y = variable, fill = variable)) +
-    geom_density_ridges(alpha = 0.7, scale = 1, rel_min_height = 0.01) +
-    labs(title = "Ridge Plot of Scaled SHAP Distributions", x = "SHAP Value", y = "Model") +
-    scale_fill_manual(values = c("firebrick","darkgreen")) + xlim(0, NA) + 
-    theme_minimal()
-  print(RidgeP_scalaed)
-  
-  NewSHAP_long_all <- melt(Full_SHAP_F, measure.vars = colnames(Full_SHAP_F))
-  # Ridge plot
-  RidgeP_all <- ggplot(NewSHAP_long_all, aes(x = value, y = variable, fill = variable)) +
-    geom_density_ridges(alpha = 0.7, scale = 1.2, rel_min_height = 0.01) +
-    labs(title = "Ridge Plot of Original SHAP and Combined SHAP Distributions", x = "SHAP Value", y = "Model") +
-    scale_fill_manual(values = c("firebrick", "darkgreen", "purple")) + xlim(0, NA) +  # Custom colors
-    theme_minimal()
-  print(RidgeP_all)
-  
-  NewSHAP_long_all_scaled <- melt(Full_SHAP_F_AllScaled, measure.vars = colnames(Full_SHAP_F_AllScaled))
-  # Ridge plot
-  RidgeP_all_scaled <- ggplot(NewSHAP_long_all_scaled, aes(x = value, y = variable, fill = variable)) +
-    geom_density_ridges(alpha = 0.7, scale = 1.2, rel_min_height = 0.01) +
-    labs(title = "Ridge Plot of Scaled SHAP and Combined SHAP Distributions", x = "SHAP Value", y = "Model") +
-    scale_fill_manual(values = c("firebrick", "darkgreen", "purple")) + xlim(0, NA) +  # Custom colors
-    theme_minimal()
-  print(RidgeP_all_scaled)
-  
-  plot(Full_SHAP_F$Case1_lightgbm,Full_SHAP_F$Case1_random_forest, xlab="Lightgbm", ylab="random_forest", main="Comparisons of Original SHAP for all proteins")
-  plot(Full_SHAP_F_AllScaled$Case1_lightgbm,Full_SHAP_F_AllScaled$Case1_random_forest, xlab="Lightgbm", ylab="random_forest", main="Comparisons of Scaled SHAP for all proteins")
-  
-  dev.off()
-}
-
-if(patternChosen == "Case2"){
-  library(ggridges)
-  library(reshape2) 
-  
-  pdf(paste0(outPath, patternChosen, "_YH_paper_only.pdf"))
-  # Convert data to long format for ggridges
-  NewSHAP_long <- melt(NewSHAP, measure.vars = colnames(NewSHAP))
-  RidgeP_case2 <- ggplot(NewSHAP_long, aes(x = value, y = variable, fill = variable)) +
-    geom_density_ridges(alpha = 0.7, scale = 1.2, rel_min_height = 0.01) +
-    labs(title = "Ridge Plot of Original SHAP Distributions", x = "SHAP Value", y = "Model") +
-    scale_fill_manual(values = c("gold", "firebrick","royalblue", "cyan", "darkgreen", "pink")) + xlim(0, NA) + 
-    theme_minimal()
-  print(RidgeP_case2)
-  
-  NewSHAP_long_scaled <- melt(NewSHAP_scaled, measure.vars = colnames(NewSHAP_scaled)) %>% filter(!is.na(value))
-  RidgeP_case2_scalaed <- 
-    ggplot(NewSHAP_long_scaled, aes(x = value, y = variable, fill = variable)) +
-    geom_density_ridges(alpha = 0.7, scale = 1, rel_min_height = 0.01) +
-    labs(title = "Ridge Plot of Scaled SHAP Distributions", x = "SHAP Value", y = "Model") +
-    scale_fill_manual(values = c("gold", "firebrick","royalblue", "cyan", "darkgreen", "pink")) + xlim(0, NA) + 
-    theme_minimal()
-  print(RidgeP_case2_scalaed)
-  
-  NewSHAP_long_all <- melt(Full_SHAP_F, measure.vars = colnames(Full_SHAP_F))
-  RidgeP_case2_all <- ggplot(NewSHAP_long_all, aes(x = value, y = variable, fill = variable)) +
-    geom_density_ridges(alpha = 0.7, scale = 1.2, rel_min_height = 0.01) +
-    labs(title = "Ridge Plot of Original SHAP and Combined SHAP Distributions", x = "SHAP Value", y = "Model") +
-    scale_fill_manual(values = c("gold", "firebrick","royalblue", "cyan", "darkgreen", "pink", "purple")) + xlim(0, NA) + 
-    theme_minimal()
-  print(RidgeP_case2_all)
-  
-  NewSHAP_long_all_scaled <- melt(Full_SHAP_F_AllScaled, measure.vars = colnames(Full_SHAP_F_AllScaled))
-  RidgeP_case2_all_scaled <- ggplot(NewSHAP_long_all_scaled, aes(x = value, y = variable, fill = variable)) +
-    geom_density_ridges(alpha = 0.7, scale = 1.2, rel_min_height = 0.01) +
-    labs(title = "Ridge Plot of Scaled SHAP and Combined SHAP Distributions", x = "SHAP Value", y = "Model") +
-    scale_fill_manual(values = c("gold", "firebrick","royalblue", "cyan", "darkgreen", "pink", "purple")) + xlim(0, NA) + 
-    theme_minimal()
-  print(RidgeP_case2_all_scaled)
-  
-  dev.off()
-}
+print(paste0("Network plot for ",  colCt, " finished at ", format(Sys.time(), "%H:%M:%S"), " on ", Sys.Date(),"."))
