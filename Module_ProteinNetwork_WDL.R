@@ -6,7 +6,7 @@
 #     --score_thresholdHere 400 \
 #     --combined_score_thresholdHere 800 \
 #     --SHAPthresh 100 \
-#     --patternChosen "Case1" \
+#     --patternChosen "" \
 #     --converProId TRUE \
 #     >> "/home/rstudio/YD/ML_workflow/output/Network.log" 2>&1 &
 
@@ -27,10 +27,7 @@ library(ggplot2)
 library(writexl)
 library(biomaRt)
 library(pdftools)
-#library(GENIE3)
-# library(org.Hs.eg.db)
-# library(gridExtra)
-# library(grid)
+
 set.seed(42)
 
 # Define the list of options
@@ -41,7 +38,7 @@ option_list <- list(
               help = "Path to output files.", metavar = "OUTPUT_PATH"),
   make_option(c("-s", "--score_thresholdHere"), type = "integer", default = 400, 
               help = "Score threshold for STRING database.", metavar = "SCORE"),
-  make_option(c("-c", "--combined_score_thresholdHere"), type = "integer", default = 800, 
+  make_option(c("-c", "--combined_score_thresholdHere"), type = "integer", default = 900, 
               help = "Combined score threshold to select the nodes to be plotted.", metavar = "SCORE"),
   make_option(c("-a", "--SHAPthresh"), type = "integer", default = 100, 
               help = "Shap threshhold to define the top important proteins.", metavar = "ShapThresh"),
@@ -98,7 +95,7 @@ getHubProTable <- function(LinkTable){
 
 
 # Function to make network plot by mapping important proteins to STRING database
-# Input -- Pro_Plot_F: data frame of selected top proteins with corresponding SHAP values, protein name must be Entrez Symbol; 
+# Input -- Pro_Plot_F: SHAP-ordered data frame of selected top proteins with corresponding SHAP values, protein name must be Entrez Symbol; 
 # Full_SHAP_F_Plot: data frame of all the proteins with corresponding SHAP values, protein name must be Entrez Symbol; 
 # score_thresholdHere: score threshold to initialize STRING database;
 # combined_score_thresholdHere: score thresold to make network plot;
@@ -120,7 +117,8 @@ map2Srting <- function(Pro_Plot_F, Full_SHAP_F_Plot, score_thresholdHere, combin
   stDB_mapped <- string_db$map(proNameF, "prot", removeUnmappedRows = TRUE)
   
   ### Retrieve interactions
-  interaction_network <- string_db$get_interactions(stDB_mapped$STRING_id)
+  interaction_network <- string_db$get_interactions(stDB_mapped$STRING_id) %>%
+    distinct(from, to, .keep_all = TRUE)
   
   ### Filter interactions for high-confidence edges
   edges <- interaction_network %>%
@@ -180,48 +178,27 @@ map2Srting <- function(Pro_Plot_F, Full_SHAP_F_Plot, score_thresholdHere, combin
   Hub_Proteins_STRING %<>% mutate("Protein" = prot) %<>% dplyr::select(Protein,Betweenness,Closeness,Degree)
   
   ### Further make network plot including more nodes restored in STRINGdb with 1 degree connection with the selected top proteins with highest SHAP values
-  # Identify 1st-degree connections
-  one_degree_nodes <- unique(c(interaction_network$from, interaction_network$to))
+  # Identify all the interactions between proteins in our full protein list
+  all_mapped <- string_db$map(data.frame("prot" = Full_SHAP_F_Plot$proName), "prot", removeUnmappedRows = TRUE)
   
-  # # Expand mapped list with 1-degree connections
-  # expanded_proteins <- mapAll$alias[mapAll$STRING_id %in% one_degree_nodes]
-  # 
-  # ### Only keep the 1-degree connections in user's own dataset
-  # expanded_proteins_keep  <- expanded_proteins[which(expanded_proteins %in% rownames(Full_SHAP_F_Plot))]
-  
-  expanded_proteins <- mapAll$STRING_id[mapAll$STRING_id %in% one_degree_nodes]
-  
-  ensembl <- useMart("ensembl", dataset = "hsapiens_gene_ensembl")
-  AllUserPro <- getBM(
-    attributes = c("hgnc_symbol", "ensembl_gene_id"),  # Mapping HGNC symbol to Ensembl ID
-    filters = "hgnc_symbol",
-    values = rownames(Full_SHAP_F_Plot),
-    mart = ensembl
-  )
-  
-  expanded_proteins_keep  <- expanded_proteins[which(gsub("9606.", "", expanded_proteins) %in% AllUserPro$ensembl_gene_id)]
-  
-  # Extract nodes without extension
-  current_nodes <- unique(c(interaction_network$from, interaction_network$to))
-  
-  # Identify additional proteins with direct connections
-  additional_mapped <- string_db$map(data.frame("prot" = expanded_proteins_keep), "prot", removeUnmappedRows = TRUE)
-  
-  # Retrieve interactions involving additional proteins
-  additional_interactions <- string_db$get_interactions(additional_mapped$STRING_id)
-  
-  # Filter to keep only interactions with existing nodes
-  filtered_additional_interactions <- additional_interactions %>%
-    dplyr::filter(from %in% current_nodes | to %in% current_nodes)
-  
-  # Combine both interaction datasets and remove duplicates
-  expanded_interaction_network <- bind_rows(interaction_network, filtered_additional_interactions) %>%
+  # Retrieve interactions involving all proteins
+  all_interaction_network <- string_db$get_interactions(all_mapped$STRING_id) %>%
     distinct(from, to, .keep_all = TRUE)
   
+  # Identify 1st-degree seed node (top important proteins)
+  one_degree_nodes <- unique(c(interaction_network$from, interaction_network$to))
+  
+  # Within the all_interaction_network, identify which interactions include the 1st-degree seed node 
+  keepID <- which(all_interaction_network$from %in% one_degree_nodes | 
+                    all_interaction_network$to %in% one_degree_nodes)
+  
+  expanded_interaction_network <- all_interaction_network[keepID, ] %>%
+    distinct(from, to, .keep_all = TRUE)
+
   ### Filter interactions for high-confidence edges
   edges_expanded <- expanded_interaction_network %>%
     dplyr::filter(combined_score > combined_score_thresholdHere) %>%
-    dplyr::distinct(from, to)
+    dplyr::distinct(from, to, .keep_all = TRUE)
   
   ### Construct igraph object
   g_expanded <- graph_from_data_frame(edges_expanded, directed = FALSE)
@@ -253,7 +230,7 @@ map2Srting <- function(Pro_Plot_F, Full_SHAP_F_Plot, score_thresholdHere, combin
        vertex.label.family = "sans", 
        vertex.label.dist = 0.8, 
        cex.main = 0.06, 
-       main = paste0("Protein-Protein expanded Interaction Network ", patternChosen, 
+       main = paste0("Protein-Protein Expanded Interaction Network ", patternChosen, 
                      "\nBased on STRING database"), 
        rescale = TRUE)
   
@@ -271,7 +248,7 @@ map2Srting <- function(Pro_Plot_F, Full_SHAP_F_Plot, score_thresholdHere, combin
   
   ### Generate table of centrality score to display hub proteins
   HubProteins_expanded <- getHubProTable(edges_expanded)
-  Hub_Proteins_STRING_expanded <- merge(HubProteins_expanded, stDB_mapped, by.x = "Protein", by.y = "STRING_id")
+  Hub_Proteins_STRING_expanded <- merge(HubProteins_expanded, all_mapped, by.x = "Protein", by.y = "STRING_id")
   Hub_Proteins_STRING_expanded %<>% mutate("Protein" = prot) %<>% dplyr::select(Protein,Betweenness,Closeness,Degree)
   
   return(list(Hub_Proteins_STRING, Hub_Proteins_STRING_expanded))
@@ -327,7 +304,7 @@ Full_SHAP_Ori <- rownames(Full_SHAP_F)
 Full_SHAP_F_AllScaled <- cbind(NewSHAP_scaled,CombinedShap) %>% arrange(desc(CombinedShap))
 
 ### Output network plots and hub protein tables
-pdf_fileName <- paste0(colCt, "Network.pdf")
+pdf_fileName <- "Network.pdf"
 pdf_filePath <- paste0(outPath, pdf_fileName)
 pdf(pdf_filePath)
 
@@ -375,6 +352,8 @@ for(colCt in colnames(Full_SHAP_F_AllScaled)){
   Full_SHAP_F_Plot %<>% group_by(proName) %<>% summarise(SHAP = max(SHAP, na.rm = TRUE), .groups = "drop") %<>% as.data.frame()
   rownames(Full_SHAP_F_Plot) <- Full_SHAP_F_Plot$proName
   
+  ### Pro_Plot_F is the SHAP-ordered frame only for the top important proteins; Full_SHAP_F_Plot is NOT SHAP-ordered though for all the proteins.
+  
   ###############
   # OUTPUT FILES
   ###############
@@ -397,3 +376,13 @@ for (i in 1:num_pages) {
 }
 
 print(paste0("Network plot for ",  colCt, " finished at ", format(Sys.time(), "%H:%M:%S"), " on ", Sys.Date(),"."))
+
+# packages <- c("graphics", "grDevices", "Matrix", "methods", "stats", "utils", 
+#               "viridisLite", "optparse", "dplyr", "magrittr", "igraph", 
+#               "STRINGdb", "fields", "ggplot2", "writexl", "biomaRt", "pdftools")
+# 
+# installed_versions <- sapply(packages, function(pkg) {
+#   tryCatch(packageVersion(pkg), error = function(e) NA)
+# })
+# 
+# installed_versions
