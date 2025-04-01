@@ -230,7 +230,7 @@ map2Srting <- function(Pro_Plot_F, Full_SHAP_F_Plot, score_thresholdHere, combin
     which(mapAll$STRING_id == x)[1]
   }))]
   
-  nodeValue_expanded <- Full_SHAP_F_Plot[nodeName2, "SHAP"]
+  nodeValue_expanded <- Full_SHAP_F_Plot[nodeName2_expanded, "SHAP"]
   
   # Color palette and node coloring
   nodeColor_expanded <- myPalette(1000)[
