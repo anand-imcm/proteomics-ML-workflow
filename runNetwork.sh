@@ -18,7 +18,7 @@ Rscript Module_ProteinNetwork_WDL.R \
     --outPath "/home/rstudio/YD/ML_workflow/output/Case2/" \
     --score_thresholdHere 400 \
     --combined_score_thresholdHere 800 \
-    --SHAPthresh 100 \
+    --SHAPthresh 50 \
     --patternChosen "Case2" \
     --converProId TRUE \
     --proteinExpFile "/home/rstudio/YD/ML_workflow/input/expression/Case2.csv" \
