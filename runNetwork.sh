@@ -1,9 +1,8 @@
 #!/bin/bash
-# I did not use different output file names for different cases for the sake of succinct of output from main workflow
-# Need to run the Rcript seperately not concurrently to replicate the results in the manuscipt
+
 Rscript Module_ProteinNetwork_WDL.R \
     --inputPath "/home/rstudio/YD/ML_workflow/input/" \
-    --outPath "/home/rstudio/YD/ML_workflow/output/" \
+    --outPath "/home/rstudio/YD/ML_workflow/output/Case1_lightgbm/" \
     --score_thresholdHere 400 \
     --combined_score_thresholdHere 800 \
     --SHAPthresh 100 \
@@ -12,12 +11,12 @@ Rscript Module_ProteinNetwork_WDL.R \
     --proteinExpFile "/home/rstudio/YD/ML_workflow/input/expression/Case1.csv" \
     --CorMethod "spearman" \
     --CorThreshold 0.8 \
-    > "/home/rstudio/YD/ML_workflow/output/Network.log" 2>&1 
+    > "/home/rstudio/YD/ML_workflow/output/Network.log" 2>&1 &
 
 
 Rscript Module_ProteinNetwork_WDL.R \
     --inputPath "/home/rstudio/YD/ML_workflow/input/" \
-    --outPath "/home/rstudio/YD/ML_workflow/output/" \
+    --outPath "/home/rstudio/YD/ML_workflow/output/Case1_random_forest/" \
     --score_thresholdHere 400 \
     --combined_score_thresholdHere 800 \
     --SHAPthresh 100 \
@@ -26,12 +25,12 @@ Rscript Module_ProteinNetwork_WDL.R \
     --proteinExpFile "/home/rstudio/YD/ML_workflow/input/expression/Case1.csv" \
     --CorMethod "spearman" \
     --CorThreshold 0.8 \
-    >> "/home/rstudio/YD/ML_workflow/output/Network.log" 2>&1 
+    >> "/home/rstudio/YD/ML_workflow/output/Network.log" 2>&1 &
 
 
 Rscript Module_ProteinNetwork_WDL.R \
     --inputPath "/home/rstudio/YD/ML_workflow/input/" \
-    --outPath "/home/rstudio/YD/ML_workflow/output/" \
+    --outPath "/home/rstudio/YD/ML_workflow/output/Case1/" \
     --score_thresholdHere 400 \
     --combined_score_thresholdHere 800 \
     --SHAPthresh 100 \
@@ -40,11 +39,11 @@ Rscript Module_ProteinNetwork_WDL.R \
     --proteinExpFile "/home/rstudio/YD/ML_workflow/input/expression/Case1.csv" \
     --CorMethod "spearman" \
     --CorThreshold 0.8 \
-    >> "/home/rstudio/YD/ML_workflow/output/Network.log" 2>&1 
+    >> "/home/rstudio/YD/ML_workflow/output/Network.log" 2>&1 &
 
 Rscript Module_ProteinNetwork_WDL.R \
     --inputPath "/home/rstudio/YD/ML_workflow/input/" \
-    --outPath "/home/rstudio/YD/ML_workflow/output/" \
+    --outPath "/home/rstudio/YD/ML_workflow/output/Case2_svm/" \
     --score_thresholdHere 400 \
     --combined_score_thresholdHere 800 \
     --SHAPthresh 100 \
@@ -53,11 +52,11 @@ Rscript Module_ProteinNetwork_WDL.R \
     --proteinExpFile "/home/rstudio/YD/ML_workflow/input/expression/Case2.csv" \
     --CorMethod "spearman" \
     --CorThreshold 0.8 \
-    >> "/home/rstudio/YD/ML_workflow/output/Network.log" 2>&1 
+    >> "/home/rstudio/YD/ML_workflow/output/Network.log" 2>&1 &
 
 Rscript Module_ProteinNetwork_WDL.R \
     --inputPath "/home/rstudio/YD/ML_workflow/input/" \
-    --outPath "/home/rstudio/YD/ML_workflow/output/" \
+    --outPath "/home/rstudio/YD/ML_workflow/output/Case2_neural_network/" \
     --score_thresholdHere 400 \
     --combined_score_thresholdHere 800 \
     --SHAPthresh 100 \
@@ -66,11 +65,11 @@ Rscript Module_ProteinNetwork_WDL.R \
     --proteinExpFile "/home/rstudio/YD/ML_workflow/input/expression/Case2.csv" \
     --CorMethod "spearman" \
     --CorThreshold 0.8 \
-    >> "/home/rstudio/YD/ML_workflow/output/Network.log" 2>&1 
+    >> "/home/rstudio/YD/ML_workflow/output/Network.log" 2>&1 &
 
 Rscript Module_ProteinNetwork_WDL.R \
     --inputPath "/home/rstudio/YD/ML_workflow/input/" \
-    --outPath "/home/rstudio/YD/ML_workflow/output/" \
+    --outPath "/home/rstudio/YD/ML_workflow/output/Case2/" \
     --score_thresholdHere 400 \
     --combined_score_thresholdHere 800 \
     --SHAPthresh 100 \
