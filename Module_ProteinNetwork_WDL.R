@@ -41,7 +41,7 @@ option_list <- list(
               help = "Path to output files.", metavar = "OUTPUT_PATH"),
   make_option(c("-s", "--score_thresholdHere"), type = "integer", default = 400, 
               help = "Score threshold for STRING database.", metavar = "SCORE"),
-  make_option(c("-c", "--combined_score_thresholdHere"), type = "integer", default = 900, 
+  make_option(c("-c", "--combined_score_thresholdHere"), type = "integer", default = 800, 
               help = "Combined score threshold to select the nodes to be plotted.", metavar = "SCORE"),
   make_option(c("-a", "--SHAPthresh"), type = "integer", default = 100, 
               help = "Shap threshhold to define the top important proteins.", metavar = "ShapThresh"),
@@ -55,7 +55,6 @@ option_list <- list(
               help = "Correlation method to define strongly coexpressed proteins, select from spearman, pearson, kendall.", metavar = "CorMethod"),
   make_option(c("-d","--CorThreshold"), type = "numeric", default = 0.8, 
               help = "Threshold to define strongly coexpressed proteins.", metavar = "CorThreshold")
-  
 )
 
 # Create an OptionParser object
@@ -330,6 +329,9 @@ pdf_fileName <- "Network.pdf"
 pdf_filePath <- paste0(outPath, pdf_fileName)
 pdf(pdf_filePath)
 
+### Read in protein expression profile
+proExpF <- read.csv(proteinExpFile, row.names=1)[,-1] %>% dplyr::select(where(~ any(. != 0)))
+
 for(colCt in colnames(Full_SHAP_F_AllScaled)){
   SHAP_PlotF <- Full_SHAP_F_AllScaled %>% dplyr::select(all_of(colCt)) %>% arrange(desc(!!sym(colCt))) %>%slice_head(n = SHAPthresh) 
   
@@ -337,7 +339,6 @@ for(colCt in colnames(Full_SHAP_F_AllScaled)){
   Pro_Plot_Ori <- rownames(SHAP_PlotF)
   
   ### Identify the strongly coexpressed proteins with the top important proteins based on SHAP
-  proExpF <- read.csv(proteinExpFile, row.names=1)[,-1] %>% dplyr::select(where(~ any(. != 0)))
   corF <- cor(proExpF,method = CorMethod)[Pro_Plot_Ori,]
   CoPro_UniPro <- unique(colnames(corF)[which(corF > CorThreshold, arr.ind = TRUE)[, 2]])
   
@@ -395,7 +396,7 @@ for(colCt in colnames(Full_SHAP_F_AllScaled)){
   ###############
   # OUTPUT FILES
   ###############
-  Hub_Proteins_STRING_List <- map2Srting(Pro_Plot_F, Full_SHAP_F_Plot, score_thresholdHere, combined_score_thresholdHere, colCt)
+  Hub_Proteins_STRING_List <- map2Srting(Pro_Plot_F, Full_SHAP_F_Plot, score_thresholdHere, combined_score_thresholdHere, CoPro_EntrezSym, colCt)
   Hub_Proteins_STRING <- Hub_Proteins_STRING_List[[1]] %>% arrange(desc(Degree))
   Hub_Proteins_STRING_WithExpansion <- Hub_Proteins_STRING_List[[2]] %>% arrange(desc(Degree))
   
