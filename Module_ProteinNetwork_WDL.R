@@ -8,6 +8,9 @@
 #     --SHAPthresh 100 \
 #     --patternChosen "" \
 #     --converProId TRUE \
+#     --proteinExpFile "/home/rstudio/YD/ML_workflow/input/expression/Case1.csv" \
+#     --CorMethod "spearman" \
+#     --CorThreshold 0.8 \
 #     >> "/home/rstudio/YD/ML_workflow/output/Network.log" 2>&1 &
 
 library(graphics)
@@ -45,9 +48,14 @@ option_list <- list(
   make_option(c("-n", "--patternChosen"), type = "character", default = "", 
               help = "File name pattern defining which SHAP files to be included for analysis.", metavar = "FilePattern"),
   make_option(c("-v", "--converProId"), type = "logical", default = TRUE, 
-              help = "Whether to perform the protein name mappin.", metavar = "converProId")
-  #make_option(c("-x","--proteinExpFile"), type = "character", default = "label_diagnosis_HCRBD2.csv", 
-  #             help = "Protein expression input file name.", metavar = "EXPRESSION")
+              help = "Whether to perform the protein name mappin.", metavar = "converProId"),
+  make_option(c("-x","--proteinExpFile"), type = "character", default = "/home/rstudio/YD/ML_workflow/input/expression/Case1.csv", 
+              help = "Protein expression input file name.", metavar = "EXPRESSION"),
+  make_option(c("-m","--CorMethod"), type = "character", default = "spearman", 
+              help = "Correlation method to define strongly coexpressed proteins, select from spearman, pearson, kendall.", metavar = "CorMethod"),
+  make_option(c("-d","--CorThreshold"), type = "numeric", default = 0.8, 
+              help = "Threshold to define strongly coexpressed proteins.", metavar = "CorThreshold")
+  
 )
 
 # Create an OptionParser object
@@ -64,7 +72,9 @@ combined_score_thresholdHere <- args$combined_score_thresholdHere
 SHAPthresh <- args$SHAPthresh
 patternChosen <- args$patternChosen 
 converProId = args$converProId
-#proteinExpFile <- args$proteinExpFile
+proteinExpFile <- args$proteinExpFile
+CorMethod <- args$CorMethod
+CorThreshold <- args$CorThreshold
 
 #--------------------------------
 #--------------------------------
@@ -101,7 +111,7 @@ getHubProTable <- function(LinkTable){
 # combined_score_thresholdHere: score thresold to make network plot;
 # patternChosen: message to included in the title of network plot
 # Output -- list(Hub_Proteins_STRING, Hub_Proteins_STRING_expanded), protein centrality score for non expanded and expanded protein network.
-map2Srting <- function(Pro_Plot_F, Full_SHAP_F_Plot, score_thresholdHere, combined_score_thresholdHere, patternChosen){
+map2Srting <- function(Pro_Plot_F, Full_SHAP_F_Plot, score_thresholdHere, combined_score_thresholdHere, CoPro_EntrezSym, patternChosen){
   set.seed(42)
   
   ### Initialize STRING database
@@ -185,16 +195,28 @@ map2Srting <- function(Pro_Plot_F, Full_SHAP_F_Plot, score_thresholdHere, combin
   all_interaction_network <- string_db$get_interactions(all_mapped$STRING_id) %>%
     distinct(from, to, .keep_all = TRUE)
   
-  # Identify 1st-degree seed node (top important proteins)
+  # Identify 1st-degree seed nodes (top important proteins)
   one_degree_nodes <- unique(c(interaction_network$from, interaction_network$to))
   
-  # Within the all_interaction_network, identify which interactions include the 1st-degree seed node 
-  keepID <- which(all_interaction_network$from %in% one_degree_nodes | 
-                    all_interaction_network$to %in% one_degree_nodes)
+  # Identify highly coexpressed proteins with the seed nodes
+  CoPro_mapped <- string_db$map(data.frame("prot" = CoPro_EntrezSym[,1]), "prot", removeUnmappedRows = TRUE)
+  CoPro_ENSEMBL <- CoPro_mapped$STRING_id
+  
+  # Within the all_interaction_network, identify which interactions include the seed node or 1st degree connection between seed node and strongly coexpressed proteins 
+  keepID <- which(
+    (all_interaction_network$from %in% one_degree_nodes & 
+       all_interaction_network$to %in% CoPro_ENSEMBL) |
+      
+      (all_interaction_network$from %in% CoPro_ENSEMBL & 
+         all_interaction_network$to %in% one_degree_nodes) |
+      
+      (all_interaction_network$from %in% one_degree_nodes & 
+         all_interaction_network$to %in% one_degree_nodes)
+  )
   
   expanded_interaction_network <- all_interaction_network[keepID, ] %>%
     distinct(from, to, .keep_all = TRUE)
-
+  
   ### Filter interactions for high-confidence edges
   edges_expanded <- expanded_interaction_network %>%
     dplyr::filter(combined_score > combined_score_thresholdHere) %>%
@@ -314,6 +336,11 @@ for(colCt in colnames(Full_SHAP_F_AllScaled)){
   ### Prepare data frame of top proteins with highest importance
   Pro_Plot_Ori <- rownames(SHAP_PlotF)
   
+  ### Identify the strongly coexpressed proteins with the top important proteins based on SHAP
+  proExpF <- read.csv(proteinExpFile, row.names=1)[,-1] %>% dplyr::select(where(~ any(. != 0)))
+  corF <- cor(proExpF,method = CorMethod)[Pro_Plot_Ori,]
+  CoPro_UniPro <- unique(colnames(corF)[which(corF > CorThreshold, arr.ind = TRUE)[, 2]])
+  
   ### Entrez Symbol is used to display on the network plot, perform the protein name mapping
   if(converProId == TRUE){
     ensembl <- useMart("ensembl", dataset = "hsapiens_gene_ensembl")
@@ -339,9 +366,20 @@ for(colCt in colnames(Full_SHAP_F_AllScaled)){
     SHAP_All <- unlist(sapply(Full_SHAP$uniprotswissprot, function(x) {Full_SHAP_F[which(rownames(Full_SHAP_F)==x)[1], colCt]}))
     Full_SHAP_F_Plot <- cbind(Full_SHAP$hgnc_symbol, SHAP_All) %>% as.data.frame() %>% mutate(SHAP_All = as.numeric(SHAP_All))
     
+    Sys.sleep(10)  
+    
+    ### Map strongly coexpressed proteins between UniProId and Entrez Symbol
+    CoPro_EntrezSym <- getBM(
+      attributes = c("uniprotswissprot", "hgnc_symbol"),
+      filters = "uniprotswissprot",
+      values = CoPro_UniPro,
+      mart = ensembl
+    ) %>% dplyr::select(hgnc_symbol)
+    
   }else{
     Pro_Plot_F <- cbind(rownames(SHAP_PlotF), SHAP_PlotF[,colCt]) %>% as.data.frame()
     Full_SHAP_F_Plot <- cbind(rownames(Full_SHAP_F),Full_SHAP_F[,colCt]) %>% as.data.frame()
+    CoPro_EntrezSym <- CoPro_UniPro
   }
   
   ###  Set the arbitrary colnames for the convenience of processing data.
