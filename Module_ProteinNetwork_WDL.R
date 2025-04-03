@@ -1,55 +1,42 @@
 # This script serves as module to perform bioinformatic characterizations for protein list provided by ML workflow
 # Example Command line: 
 # Rscript Module_ProteinNetwork_WDL.R \
-#     --inputPath "/home/rstudio/YD/ML_workflow/input/" \
-#     --outPath "/home/rstudio/YD/ML_workflow/output/" \
 #     --score_thresholdHere 400 \
 #     --combined_score_thresholdHere 800 \
 #     --SHAPthresh 100 \
-#     --patternChosen "" \
+#     --patternChosen "shap_values.csv" \
 #     --converProId TRUE \
-#     --proteinExpFile "/home/rstudio/YD/ML_workflow/input/expression/Case1.csv" \
+#     --proteinExpFile "Case1.csv" \
 #     --CorMethod "spearman" \
 #     --CorThreshold 0.8 \
-#     >> "/home/rstudio/YD/ML_workflow/output/Network.log" 2>&1 &
+#     > "/home/rstudio/YD/ML_workflow/output/Network.log" 2>&1 &
 
-library(graphics)
-library(grDevices)
-library(Matrix)
-library(methods)
-library(stats)
-library(utils)
-library(viridisLite)
 library(optparse)
-library(dplyr)
+library(tidyverse)
 library(magrittr)
 library(igraph)
 library(STRINGdb)
 library(fields)
 library(ggplot2)
-library(writexl)
 library(biomaRt)
+library(writexl)
 library(pdftools)
 
 set.seed(42)
 
 # Define the list of options
 option_list <- list(
-  make_option(c("-i", "--inputPath"), type = "character", default = "/home/rstudio/YD/ML_workflow/input/",
-              help = "Path to input files.", metavar = "INPUT_PATH"),
-  make_option(c("-o", "--outPath"), type = "character", default = "/home/rstudio/YD/ML_workflow/output/",
-              help = "Path to output files.", metavar = "OUTPUT_PATH"),
   make_option(c("-s", "--score_thresholdHere"), type = "integer", default = 400, 
               help = "Score threshold for STRING database.", metavar = "SCORE"),
   make_option(c("-c", "--combined_score_thresholdHere"), type = "integer", default = 800, 
               help = "Combined score threshold to select the nodes to be plotted.", metavar = "SCORE"),
   make_option(c("-a", "--SHAPthresh"), type = "integer", default = 100, 
               help = "Shap threshhold to define the top important proteins.", metavar = "ShapThresh"),
-  make_option(c("-n", "--patternChosen"), type = "character", default = "", 
+  make_option(c("-n", "--patternChosen"), type = "character", default = "shap_values.csv", 
               help = "File name pattern defining which SHAP files to be included for analysis.", metavar = "FilePattern"),
   make_option(c("-v", "--converProId"), type = "logical", default = TRUE, 
               help = "Whether to perform the protein name mappin.", metavar = "converProId"),
-  make_option(c("-x","--proteinExpFile"), type = "character", default = "/home/rstudio/YD/ML_workflow/input/expression/Case1.csv", 
+  make_option(c("-x","--proteinExpFile"), type = "character", default = "Case1.csv", 
               help = "Protein expression input file name.", metavar = "EXPRESSION"),
   make_option(c("-m","--CorMethod"), type = "character", default = "spearman", 
               help = "Correlation method to define strongly coexpressed proteins, select from spearman, pearson, kendall.", metavar = "CorMethod"),
@@ -64,8 +51,6 @@ parser <- OptionParser(option_list = option_list)
 args <- parse_args(parser)
 
 # Assign parsed values to variables
-inputPath <- args$inputPath
-outPath <- args$outPath
 score_thresholdHere <- args$score_thresholdHere
 combined_score_thresholdHere <- args$combined_score_thresholdHere
 SHAPthresh <- args$SHAPthresh
@@ -286,15 +271,14 @@ map2Srting <- function(Pro_Plot_F, Full_SHAP_F_Plot, score_thresholdHere, combin
 print(paste0("Network plot for ",  patternChosen, " started at ", format(Sys.time(), "%H:%M:%S"), " on ", Sys.Date(),"."))
 
 # Choose which SHAP files and which SHAP threshold to make network plot
-if(patternChosen==""){proteinImportanceFile_list <- list.files(inputPath)
-}else{proteinImportanceFile_list <- list.files(inputPath, pattern=patternChosen)}
+proteinImportanceFile_list <- list.files("./" ,pattern=patternChosen)
 
 ModelName <- gsub("_shap_values.csv", "",proteinImportanceFile_list)
 ProImportance <- vector("list", length=length(proteinImportanceFile_list))
 names(ProImportance) <- ModelName
 
 for(fCt in 1:length(proteinImportanceFile_list)){
-  ProImportance_temp <- read.csv(paste0(inputPath, proteinImportanceFile_list[fCt]), row.names=1)
+  ProImportance_temp <- read.csv(paste0(proteinImportanceFile_list[fCt]), row.names=1)
   ProImportance_temp %<>% mutate(SHAP = rowMeans(across(everything(), abs))) %<>% arrange(desc(SHAP)) %<>% dplyr::select("SHAP") 
   ProImportance[[fCt]] <- ProImportance_temp
 }
@@ -326,8 +310,7 @@ Full_SHAP_F_AllScaled <- cbind(NewSHAP_scaled,CombinedShap) %>% arrange(desc(Com
 
 ### Output network plots and hub protein tables
 pdf_fileName <- "Network.pdf"
-pdf_filePath <- paste0(outPath, pdf_fileName)
-pdf(pdf_filePath)
+pdf(pdf_fileName)
 
 ### Read in protein expression profile
 proExpF <- read.csv(proteinExpFile, check.names=FALSE)[,c(-1,-2)] %>% dplyr::select(where(~ any(. != 0)))
@@ -387,8 +370,8 @@ for(colCt in colnames(Full_SHAP_F_AllScaled)){
   colnames(Pro_Plot_F) <- colnames(Full_SHAP_F_Plot) <- c("proName", "SHAP")
   rownames(Pro_Plot_F) <- Pro_Plot_F$proName
   
-  ### Tackle with the same UniProtID corresponding to different Entrez Symbols
-  Full_SHAP_F_Plot %<>% group_by(proName) %<>% summarise(SHAP = max(SHAP, na.rm = TRUE), .groups = "drop") %<>% as.data.frame()
+  ### Tackle with the same UniProtID corresponding to different Entrez Symbols and remove the NA SHAP values.
+  Full_SHAP_F_Plot %<>% filter(!(is.na(SHAP)))%<>% group_by(proName) %<>% summarise(SHAP = max(SHAP, na.rm = TRUE), .groups = "drop") %<>% as.data.frame()
   rownames(Full_SHAP_F_Plot) <- Full_SHAP_F_Plot$proName
   
   ### Pro_Plot_F is the SHAP-ordered frame only for the top important proteins; Full_SHAP_F_Plot is NOT SHAP-ordered though for all the proteins.
@@ -400,28 +383,18 @@ for(colCt in colnames(Full_SHAP_F_AllScaled)){
   Hub_Proteins_STRING <- Hub_Proteins_STRING_List[[1]] %>% arrange(desc(Degree))
   Hub_Proteins_STRING_WithExpansion <- Hub_Proteins_STRING_List[[2]] %>% arrange(desc(Degree))
   
-  write_xlsx(Hub_Proteins_STRING, path = paste0(outPath, colCt, "_Hub_Proteins_STRING.xlsx"))
-  write_xlsx(Hub_Proteins_STRING_WithExpansion, path = paste0(outPath, colCt, "_Hub_Proteins_STRING_WithExpansion.xlsx"))
+  write_xlsx(Hub_Proteins_STRING, path = paste0(colCt, "_Hub_Proteins_STRING.xlsx"))
+  write_xlsx(Hub_Proteins_STRING_WithExpansion, path = paste0(colCt, "_Hub_Proteins_STRING_WithExpansion.xlsx"))
 }
 
 dev.off()
 
 ### Generate png for the convenience to combine into the final pdf
-num_pages <- pdf_info(pdf_filePath)$pages
+num_pages <- pdf_info(pdf_fileName)$pages
 for (i in 1:num_pages) {
-  pdf_subset(paste0(outPath, pdf_fileName), pages = i, output = paste0(outPath, "Network_", i, ".pdf"))
+  pdf_subset(pdf_fileName, pages = i, output = paste0("Network_", i, ".pdf"))
   
-  pdf_convert(paste0(outPath, "Network_", i, ".pdf"), format = "png", filenames = paste0(outPath, "Network_", i, ".png"), dpi = 300)
+  pdf_convert(paste0("Network_", i, ".pdf"), format = "png", filenames = paste0("Network_", i, ".png"), dpi = 300)
 }
 
-print(paste0("Network plot for ",  colCt, " finished at ", format(Sys.time(), "%H:%M:%S"), " on ", Sys.Date(),"."))
-
-# packages <- c("graphics", "grDevices", "Matrix", "methods", "stats", "utils", 
-#               "viridisLite", "optparse", "dplyr", "magrittr", "igraph", 
-#               "STRINGdb", "fields", "ggplot2", "writexl", "biomaRt", "pdftools")
-# 
-# installed_versions <- sapply(packages, function(pkg) {
-#   tryCatch(packageVersion(pkg), error = function(e) NA)
-# })
-# 
-# installed_versions
+print(paste0("PPI network and Hub Protein analysis finished at ", format(Sys.time(), "%H:%M:%S"), " on ", Sys.Date(),"."))
