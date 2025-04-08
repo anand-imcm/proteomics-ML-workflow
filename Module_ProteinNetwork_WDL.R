@@ -95,12 +95,9 @@ getHubProTable <- function(LinkTable){
 # combined_score_thresholdHere: score thresold to make network plot;
 # patternChosen: message to included in the title of network plot
 # Output -- list(Hub_Proteins_STRING, Hub_Proteins_STRING_expanded), protein centrality score for non expanded and expanded protein network.
-map2Srting <- function(Pro_Plot_F, Full_SHAP_F_Plot, score_thresholdHere, combined_score_thresholdHere, CoPro_EntrezSym, patternChosen){
+### Initialize STRING database
+map2Srting <- function(string_db, Pro_Plot_F, Full_SHAP_F_Plot, score_thresholdHere, combined_score_thresholdHere, CoPro_EntrezSym, patternChosen){
   set.seed(42)
-  
-  ### Initialize STRING database
-  string_db <- STRINGdb$new(version = "12", species = 9606, score_threshold = score_thresholdHere, 
-                            network_type = "full", input_directory = "", protocol = "http")
   
   mapAll <- string_db$get_aliases()
   
@@ -379,7 +376,11 @@ for(colCt in colnames(Full_SHAP_F_AllScaled)){
   ###############
   # OUTPUT FILES
   ###############
-  Hub_Proteins_STRING_List <- map2Srting(Pro_Plot_F, Full_SHAP_F_Plot, score_thresholdHere, combined_score_thresholdHere, CoPro_EntrezSym, colCt)
+  ### Initialise the STRINGdb database
+  string_db <- STRINGdb$new(version = "12", species = 9606, score_threshold = score_thresholdHere, 
+                            network_type = "full", input_directory = "", protocol = "http")
+  
+  Hub_Proteins_STRING_List <- map2Srting(string_db, Pro_Plot_F, Full_SHAP_F_Plot, score_thresholdHere, combined_score_thresholdHere, CoPro_EntrezSym, colCt)
   Hub_Proteins_STRING <- Hub_Proteins_STRING_List[[1]] %>% arrange(desc(Degree))
   Hub_Proteins_STRING_WithExpansion <- Hub_Proteins_STRING_List[[2]] %>% arrange(desc(Degree))
   
