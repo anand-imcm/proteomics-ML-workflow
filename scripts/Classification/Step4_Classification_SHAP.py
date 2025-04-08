@@ -32,17 +32,30 @@ warnings.filterwarnings("ignore")
 
 # Custom transformer for PLS
 class PLSFeatureSelector(BaseEstimator, TransformerMixin):
+    """
+    Modified PLSFeatureSelector to return a DataFrame with columns named
+    'PLS_Component_1', 'PLS_Component_2', etc. This ensures SHAP can correctly
+    handle the transformed data in a pipeline.
+    """
     def __init__(self, n_components=2):
         self.n_components = n_components
-        self.pls = None  # Initialize in fit
+        self.pls = None
+        self.feature_names_ = None
 
     def fit(self, X, y):
+        # Store feature names if X is a DataFrame
+        if hasattr(X, "columns"):
+            self.feature_names_ = X.columns.tolist()
+        else:
+            self.feature_names_ = [f"Feature_{i}" for i in range(X.shape[1])]
         self.pls = PLSRegression(n_components=self.n_components)
         self.pls.fit(X, y)
         return self
 
     def transform(self, X):
-        return self.pls.transform(X)
+        X_pls = self.pls.transform(X)
+        columns = [f"PLS_Component_{i+1}" for i in range(X_pls.shape[1])]
+        return pd.DataFrame(X_pls, index=range(X_pls.shape[0]), columns=columns)
 
 # Custom transformer for t-SNE
 class TSNETransformer(BaseEstimator, TransformerMixin):

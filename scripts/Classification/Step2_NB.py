@@ -674,7 +674,9 @@ def gaussian_nb_nested_cv(inp, prefix, feature_selection_method):
             variance_csv_path = f"{prefix}_gaussiannb_variance.csv"
             if feature_selection_method == 'pca':
                 # Fit a full PCA to get all components' variance
-                full_pca = PCA(n_components=X.shape[1], random_state=1234)
+                # Dynamic n_components fix to avoid the ValueError
+                n_components_full_pca = min(X.shape[0], X.shape[1])
+                full_pca = PCA(n_components=n_components_full_pca, random_state=1234)
                 with SuppressOutput():
                     full_pca.fit(X)
                 explained_variance = full_pca.explained_variance_ratio_

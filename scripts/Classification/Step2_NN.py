@@ -43,7 +43,6 @@ class SuppressOutput(contextlib.AbstractContextManager):
         self._stderr = sys.stderr
         sys.stdout = open("/dev/null", "w")
         sys.stderr = open("/dev/null", "w")
-
     def __exit__(self, exc_type, exc_value, traceback):
         sys.stdout.close()
         sys.stderr.close()
@@ -55,11 +54,9 @@ class PLSFeatureSelector(BaseEstimator, TransformerMixin):
     def __init__(self, n_components=2):
         self.n_components = n_components
         self.pls = PLSRegression(n_components=self.n_components)
-
     def fit(self, X, y):
         self.pls.fit(X, y)
         return self
-
     def transform(self, X):
         return self.pls.transform(X)
 
@@ -86,11 +83,9 @@ class TSNETransformer(BaseEstimator, TransformerMixin):
             random_state=self.random_state,
         )
         self.X_transformed_ = None
-
     def fit(self, X, y=None):
         self.X_transformed_ = self.tsne.fit_transform(X)
         return self
-
     def transform(self, X):
         # t-SNE does not support transforming new data
         if self.X_transformed_ is not None and X.shape[0] == self.X_transformed_.shape[0]:
@@ -126,7 +121,9 @@ def neural_network_nested_cv(inp, prefix, feature_selection_method):
 
     # Save all possible principal component information
     if feature_selection_method == 'pca':
-        full_pca = PCA(n_components=X.shape[1], random_state=1234)
+        # Dynamically adjust the number of PCA components to avoid errors
+        max_full_components = min(X.shape[0], X.shape[1])
+        full_pca = PCA(n_components=max_full_components, random_state=1234)
         X_pca_full = full_pca.fit_transform(X)
         explained_variance = full_pca.explained_variance_ratio_
         explained_variance_df = pd.DataFrame({
@@ -214,7 +211,7 @@ def neural_network_nested_cv(inp, prefix, feature_selection_method):
             mlp_alpha = trial.suggest_loguniform('mlp_alpha', 1e-4, 1e-2)
             learning_rate_init = trial.suggest_loguniform('learning_rate_init', 1e-5, 1e-2)
 
-            # Define hidden layer structure with multiple layers
+            # Define hidden layer structure
             hidden_layers = tuple([hidden_layer_size] * hidden_layer_count)
 
             # Start building the steps list
@@ -259,25 +256,21 @@ def neural_network_nested_cv(inp, prefix, feature_selection_method):
                 n_components = trial.suggest_int('n_components', 2, max_pls_components)
                 steps.append(('feature_selection', PLSFeatureSelector(n_components=n_components)))
             elif feature_selection_method == 'tsne':
-                # t-SNE requires n_components <=3
                 n_components = trial.suggest_int('n_components', 2, 3)
                 perplexity = trial.suggest_int('perplexity', 5, min(50, X_train_outer.shape[0]-1))
                 learning_rate = trial.suggest_loguniform('learning_rate', 10, 1000)
-                max_iter = trial.suggest_int('max_iter', 250, 2000)  # Changed n_iter to max_iter
+                max_iter = trial.suggest_int('max_iter', 250, 2000)
                 steps.append(('feature_selection', TSNETransformer(n_components=n_components, perplexity=perplexity, learning_rate=learning_rate, max_iter=max_iter, random_state=1234)))
             else:
                 # No feature selection
                 pass
 
-            # Add MLPClassifier
             steps.append(('mlp', MLPClassifier(hidden_layer_sizes=hidden_layers,
                                                activation='relu',
                                                alpha=mlp_alpha,
                                                learning_rate_init=learning_rate_init,
                                                max_iter=200000,
                                                random_state=1234)))
-
-            # Create pipeline
             pipeline = Pipeline(steps)
 
             # Perform inner cross-validation
@@ -292,23 +285,23 @@ def neural_network_nested_cv(inp, prefix, feature_selection_method):
                         f1 = f1_score(y_valid_inner, y_pred_inner, average='weighted')
                         f1_scores.append(f1)
                     except (NotImplementedError, ArpackError, ValueError):
-                        # If feature selection fails
                         return 0.0
                 return np.mean(f1_scores)
 
-        # Create an Optuna study for the inner fold
+        # Create an Optuna study for the inner fold; allow parallel computation via n_jobs=-1
         study_inner = optuna.create_study(direction='maximize', sampler=TPESampler(seed=1234))
         study_inner.optimize(objective_inner, n_trials=50, show_progress_bar=False)
 
         # Best hyperparameters from the inner fold
         best_params_inner = study_inner.best_params
 
-        # Initialize the best model with the best hyperparameters
+        # Build the pipeline using the best hyperparameters
         hidden_layer_size = best_params_inner['hidden_layer_size']
         hidden_layer_count = best_params_inner['hidden_layer_count']
         mlp_alpha = best_params_inner['mlp_alpha']
         learning_rate_init = best_params_inner['learning_rate_init']
         hidden_layers = tuple([hidden_layer_size] * hidden_layer_count)
+
         steps = [('scaler', StandardScaler())]
 
         if feature_selection_method == 'elasticnet':
@@ -343,10 +336,9 @@ def neural_network_nested_cv(inp, prefix, feature_selection_method):
             best_n_components = best_params_inner['n_components']
             best_perplexity = best_params_inner['perplexity']
             best_learning_rate = best_params_inner['learning_rate']
-            best_max_iter = best_params_inner['max_iter']  # Changed n_iter to max_iter
+            best_max_iter = best_params_inner['max_iter']
             steps.append(('feature_selection', TSNETransformer(n_components=best_n_components, perplexity=best_perplexity, learning_rate=best_learning_rate, max_iter=best_max_iter, random_state=1234)))
         else:
-            # No feature selection
             pass
 
         steps.append(('mlp', MLPClassifier(hidden_layer_sizes=hidden_layers,
@@ -355,7 +347,6 @@ def neural_network_nested_cv(inp, prefix, feature_selection_method):
                                            learning_rate_init=learning_rate_init,
                                            max_iter=200000,
                                            random_state=1234)))
-
         best_model_inner = Pipeline(steps)
 
         # Fit the model on the outer training set
@@ -369,7 +360,7 @@ def neural_network_nested_cv(inp, prefix, feature_selection_method):
                 fold_idx += 1
                 continue
 
-        # Predict probabilities on the outer test set
+        # Predict on the outer test set
         try:
             y_pred_prob_outer = best_model_inner.predict_proba(X_test_outer)
             y_pred_class_outer = best_model_inner.predict(X_test_outer)
@@ -378,7 +369,7 @@ def neural_network_nested_cv(inp, prefix, feature_selection_method):
             y_pred_class_outer = np.zeros(X_test_outer.shape[0])
             print(f"Prediction failed for fold {fold_idx} due to: {str(e)}")
 
-        # Compute F1 score
+        # Compute F1
         f1_outer = f1_score(y_test_outer, y_pred_class_outer, average='weighted')
         outer_f1_scores.append(f1_outer)
 
@@ -390,7 +381,6 @@ def neural_network_nested_cv(inp, prefix, feature_selection_method):
             except ValueError:
                 auc_outer = 0.0
         else:
-            # Compute micro-average ROC AUC for multi-class
             try:
                 fpr_val, tpr_val, _ = roc_curve(y_binarized[test_idx].ravel(), y_pred_prob_outer.ravel())
                 auc_outer = auc(fpr_val, tpr_val)
@@ -401,7 +391,7 @@ def neural_network_nested_cv(inp, prefix, feature_selection_method):
         print(f"Fold {fold_idx} - F1 Score: {f1_outer:.4f}, AUC: {auc_outer:.4f}")
         fold_idx += 1
 
-    # Plot and save the F1 and AUC scores per outer fold
+    # Plot and save F1 and AUC per outer fold
     plt.figure(figsize=(10, 6))
     folds = range(1, cv_outer.get_n_splits() + 1)
     plt.plot(folds, outer_f1_scores, marker='o', label='F1 Score')
@@ -421,26 +411,19 @@ def neural_network_nested_cv(inp, prefix, feature_selection_method):
     print(f"Average F1 Score: {np.mean(outer_f1_scores):.4f} ± {np.std(outer_f1_scores):.4f}")
     print(f"Average AUC: {np.mean(outer_auc_scores):.4f} ± {np.std(outer_auc_scores):.4f}")
 
-    # After nested CV, perform hyperparameter tuning on the entire dataset
+    # Hyperparameter tuning on the entire dataset
     print("Starting hyperparameter tuning on the entire dataset...")
 
-    # Define the objective function for Optuna on the entire dataset
     def objective_full(trial):
-        # Suggest hyperparameters for MLPClassifier
         hidden_layer_size = trial.suggest_int('hidden_layer_size', 50, 200)
-        hidden_layer_count = trial.suggest_int('hidden_layer_count', 1, 5)  # Number of layers
+        hidden_layer_count = trial.suggest_int('hidden_layer_count', 1, 5)
         mlp_alpha = trial.suggest_loguniform('mlp_alpha', 1e-4, 1e-2)
         learning_rate_init = trial.suggest_loguniform('learning_rate_init', 1e-5, 1e-2)
 
-        # Define hidden layer structure with multiple layers
         hidden_layers = tuple([hidden_layer_size] * hidden_layer_count)
-
-        # Start building the steps list
         steps = [('scaler', StandardScaler())]
 
-        # Depending on the feature selection method, add steps and hyperparameters
         if feature_selection_method == 'elasticnet':
-            # Suggest hyperparameters for ElasticNet
             elasticnet_alpha = trial.suggest_loguniform('elasticnet_alpha', 1e-4, 1e-1)
             l1_ratio = trial.suggest_uniform('l1_ratio', 0.0, 1.0)
             steps.append(('feature_selection', SelectFromModel(
@@ -451,9 +434,9 @@ def neural_network_nested_cv(inp, prefix, feature_selection_method):
             n_components = trial.suggest_int('n_components', 1, max_pca_components)
             steps.append(('feature_selection', PCA(n_components=n_components, random_state=1234)))
         elif feature_selection_method == 'kpca':
-            n_samples = X.shape[0]
-            n_features = X.shape[1]
-            max_kpca_components = min(n_features, n_samples -1)
+            n_samples_all = X.shape[0]
+            n_features_all = X.shape[1]
+            max_kpca_components = min(n_features_all, n_samples_all -1)
             n_components = trial.suggest_int('n_components', 1, max_kpca_components)
             kernel = trial.suggest_categorical('kernel', ['linear', 'poly', 'rbf', 'sigmoid', 'cosine'])
             kpca_params = {'n_components': n_components, 'kernel': kernel, 'random_state': 1234, 'eigen_solver': 'arpack', 'max_iter': 5000}
@@ -478,28 +461,22 @@ def neural_network_nested_cv(inp, prefix, feature_selection_method):
             n_components = trial.suggest_int('n_components', 2, max_pls_components)
             steps.append(('feature_selection', PLSFeatureSelector(n_components=n_components)))
         elif feature_selection_method == 'tsne':
-            # t-SNE requires n_components <=3
             n_components = trial.suggest_int('n_components', 2, 3)
             perplexity = trial.suggest_int('perplexity', 5, min(50, X.shape[0]-1))
             learning_rate = trial.suggest_loguniform('learning_rate', 10, 1000)
-            max_iter = trial.suggest_int('max_iter', 250, 2000)  # Changed n_iter to max_iter
+            max_iter = trial.suggest_int('max_iter', 250, 2000)
             steps.append(('feature_selection', TSNETransformer(n_components=n_components, perplexity=perplexity, learning_rate=learning_rate, max_iter=max_iter, random_state=1234)))
         else:
-            # No feature selection
             pass
 
-        # Add MLPClassifier
         steps.append(('mlp', MLPClassifier(hidden_layer_sizes=hidden_layers,
                                            activation='relu',
                                            alpha=mlp_alpha,
                                            learning_rate_init=learning_rate_init,
                                            max_iter=200000,
                                            random_state=1234)))
-
-        # Create pipeline
         pipeline = Pipeline(steps)
 
-        # Perform cross-validation
         with SuppressOutput():
             f1_scores = []
             for train_idx_full, valid_idx_full in cv_outer.split(X, y_encoded):
@@ -511,24 +488,23 @@ def neural_network_nested_cv(inp, prefix, feature_selection_method):
                     f1 = f1_score(y_valid_full, y_pred_full, average='weighted')
                     f1_scores.append(f1)
                 except (NotImplementedError, ArpackError, ValueError):
-                    # If feature selection fails
                     f1_scores.append(0.0)
             return np.mean(f1_scores)
 
-    # Create an Optuna study for the entire dataset
+    # Create an Optuna study for the entire dataset; allow parallel computation via n_jobs=-1
     study_full = optuna.create_study(direction='maximize', sampler=TPESampler(seed=1234))
     study_full.optimize(objective_full, n_trials=50, show_progress_bar=True)
 
-    # Best hyperparameters from the entire dataset
     best_params_full = study_full.best_params
     print(f"Best parameters for Neural Network: {best_params_full}")
 
-    # Initialize the best model with the best hyperparameters
+    # Build pipeline with best params
     hidden_layer_size_full = best_params_full['hidden_layer_size']
     hidden_layer_count_full = best_params_full['hidden_layer_count']
     mlp_alpha_full = best_params_full['mlp_alpha']
     learning_rate_init_full = best_params_full['learning_rate_init']
     hidden_layers_full = tuple([hidden_layer_size_full] * hidden_layer_count_full)
+
     steps = [('scaler', StandardScaler())]
 
     if feature_selection_method == 'elasticnet':
@@ -563,10 +539,9 @@ def neural_network_nested_cv(inp, prefix, feature_selection_method):
         best_n_components_full = best_params_full['n_components']
         best_perplexity_full = best_params_full['perplexity']
         best_learning_rate_full = best_params_full['learning_rate']
-        best_max_iter_full = best_params_full['max_iter']  # Changed n_iter to max_iter
+        best_max_iter_full = best_params_full['max_iter']
         steps.append(('feature_selection', TSNETransformer(n_components=best_n_components_full, perplexity=best_perplexity_full, learning_rate=best_learning_rate_full, max_iter=best_max_iter_full, random_state=1234)))
     else:
-        # No feature selection
         pass
 
     steps.append(('mlp', MLPClassifier(hidden_layer_sizes=hidden_layers_full,
@@ -575,16 +550,13 @@ def neural_network_nested_cv(inp, prefix, feature_selection_method):
                                        learning_rate_init=learning_rate_init_full,
                                        max_iter=200000,
                                        random_state=1234)))
-
     best_model = Pipeline(steps)
 
-    # Fit the model on the entire dataset
     with SuppressOutput():
         try:
             best_model.fit(X, y_encoded)
         except (NotImplementedError, ArpackError, ValueError):
             print("Feature selection method failed on the entire dataset. Skipping feature selection.")
-            # Remove feature selection step and fit MLPClassifier only
             steps = [('scaler', StandardScaler()), ('mlp', MLPClassifier(hidden_layer_sizes=hidden_layers_full,
                                                                          activation='relu',
                                                                          alpha=mlp_alpha_full,
@@ -594,51 +566,38 @@ def neural_network_nested_cv(inp, prefix, feature_selection_method):
             best_model = Pipeline(steps)
             best_model.fit(X, y_encoded)
 
-    # Save the best model and data using pickle
+    # Save model and data
     with open(f"{prefix}_neural_network_model.pkl", 'wb') as model_file:
         pickle.dump(best_model, model_file)
     with open(f"{prefix}_neural_network_data.pkl", 'wb') as data_file:
         pickle.dump((X, y_encoded, le), data_file)
 
-    # Output the best parameters
     print(f"Best parameters for Neural Network: {best_params_full}")
 
-    # If feature selection is used, save the transformed data and variance information
+    # If feature selection is used, save transformed data and variance info
     if feature_selection_method != 'none':
         try:
-            # Transform the entire dataset
             X_transformed = best_model.named_steps['feature_selection'].transform(X)
         except (NotImplementedError, ArpackError, ValueError):
-            # If feature selection fails, skip saving transformed data
             X_transformed = None
-
         if X_transformed is not None:
-            # Create a DataFrame for the transformed data
             if feature_selection_method in ['pca', 'kpca', 'umap', 'pls']:
                 n_components = X_transformed.shape[1]
                 transformed_columns = [f"{feature_selection_method.upper()}_Component_{i+1}" for i in range(n_components)]
                 X_transformed_df = pd.DataFrame(X_transformed, columns=transformed_columns)
             elif feature_selection_method == 'tsne':
-                # t-SNE with optimized n_components
                 transformed_columns = [f"{feature_selection_method.upper()}_Component_{i+1}" for i in range(X_transformed.shape[1])]
                 X_transformed_df = pd.DataFrame(X_transformed, columns=transformed_columns)
             elif feature_selection_method == 'elasticnet':
                 selected_features = X.columns[best_model.named_steps['feature_selection'].get_support()]
                 X_transformed_df = X[selected_features].copy()
             else:
-                # For other methods or no feature selection
                 X_transformed_df = pd.DataFrame(X_transformed)
-
-            # Add SampleID and Label
             X_transformed_df.insert(0, 'SampleID', sample_ids)
             X_transformed_df['Label'] = y
-
-            # Save the transformed data
             transformed_csv_path = f"{prefix}_neural_network_transformed_X.csv"
             X_transformed_df.to_csv(transformed_csv_path, index=False)
             print(f"Transformed data saved to {transformed_csv_path}")
-
-            # Save variance information if applicable
             variance_csv_path = f"{prefix}_neural_network_variance.csv"
             if feature_selection_method == 'pca':
                 pca_step = best_model.named_steps['feature_selection']
@@ -660,17 +619,14 @@ def neural_network_nested_cv(inp, prefix, feature_selection_method):
                 explained_variance_df.to_csv(variance_csv_path, index=False)
                 print(f"PLS explained variance ratios saved to {variance_csv_path}")
             elif feature_selection_method == 'tsne':
-                # t-SNE does not provide variance information
                 with open(variance_csv_path, 'w') as f:
                     f.write("t-SNE does not provide variance information.\n")
                 print(f"No variance information available for t-SNE. File created at {variance_csv_path}")
             elif feature_selection_method == 'elasticnet':
-                # ElasticNet does not provide variance information
                 with open(variance_csv_path, 'w') as f:
                     f.write("ElasticNet does not provide variance information.\n")
                 print(f"No variance information available for ElasticNet. File created at {variance_csv_path}")
             else:
-                # For KernelPCA, UMAP, etc., variance information is not directly available
                 with open(variance_csv_path, 'w') as f:
                     f.write(f"{feature_selection_method.upper()} does not provide variance information.\n")
                 print(f"No variance information available for {feature_selection_method.upper()}. File created at {variance_csv_path}")
@@ -682,7 +638,6 @@ def neural_network_nested_cv(inp, prefix, feature_selection_method):
         y_pred_prob = cross_val_predict(best_model, X, y_encoded, cv=cv_outer, method='predict_proba', n_jobs=-1)
         y_pred_class = np.argmax(y_pred_prob, axis=1)
     except (NotImplementedError, ArpackError, ValueError):
-        # If feature selection fails, skip predictions
         y_pred_prob = np.zeros((X.shape[0], num_classes))
         y_pred_class = np.zeros(X.shape[0])
 
@@ -698,18 +653,27 @@ def neural_network_nested_cv(inp, prefix, feature_selection_method):
             sensitivity = tp / (tp + fn) if (tp + fn) > 0 else 0
             specificity = tn / (tn + fp) if (tn + fp) > 0 else 0
         else:
-            # Handle cases where confusion matrix is not 2x2
             sensitivity = 0.0
             specificity = 0.0
             warnings.warn("Confusion matrix is not 2x2. Sensitivity and Specificity set to 0.")
     else:
         with np.errstate(divide='ignore', invalid='ignore'):
-            sensitivity = np.mean(np.divide(np.diag(cm), np.sum(cm, axis=1),
-                                            out=np.zeros_like(np.diag(cm), dtype=float),
-                                            where=np.sum(cm, axis=1) != 0))
-            specificity = np.mean(np.divide(np.diag(cm), np.sum(cm, axis=0),
-                                            out=np.zeros_like(np.diag(cm), dtype=float),
-                                            where=np.sum(cm, axis=0) != 0))
+            sensitivity = np.mean(
+                np.divide(
+                    np.diag(cm),
+                    np.sum(cm, axis=1),
+                    out=np.zeros_like(np.diag(cm), dtype=float),
+                    where=np.sum(cm, axis=1) != 0
+                )
+            )
+            specificity = np.mean(
+                np.divide(
+                    np.diag(cm),
+                    np.sum(cm, axis=0),
+                    out=np.zeros_like(np.diag(cm), dtype=float),
+                    where=np.sum(cm, axis=0) != 0
+                )
+            )
 
     # Confusion matrix
     disp = ConfusionMatrixDisplay(confusion_matrix=cm, display_labels=le.classes_)
@@ -723,7 +687,6 @@ def neural_network_nested_cv(inp, prefix, feature_selection_method):
     tpr = {}
     roc_auc = {}
 
-    # Different handling for binary and multi-class cases
     if num_classes == 2 and y_pred_prob.shape[1] == 2:
         try:
             fpr[0], tpr[0], _ = roc_curve(y_binarized[:, 0], y_pred_prob[:, 0])
@@ -742,15 +705,12 @@ def neural_network_nested_cv(inp, prefix, feature_selection_method):
                     roc_auc[i] = auc(fpr[i], tpr[i])
                 except ValueError:
                     fpr[i], tpr[i], roc_auc[i] = np.array([0, 1]), np.array([0, 1]), 0.0
-
-        # Compute overall ROC AUC for multi-class
         try:
             fpr["micro"], tpr["micro"], _ = roc_curve(y_binarized.ravel(), y_pred_prob.ravel())
             roc_auc["micro"] = auc(fpr["micro"], tpr["micro"])
         except ValueError:
             fpr["micro"], tpr["micro"], roc_auc["micro"] = np.array([0, 1]), np.array([0, 1]), 0.0
 
-    # Save ROC data
     roc_data = {
         'fpr': fpr,
         'tpr': tpr,
@@ -758,9 +718,7 @@ def neural_network_nested_cv(inp, prefix, feature_selection_method):
     }
     np.save(f"{prefix}_neural_network_roc_data.npy", roc_data)
 
-    # Plot and save ROC curve
     plt.figure(figsize=(10, 8))
-
     if num_classes == 2 and y_pred_prob.shape[1] == 2:
         plt.plot(fpr[0], tpr[0], label=f'AUC = {roc_auc[0]:.2f}')
     else:
@@ -769,7 +727,6 @@ def neural_network_nested_cv(inp, prefix, feature_selection_method):
                 plt.plot(fpr[i], tpr[i], label=f'{le.inverse_transform([i])[0]} (AUC = {roc_auc[i]:.2f})')
         if roc_auc.get("micro", 0.0) > 0.0:
             plt.plot(fpr["micro"], tpr["micro"], label=f'Overall (AUC = {roc_auc["micro"]:.2f})', linestyle='--')
-
     plt.plot([0, 1], [0, 1], 'k--')
     plt.xlim([0.0, 1.0])
     plt.ylim([0.0, 1.05])
@@ -800,21 +757,18 @@ def neural_network_nested_cv(inp, prefix, feature_selection_method):
         'Original Label': y,
         'Predicted Label': le.inverse_transform(y_pred_class.astype(int))
     })
-
-    # Save predictions to CSV
     predictions_df.to_csv(f"{prefix}_neural_network_predictions.csv", index=False)
-
     print(f"Predictions saved to {prefix}_neural_network_predictions.csv")
 
 if __name__ == '__main__':
-    # Define argument parser
-    parser = argparse.ArgumentParser(description='Run Neural Network model with Nested Cross-Validation, Optional Feature Selection, and Optuna hyperparameter optimization.')
+    parser = argparse.ArgumentParser(
+        description='Run Neural Network model with Nested Cross-Validation, Optional Feature Selection, and Optuna hyperparameter optimization.'
+    )
     parser.add_argument('-i', '--csv', type=str, required=True, help='Input file in CSV format.')
     parser.add_argument('-p', '--prefix', type=str, required=True, help='Prefix for output files.')
-    parser.add_argument('-f', '--feature_selection', type=str, choices=['none', 'elasticnet', 'pca', 'kpca', 'umap', 'pls', 'tsne'], default='none', help='Feature selection method to use.')
-
-    # Parse the arguments
+    parser.add_argument('-f', '--feature_selection', type=str,
+                        choices=['none', 'elasticnet', 'pca', 'kpca', 'umap', 'pls', 'tsne'],
+                        default='none',
+                        help='Feature selection method to use.')
     args = parser.parse_args()
-
-    # Run the Neural Network nested cross-validation function
     neural_network_nested_cv(args.csv, args.prefix, args.feature_selection)
