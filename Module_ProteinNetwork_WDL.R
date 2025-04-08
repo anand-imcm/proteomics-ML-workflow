@@ -146,7 +146,7 @@ map2Srting <- function(string_db, Pro_Plot_F, Full_SHAP_F_Plot, score_thresholdH
        vertex.label.color = "black",
        vertex.label.family = "sans", 
        vertex.label.dist = 0.8, 
-       cex.main = 0.06, 
+       cex.main = 0.03, 
        main = paste0("Protein-Protein Interaction Network ", patternChosen, 
                      "\nBased on STRING database"), 
        rescale = TRUE)
@@ -232,7 +232,7 @@ map2Srting <- function(string_db, Pro_Plot_F, Full_SHAP_F_Plot, score_thresholdH
        vertex.label.color = "black",
        vertex.label.family = "sans", 
        vertex.label.dist = 0.8, 
-       cex.main = 0.06, 
+       cex.main = 0.03, 
        main = paste0("Protein-Protein Expanded Interaction Network ", patternChosen, 
                      "\nBased on STRING database"), 
        rescale = TRUE)
