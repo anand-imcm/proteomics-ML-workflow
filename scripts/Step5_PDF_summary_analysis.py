@@ -1,7 +1,7 @@
 from fpdf import FPDF
 import os
 import logging
-import re  # Import the regex module
+import re
 
 # Configure logging
 logging.basicConfig(level=logging.INFO, format='%(levelname)s: %(message)s')
@@ -15,7 +15,7 @@ class PDFReport(FPDF):
 
     def chapter_title_centered(self, title):
         """
-        Add a centered and enlarged chapter title both horizontally and vertically.
+        Add a centered and enlarged chapter title on a new page.
         Font size is set to 40.
         """
         self.add_page()
@@ -37,7 +37,7 @@ class PDFReport(FPDF):
 
     def chapter_title_left_aligned(self, title):
         """
-        Add a left-aligned chapter title positioned at one-third of the page vertically.
+        Add a left-aligned chapter title on a new page positioned at one-third of the page vertically.
         Font size is set to 40.
         """
         self.add_page()
@@ -89,6 +89,7 @@ class PDFReport(FPDF):
     def add_image_with_caption(self, model_name, image_type, title, caption):
         """
         Add an image (if found) with a title and caption to the PDF.
+        Returns True if an image is found and added, otherwise returns False.
         """
         img_path = self.find_image_file(model_name, image_type)
         if img_path:
@@ -102,6 +103,7 @@ class PDFReport(FPDF):
                 self.ln(10)
             except RuntimeError:
                 logging.warning(f"Failed to load image: {img_path}")
+            return True
         else:
             if image_type == "models_summary_bar_chart":
                 expected = f"{model_name}.png"
@@ -114,12 +116,13 @@ class PDFReport(FPDF):
                 f"Image not found for model '{model_name}' with type '{image_type}'. "
                 f"Expected something like '{expected}'"
             )
+            return False
 
 # Create PDF report
 pdf = PDFReport()
 
 ####################################
-# Introduction section
+# Introduction Section (Text only)
 ####################################
 pdf.chapter_title_left_aligned("Introduction")
 introduction_text = (
@@ -133,7 +136,6 @@ pdf.add_text(introduction_text)
 ####################################
 # Dimensionality Reduction Section
 ####################################
-pdf.chapter_title_centered("Dimensionality Reduction")
 analysis_images = {
     'KPCA': ('Kernel Principal Component Analysis (KPCA)', 'KPCA results providing a non-linear dimensionality reduction view.'),
     'PCA': ('Principal Component Analysis (PCA)', 'PCA results showing the distribution of data points in reduced dimensions PCs.'),
@@ -141,23 +143,21 @@ analysis_images = {
     'tSNE': ('t-Distributed Stochastic Neighbor Embedding (t-SNE)', 't-SNE results visualizing the data in a lower-dimensional space.'),
     'UMAP': ('Uniform Manifold Approximation and Projection (UMAP)', 'UMAP results displaying the clustering of data points.')
 }
-# Dimensionality reduction images are identified by their specific model names with '_result.png'
+# Check if at least one image exists for the section
+found_any = False
 for model_name, (title, caption) in analysis_images.items():
-    pdf.add_image_with_caption(model_name, 'result', title, caption)
+    if pdf.find_image_file(model_name, 'result'):
+        found_any = True
+        break
+if found_any:
+    pdf.chapter_title_centered("Dimensionality Reduction")
+    for model_name, (title, caption) in analysis_images.items():
+        if pdf.find_image_file(model_name, 'result'):
+            pdf.add_image_with_caption(model_name, 'result', title, caption)
 
 ####################################
 # Classification Section
 ####################################
-pdf.chapter_title_centered("Classification Section")
-
-# Overall classification chart example
-pdf.add_image_with_caption(
-    "overall_roc_curves",
-    None,
-    "Overall ROC Curves for All Classification Models",
-    "This plot shows the ROC curves for all classification models."
-)
-
 classification_image_types = {
     'confusion_matrix': 'Confusion Matrix',
     'metrics': 'Evaluation Metrics',
@@ -166,7 +166,6 @@ classification_image_types = {
     'shap_bar': 'Feature Importance - SHAP Bar Plot for Multiclass',
     'nested_cv_f1_auc': 'Five-Fold Classification Results'
 }
-
 classification_models = {
     'neural_network': 'Fully connected Neural Network model performance analysis.',
     'random_forest': 'Random Forest model performance analysis.',
@@ -180,26 +179,35 @@ classification_models = {
     'gaussiannb': 'Gaussian Naive Bayes model performance analysis.',
     'vaemlp': 'MLP in VAE model performance analysis.'
 }
-
-for model_name, caption in classification_models.items():
-    for img_type, img_description in classification_image_types.items():
-        title = f"{model_name.replace('_', ' ').title()} {img_description}"
-        pdf.add_image_with_caption(model_name, img_type, title, caption)
+found_any = False
+if pdf.find_image_file("overall_roc_curves", None):
+    found_any = True
+else:
+    for model_name in classification_models.keys():
+        for img_type in classification_image_types.keys():
+            if pdf.find_image_file(model_name, img_type):
+                found_any = True
+                break
+        if found_any:
+            break
+if found_any:
+    pdf.chapter_title_centered("Classification Section")
+    if pdf.find_image_file("overall_roc_curves", None):
+        pdf.add_image_with_caption(
+            "overall_roc_curves",
+            None,
+            "Overall ROC Curves for All Classification Models",
+            "This plot shows the ROC curves for all classification models."
+        )
+    for model_name, caption in classification_models.items():
+        for img_type, img_description in classification_image_types.items():
+            if pdf.find_image_file(model_name, img_type):
+                title = f"{model_name.replace('_', ' ').title()} {img_description}"
+                pdf.add_image_with_caption(model_name, img_type, title, caption)
 
 ####################################
 # Regression Section
 ####################################
-pdf.chapter_title_centered("Regression Section")
-
-# Overall regression summary bar chart
-pdf.add_image_with_caption(
-    "models_summary_bar_chart",
-    None,
-    "Overall Regression Model Performance Metrics",
-    "This chart compares MSE, MAE, RMSE, and R2 across all regression models."
-)
-
-# Define the typical image suffixes for regression
 regression_image_types_general = {
     'overall_prediction': 'Actual vs Predicted Plot',
     'overall_residuals': 'Residual Plot',
@@ -207,24 +215,20 @@ regression_image_types_general = {
     'shap_summary_bar': 'SHAP Summary Bar Plot',
     'metrics_line_plot': 'Metrics Across Five-Fold CV Results'
 }
-
 regression_image_types_vae_reg = {
     'predictions': 'Actual vs Predicted Plot',
     'residuals': 'Residual Plot',
     'metrics_over_folds': 'Metrics Across Five-Fold CV Results',
     'shap_summary': 'SHAP Summary Plot',
-    'average_metrics': 'Average Evaluation Metrics Plot'  # New image type
+    'average_metrics': 'Average Evaluation Metrics Plot'
 }
-
 regression_image_types_vaemlp_reg = {
     'predictions': 'Actual vs Predicted Plot',
     'residuals': 'Residual Plot',
     'metrics_over_folds': 'Metrics Across Five-Fold CV Results',
     'shap_summary': 'SHAP Summary Plot',
-    'average_metrics': 'Average Evaluation Metrics Plot'  # New image type
+    'average_metrics': 'Average Evaluation Metrics Plot'
 }
-
-# Regression models
 regression_models = {
     'Neural_Network_reg': 'Neural Network regression model performance analysis.',
     'Random_Forest_reg': 'Random Forest regression model performance analysis.',
@@ -236,50 +240,68 @@ regression_models = {
     'VAE_reg': 'Variational Autoencoder (VAE) regression model performance analysis.',
     'vaemlp_reg': 'MLP in VAE regression model performance analysis.'
 }
-
-for model_name, caption in regression_models.items():
-    # Determine which image types to use based on the model
-    if model_name.lower() == 'vae_reg':
-        image_types = regression_image_types_vae_reg
-    elif model_name.lower() == 'vaemlp_reg':
-        image_types = regression_image_types_vaemlp_reg
-    else:
-        image_types = regression_image_types_general
-
-    for img_type, img_description in image_types.items():
-        # Special handling for VAE_reg and vaemlp_reg image types
-        if model_name.lower() in ['vae_reg', 'vaemlp_reg']:
-            # Image types for VAE_reg and vaemlp_reg have different naming
-            # e.g., 'predictions', 'residuals', etc.
-            title = f"{model_name} {img_description}"
+found_any = False
+if pdf.find_image_file("models_summary_bar_chart", None):
+    found_any = True
+else:
+    for model_name, caption in regression_models.items():
+        if model_name.lower() == 'vae_reg':
+            image_types = regression_image_types_vae_reg
+        elif model_name.lower() == 'vaemlp_reg':
+            image_types = regression_image_types_vaemlp_reg
         else:
-            # Image types for other regression models
-            title = f"{model_name.replace('_', ' ').title()} {img_description}"
-        pdf.add_image_with_caption(model_name, img_type, title, caption)
+            image_types = regression_image_types_general
+        for img_type in image_types.keys():
+            if pdf.find_image_file(model_name, img_type):
+                found_any = True
+                break
+        if found_any:
+            break
+if found_any:
+    pdf.chapter_title_centered("Regression Section")
+    if pdf.find_image_file("models_summary_bar_chart", None):
+        pdf.add_image_with_caption(
+            "models_summary_bar_chart",
+            None,
+            "Overall Regression Model Performance Metrics",
+            "This chart compares MSE, MAE, RMSE, and R2 across all regression models."
+        )
+    for model_name, caption in regression_models.items():
+        if model_name.lower() == 'vae_reg':
+            image_types = regression_image_types_vae_reg
+        elif model_name.lower() == 'vaemlp_reg':
+            image_types = regression_image_types_vaemlp_reg
+        else:
+            image_types = regression_image_types_general
+        for img_type, img_description in image_types.items():
+            if pdf.find_image_file(model_name, img_type):
+                if model_name.lower() in ['vae_reg', 'vaemlp_reg']:
+                    title = f"{model_name} {img_description}"
+                else:
+                    title = f"{model_name.replace('_', ' ').title()} {img_description}"
+                pdf.add_image_with_caption(model_name, img_type, title, caption)
 
 ####################################
-# Biological Analysis Section
+# Biological Analysis Section (Network Images)
 ####################################
-pdf.chapter_title_centered("Biological Analysis")
-
-all_models = list(classification_models.keys()) + list(regression_models.keys())
-
-biological_image_types = {
-    'PPI': 'Protein-Protein Interaction (PPI) network visualization.',
-    'Function_Enrichment_S': 'Function Enrichment S plot based on STRING database.',
-    'Function_Enrichment_M': 'Function Enrichment M plot based on tree models.'
-}
-
-biological_titles = {
-    'PPI': 'Protein-Protein Interaction (PPI) Network',
-    'Function_Enrichment_S': 'Function Enrichment S Plot',
-    'Function_Enrichment_M': 'Function Enrichment M Plot'
-}
-
-for model_name in all_models:
-    for img_type, img_description in biological_image_types.items():
-        title = f"{biological_titles[img_type]} for {model_name.replace('_', ' ').title()}"
-        pdf.add_image_with_caption(model_name, img_type, title, img_description)
+# Read files matching the pattern "Network_X.png" where X is one or more digits.
+network_files = [file for file in os.listdir('.') if re.match(r'Network_\d+\.png$', file)]
+if network_files:
+    pdf.chapter_title_centered("Biological Analysis")
+    for netfile in network_files:
+        m = re.search(r'Network_(\d+)\.png$', netfile)
+        network_num = m.group(1) if m else ""
+        title = f"PPI Network Analysis {network_num}"
+        caption = f"This PPI figure illustrates the interactions among proteins {network_num}."
+        pdf.add_page()
+        pdf.chapter_title_regular(title)
+        pdf.add_text(caption)
+        try:
+            current_y = pdf.get_y()
+            pdf.image(netfile, x=10, y=current_y, w=190)
+            pdf.ln(10)
+        except RuntimeError:
+            logging.warning(f"Failed to load image: {netfile}")
 
 # Save final PDF
 pdf.output("model_reports.pdf")
