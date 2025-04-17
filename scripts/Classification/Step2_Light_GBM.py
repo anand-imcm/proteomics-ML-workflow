@@ -259,7 +259,7 @@ def lightgbm_nested_cv(inp, prefix, feature_selection_method):
                             tol=1e-06
                         )))
                     elif feature_selection_method == 'elasticnet':
-                        elasticnet_alpha = trial.suggest_loguniform('elasticnet_alpha', 1e-4, 1e1)
+                        elasticnet_alpha = trial.suggest_loguniform('elasticnet_alpha', 1e-3, 1e1)
                         l1_ratio = trial.suggest_uniform('elasticnet_l1_ratio', 0.0, 1.0)
                         steps.append(('feature_selection', ElasticNetFeatureSelector(
                             alpha=elasticnet_alpha,
@@ -293,7 +293,8 @@ def lightgbm_nested_cv(inp, prefix, feature_selection_method):
                     bagging_fraction=bagging_fraction,
                     bagging_freq=bagging_freq,
                     random_state=1234,
-                    verbose=-1
+                    verbose=-1,
+                    class_weight='balanced' 
                 )))
 
                 pipeline = Pipeline(steps)
@@ -391,7 +392,8 @@ def lightgbm_nested_cv(inp, prefix, feature_selection_method):
                 bagging_fraction=bagging_fraction,
                 bagging_freq=bagging_freq,
                 random_state=1234,
-                verbose=-1
+                verbose=-1,
+                class_weight='balanced' 
             )))
 
             best_model_inner = Pipeline(steps)
@@ -411,7 +413,8 @@ def lightgbm_nested_cv(inp, prefix, feature_selection_method):
                         bagging_fraction=bagging_fraction,
                         bagging_freq=bagging_freq,
                         random_state=1234,
-                        verbose=-1
+                        verbose=-1,
+                        class_weight='balanced' 
                     ))
                 ])
                 X_train_outer_fold_final = X_transformed_final.iloc[train_idx].reset_index(drop=True)
@@ -493,7 +496,8 @@ def lightgbm_nested_cv(inp, prefix, feature_selection_method):
                 bagging_fraction=bagging_fraction,
                 bagging_freq=bagging_freq,
                 random_state=1234,
-                verbose=-1
+                verbose=-1,
+                class_weight='balanced'
             )
 
             with SuppressOutput():
@@ -528,6 +532,7 @@ def lightgbm_nested_cv(inp, prefix, feature_selection_method):
             feature_fraction=best_params_full_tsne.get('feature_fraction', 1.0),
             bagging_fraction=best_params_full_tsne.get('bagging_fraction', 1.0),
             bagging_freq=best_params_full_tsne.get('bagging_freq', 1),
+            class_weight='balanced',
             random_state=1234,
             verbose=-1
         )
@@ -742,7 +747,7 @@ def lightgbm_nested_cv(inp, prefix, feature_selection_method):
                         tol=1e-06
                     )))
                 elif feature_selection_method == 'elasticnet':
-                    elasticnet_alpha = trial.suggest_loguniform('elasticnet_alpha', 1e-4, 1e1)
+                    elasticnet_alpha = trial.suggest_loguniform('elasticnet_alpha', 1e-3, 1e1)
                     l1_ratio = trial.suggest_uniform('elasticnet_l1_ratio', 0.0, 1.0)
                     steps.append(('feature_selection', ElasticNetFeatureSelector(
                         alpha=elasticnet_alpha,
@@ -776,7 +781,8 @@ def lightgbm_nested_cv(inp, prefix, feature_selection_method):
                 bagging_fraction=bagging_fraction,
                 bagging_freq=bagging_freq,
                 random_state=1234,
-                verbose=-1
+                verbose=-1,
+                class_weight='balanced'
             )))
 
             pipeline = Pipeline(steps)
@@ -875,7 +881,8 @@ def lightgbm_nested_cv(inp, prefix, feature_selection_method):
             bagging_fraction=best_bagging_fraction_full,
             bagging_freq=best_bagging_freq_full,
             random_state=1234,
-            verbose=-1
+            verbose=-1,
+            class_weight='balanced'
         )))
 
         if tsne_selected:
@@ -893,7 +900,8 @@ def lightgbm_nested_cv(inp, prefix, feature_selection_method):
                     bagging_fraction=best_bagging_fraction_full,
                     bagging_freq=best_bagging_freq_full,
                     random_state=1234,
-                    verbose=-1
+                    verbose=-1,
+                    class_weight='balanced'
                 ))
             ])
         else:

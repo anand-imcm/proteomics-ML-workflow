@@ -259,7 +259,7 @@ def logistic_regression_nested_cv(inp, prefix, feature_selection_method):
                         )))
 
                 C = trial.suggest_loguniform('C', 1e-2, 100)
-                steps.append(('logreg', LogisticRegression(C=C, random_state=1234, max_iter=1000)))
+                steps.append(('logreg', LogisticRegression(C=C, random_state=1234, max_iter=1000, class_weight='balanced')))
                 pipeline = Pipeline(steps)
 
                 with SuppressOutput():
@@ -331,12 +331,12 @@ def logistic_regression_nested_cv(inp, prefix, feature_selection_method):
                     )))
 
             best_C = best_params_inner.get('C', 1.0)
-            steps.append(('logreg', LogisticRegression(C=best_C, random_state=1234, max_iter=1000)))
+            steps.append(('logreg', LogisticRegression(C=best_C, random_state=1234, max_iter=1000,class_weight='balanced')))
             best_model_inner = Pipeline(steps)
 
             if tsne_selected:
                 best_model_inner = Pipeline([
-                    ('logreg', LogisticRegression(C=best_C, random_state=1234, max_iter=1000))
+                    ('logreg', LogisticRegression(C=best_C, random_state=1234, max_iter=1000,class_weight='balanced'))
                 ])
                 X_train_outer_fold_final = X_transformed_final.iloc[train_idx].reset_index(drop=True)
                 X_test_outer_fold_final = X_transformed_final.iloc[test_idx].reset_index(drop=True)
@@ -393,7 +393,7 @@ def logistic_regression_nested_cv(inp, prefix, feature_selection_method):
 
         def objective_full_tsne(trial):
             C = trial.suggest_loguniform('C', 1e-2, 100)
-            model = LogisticRegression(C=C, random_state=1234, max_iter=1000)
+            model = LogisticRegression(C=C, random_state=1234, max_iter=1000,class_weight='balanced')
             with SuppressOutput():
                 f1_scores_tsne = []
                 for train_idx_full, valid_idx_full in cv_outer.split(X_transformed_final, y_encoded):
@@ -415,7 +415,7 @@ def logistic_regression_nested_cv(inp, prefix, feature_selection_method):
         print(f"Best parameters for Logistic Regression with t-SNE: {best_params_full_tsne}")
 
         best_C_full_tsne = best_params_full_tsne.get('C', 1.0)
-        best_model = LogisticRegression(C=best_C_full_tsne, random_state=1234, max_iter=1000)
+        best_model = LogisticRegression(C=best_C_full_tsne, random_state=1234, max_iter=1000,class_weight='balanced')
 
         with SuppressOutput():
             try:
@@ -634,7 +634,7 @@ def logistic_regression_nested_cv(inp, prefix, feature_selection_method):
                     )))
 
             C = trial.suggest_loguniform('C', 1e-2, 100)
-            steps.append(('logreg', LogisticRegression(C=C, random_state=1234, max_iter=1000)))
+            steps.append(('logreg', LogisticRegression(C=C, random_state=1234, max_iter=1000,class_weight='balanced')))
             pipeline = Pipeline(steps)
 
             with SuppressOutput():
@@ -708,12 +708,12 @@ def logistic_regression_nested_cv(inp, prefix, feature_selection_method):
 
         if not tsne_selected:
             best_C_full = best_params_full.get('C', 1.0)
-            steps.append(('logreg', LogisticRegression(C=best_C_full, random_state=1234, max_iter=1000)))
+            steps.append(('logreg', LogisticRegression(C=best_C_full, random_state=1234, max_iter=1000, class_weight='balanced')))
             best_model = Pipeline(steps)
         else:
             best_C_full_tsne = best_params_full_tsne.get('C', 1.0)
             best_model = Pipeline([
-                ('logreg', LogisticRegression(C=best_C_full_tsne, random_state=1234, max_iter=1000))
+                ('logreg', LogisticRegression(C=best_C_full_tsne, random_state=1234, max_iter=1000, class_weight='balanced'))
             ])
 
         with SuppressOutput():

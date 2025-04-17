@@ -29,6 +29,7 @@ import umap
 from sklearn.cross_decomposition import PLSRegression
 from sklearn.exceptions import ConvergenceWarning
 from scipy.sparse.linalg import ArpackError
+from sklearn.utils.class_weight import compute_class_weight
 
 warnings.filterwarnings('ignore', category=FutureWarning)
 warnings.filterwarnings('ignore', category=UserWarning)
@@ -296,7 +297,12 @@ def xgboost_nested_cv(inp, prefix, feature_selection_method):
                         X_train_inner, X_valid_inner = X_train_outer_fold.iloc[inner_train_idx], X_train_outer_fold.iloc[inner_valid_idx]
                         y_train_inner, y_valid_inner = y_train_outer[inner_train_idx], y_train_outer[inner_valid_idx]
                         try:
-                            pipeline.fit(X_train_inner, y_train_inner)
+                            classes = np.unique(y_train_inner)
+                            class_weights = compute_class_weight(class_weight='balanced', classes=classes, y=y_train_inner)
+                            cw_dict = dict(zip(classes, class_weights))
+                            sample_weight_inner = np.array([cw_dict[label] for label in y_train_inner])
+                            
+                            pipeline.fit(X_train_inner, y_train_inner, xgb__sample_weight=sample_weight_inner)
                             y_pred_inner = pipeline.predict(X_valid_inner)
                             f1_val = f1_score(y_valid_inner, y_pred_inner, average='weighted')
                             f1_scores.append(f1_val)
@@ -403,7 +409,13 @@ def xgboost_nested_cv(inp, prefix, feature_selection_method):
 
             with SuppressOutput():
                 try:
-                    best_model_inner.fit(X_train_outer_fold_final, y_train_outer)
+                    classes = np.unique(y_train_outer)
+                    class_weights = compute_class_weight(class_weight='balanced', classes=classes, y=y_train_outer)
+                    cw_dict = dict(zip(classes, class_weights))
+                    sample_weight_outer = np.array([cw_dict[label] for label in y_train_outer])
+                    
+                    best_model_inner.fit(X_train_outer_fold_final, y_train_outer, xgb__sample_weight=sample_weight_outer)
+
                 except (ValueError, ArpackError, NotImplementedError) as e:
                     print(f"Error fitting the model in outer fold {fold_idx}: {e}")
                     outer_f1_scores.append(0)
@@ -567,7 +579,7 @@ def xgboost_nested_cv(inp, prefix, feature_selection_method):
 
         if num_classes == 2:
             try:
-                fpr_dict[0], tpr_dict[0], _ = roc_curve(y_binarized[:, 0], y_pred_prob[:, 0])
+                fpr_dict[0], tpr_dict[0], _ = roc_curve(y_binarized[:, 1], y_pred_prob[:, 1])
                 roc_auc_dict[0] = auc(fpr_dict[0], tpr_dict[0])
             except ValueError:
                 roc_auc_dict[0] = 0.0
@@ -846,7 +858,13 @@ def xgboost_nested_cv(inp, prefix, feature_selection_method):
                 if tsne_selected:
                     best_model.fit(X_transformed_final, y_encoded)
                 else:
-                    best_model.fit(X, y_encoded)
+                    classes = np.unique(y_encoded)
+                    class_weights = compute_class_weight(class_weight='balanced', classes=classes, y=y_encoded)
+                    cw_dict = dict(zip(classes, class_weights))
+                    sample_weight_full = np.array([cw_dict[label] for label in y_encoded])
+                    
+                    best_model.fit(X, y_encoded, xgb__sample_weight=sample_weight_full)
+
             except (ValueError, ArpackError, NotImplementedError) as e:
                 print(f"Error fitting the final model: {e}")
                 sys.exit(1)
@@ -983,7 +1001,7 @@ def xgboost_nested_cv(inp, prefix, feature_selection_method):
 
             if num_classes == 2:
                 try:
-                    fpr_dict[0], tpr_dict[0], _ = roc_curve(y_binarized[:, 0], y_pred_prob[:, 0])
+                    fpr_dict[0], tpr_dict[0], _ = roc_curve(y_encoded, y_pred_prob[:, 1])
                     roc_auc_dict[0] = auc(fpr_dict[0], tpr_dict[0])
                 except ValueError:
                     roc_auc_dict[0] = 0.0

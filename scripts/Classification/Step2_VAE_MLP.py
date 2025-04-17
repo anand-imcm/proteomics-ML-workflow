@@ -19,6 +19,7 @@ import torch.optim as optim
 import optuna
 import joblib
 from joblib import Parallel, delayed
+from sklearn.utils.class_weight import compute_class_weight
 
 def parse_arguments():
     parser = argparse.ArgumentParser(description='Script to run classifiers')
@@ -291,8 +292,13 @@ class VAE_MLP(BaseEstimator, ClassifierMixin):
                                            verbose=False)
         
         # Train MLP with Early Stopping
+        classes = np.unique(y_train_mlp)
+        weights = compute_class_weight(class_weight='balanced', classes=classes, y=y_train_mlp)
+        weights_tensor = torch.tensor(weights, dtype=torch.float).to(self.device)
+        
+        criterion = nn.CrossEntropyLoss(weight=weights_tensor)
+        
         self.mlp_model.train()
-        criterion = nn.CrossEntropyLoss()
         for epoch in range(self.epochs):
             for data in dataloader_train_mlp:
                 x_batch, y_batch = data

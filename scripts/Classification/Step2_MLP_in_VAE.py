@@ -19,6 +19,7 @@ import optuna
 import joblib
 from joblib import Parallel, delayed
 import matplotlib.ticker as mticker
+from sklearn.utils.class_weight import compute_class_weight
 
 def parse_arguments():
     parser = argparse.ArgumentParser(description='Script to run classifiers')
@@ -293,7 +294,11 @@ class VAE_MLP(BaseEstimator, ClassifierMixin):
                                            verbose=False)
         
         self.mlp_model.train()
-        criterion = nn.CrossEntropyLoss()
+        classes = np.unique(y)  # y 为原始训练标签（例如传入 fit() 的 y）
+        weights = compute_class_weight(class_weight='balanced', classes=classes, y=y)
+        weights_tensor = torch.tensor(weights, dtype=torch.float).to(self.device)
+        
+        criterion = nn.CrossEntropyLoss(weight=weights_tensor)
         for epoch in range(self.epochs):
             for data in dataloader_train_mlp:
                 x_batch, y_batch = data

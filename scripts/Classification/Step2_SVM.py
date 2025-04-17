@@ -272,7 +272,7 @@ def svm_nested_cv(inp, prefix, feature_selection_method):
                     random_state=1234
                 )))
 
-            steps.append(('svm', SVC(kernel='rbf', C=C, gamma=gamma, probability=True, random_state=1234)))
+            steps.append(('svm', SVC(kernel='rbf', C=C, gamma=gamma, probability=True, random_state=1234,class_weight='balanced')))
             pipeline = Pipeline(steps)
 
             with SuppressOutput():
@@ -356,7 +356,7 @@ def svm_nested_cv(inp, prefix, feature_selection_method):
 
         best_C = best_params_inner['C']
         best_gamma = best_params_inner['gamma']
-        steps.append(('svm', SVC(kernel='rbf', C=best_C, gamma=best_gamma, probability=True, random_state=1234)))
+        steps.append(('svm', SVC(kernel='rbf', C=best_C, gamma=best_gamma, probability=True, random_state=1234,class_weight='balanced')))
         best_model_inner = Pipeline(steps)
 
         with SuppressOutput():
@@ -497,7 +497,7 @@ def svm_nested_cv(inp, prefix, feature_selection_method):
                 random_state=1234
             )))
 
-        steps.append(('svm', SVC(kernel='rbf', C=C, gamma=gamma, probability=True, random_state=1234)))
+        steps.append(('svm', SVC(kernel='rbf', C=C, gamma=gamma, probability=True, random_state=1234,class_weight='balanced')))
         pipeline = Pipeline(steps)
 
         with SuppressOutput():
@@ -578,7 +578,7 @@ def svm_nested_cv(inp, prefix, feature_selection_method):
 
     best_C_full = best_params_full['C']
     best_gamma_full = best_params_full['gamma']
-    steps.append(('svm', SVC(kernel='rbf', C=best_C_full, gamma=best_gamma_full, probability=True, random_state=1234)))
+    steps.append(('svm', SVC(kernel='rbf', C=best_C_full, gamma=best_gamma_full, probability=True, random_state=1234,class_weight='balanced')))
 
     best_model = Pipeline(steps)
 

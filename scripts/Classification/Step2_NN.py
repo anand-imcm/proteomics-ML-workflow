@@ -29,6 +29,8 @@ from optuna.samplers import TPESampler
 from sklearn.exceptions import ConvergenceWarning
 import umap
 from scipy.sparse.linalg import ArpackError
+from imblearn.over_sampling import SMOTE
+
 
 # Suppress specific warnings
 warnings.filterwarnings("ignore", category=FutureWarning)
@@ -280,7 +282,10 @@ def neural_network_nested_cv(inp, prefix, feature_selection_method):
                     X_train_inner, X_valid_inner = X_train_outer.iloc[inner_train_idx], X_train_outer.iloc[inner_valid_idx]
                     y_train_inner, y_valid_inner = y_train_outer[inner_train_idx], y_train_outer[inner_valid_idx]
                     try:
-                        pipeline.fit(X_train_inner, y_train_inner)
+                        sm = SMOTE(random_state=1234)
+                        X_train_inner_resampled, y_train_inner_resampled = sm.fit_resample(X_train_inner, y_train_inner)
+                        pipeline.fit(X_train_inner_resampled, y_train_inner_resampled)
+
                         y_pred_inner = pipeline.predict(X_valid_inner)
                         f1 = f1_score(y_valid_inner, y_pred_inner, average='weighted')
                         f1_scores.append(f1)
@@ -352,7 +357,10 @@ def neural_network_nested_cv(inp, prefix, feature_selection_method):
         # Fit the model on the outer training set
         with SuppressOutput():
             try:
-                best_model_inner.fit(X_train_outer, y_train_outer)
+                sm = SMOTE(random_state=1234)
+                X_train_outer_resampled, y_train_outer_resampled = sm.fit_resample(X_train_outer, y_train_outer)
+                
+                best_model_inner.fit(X_train_outer_resampled, y_train_outer_resampled)
             except (NotImplementedError, ArpackError, ValueError) as e:
                 outer_f1_scores.append(0.0)
                 outer_auc_scores.append(0.0)
@@ -554,7 +562,10 @@ def neural_network_nested_cv(inp, prefix, feature_selection_method):
 
     with SuppressOutput():
         try:
-            best_model.fit(X, y_encoded)
+            sm = SMOTE(random_state=1234)
+            X_resampled, y_resampled = sm.fit_resample(X, y_encoded)
+            
+            best_model.fit(X_resampled, y_resampled)
         except (NotImplementedError, ArpackError, ValueError):
             print("Feature selection method failed on the entire dataset. Skipping feature selection.")
             steps = [('scaler', StandardScaler()), ('mlp', MLPClassifier(hidden_layer_sizes=hidden_layers_full,
@@ -563,8 +574,11 @@ def neural_network_nested_cv(inp, prefix, feature_selection_method):
                                                                          learning_rate_init=learning_rate_init_full,
                                                                          max_iter=200000,
                                                                          random_state=1234))]
+
+            sm = SMOTE(random_state=1234)
+            X_resampled, y_resampled = sm.fit_resample(X, y_encoded)
             best_model = Pipeline(steps)
-            best_model.fit(X, y_encoded)
+            best_model.fit(X_resampled, y_resampled)
 
     # Save model and data
     with open(f"{prefix}_neural_network_model.pkl", 'wb') as model_file:

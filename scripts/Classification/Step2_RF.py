@@ -148,6 +148,8 @@ def random_forest_nested_cv(inp, prefix, feature_selection_method):
     y_encoded = le.fit_transform(y)
     y_binarized = label_binarize(y_encoded, classes=np.unique(y_encoded))
     num_classes = len(np.unique(y_encoded))
+    if num_classes == 2 and y_binarized.shape[1] == 1:
+        y_binarized = np.hstack([1 - y_binarized, y_binarized])
 
     # Define outer cross-validation strategy
     cv_outer = StratifiedKFold(n_splits=5, shuffle=True, random_state=1234)
@@ -303,6 +305,7 @@ def random_forest_nested_cv(inp, prefix, feature_selection_method):
                     max_leaf_nodes=max_leaf_nodes,
                     min_impurity_decrease=min_impurity_decrease,
                     random_state=1234,
+                    class_weight='balanced',
                     n_jobs=-1
                 )))
 
@@ -401,6 +404,7 @@ def random_forest_nested_cv(inp, prefix, feature_selection_method):
                 max_leaf_nodes=best_max_leaf_nodes,
                 min_impurity_decrease=best_min_impurity_decrease,
                 random_state=1234,
+                class_weight='balanced',
                 n_jobs=-1
             )))
 
@@ -419,6 +423,7 @@ def random_forest_nested_cv(inp, prefix, feature_selection_method):
                         max_leaf_nodes=best_max_leaf_nodes,
                         min_impurity_decrease=best_min_impurity_decrease,
                         random_state=1234,
+                        class_weight='balanced',
                         n_jobs=-1
                     ))
                 ])
@@ -599,7 +604,7 @@ def random_forest_nested_cv(inp, prefix, feature_selection_method):
 
         if num_classes == 2:
             try:
-                fpr_dict[0], tpr_dict[0], _ = roc_curve(y_binarized[:, 0], y_pred_prob[:, 0])
+                fpr_dict[0], tpr_dict[0], _ = roc_curve(y_binarized[:, 1], y_pred_prob[:, 1])
                 roc_auc_dict[0] = auc(fpr_dict[0], tpr_dict[0])
             except ValueError:
                 roc_auc_dict[0] = 0.0
@@ -769,6 +774,7 @@ def random_forest_nested_cv(inp, prefix, feature_selection_method):
                 min_samples_leaf=min_samples_leaf,
                 max_leaf_nodes=max_leaf_nodes,
                 min_impurity_decrease=min_impurity_decrease,
+                class_weight='balanced',
                 random_state=1234
             )))
 
@@ -860,6 +866,7 @@ def random_forest_nested_cv(inp, prefix, feature_selection_method):
             min_samples_leaf=best_min_samples_leaf_full,
             max_leaf_nodes=best_max_leaf_nodes_full,
             min_impurity_decrease=best_min_impurity_decrease_full,
+            class_weight='balanced',
             random_state=1234
         )))
 
@@ -1023,7 +1030,7 @@ def random_forest_nested_cv(inp, prefix, feature_selection_method):
 
             if num_classes == 2:
                 try:
-                    fpr_dict[0], tpr_dict[0], _ = roc_curve(y_binarized[:, 0], y_pred_prob[:, 0])
+                    fpr_dict[0], tpr_dict[0], _ = roc_curve(y_binarized[:, 1], y_pred_prob[:, 1])
                     roc_auc_dict[0] = auc(fpr_dict[0], tpr_dict[0])
                 except ValueError:
                     roc_auc_dict[0] = 0.0
