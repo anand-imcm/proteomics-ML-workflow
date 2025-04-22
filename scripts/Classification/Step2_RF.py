@@ -73,8 +73,8 @@ class TSNETransformer(BaseEstimator, TransformerMixin):
         self.learning_rate = learning_rate
         self.max_iter = max_iter
         self.tsne = TSNE(n_components=self.n_components, perplexity=self.perplexity,
-                        learning_rate=self.learning_rate, max_iter=self.max_iter,
-                        random_state=1234)
+                         learning_rate=self.learning_rate, max_iter=self.max_iter,
+                         random_state=1234)
         self.X_transformed_ = None
 
     def fit(self, X, y=None):
@@ -148,6 +148,8 @@ def random_forest_nested_cv(inp, prefix, feature_selection_method):
     y_encoded = le.fit_transform(y)
     y_binarized = label_binarize(y_encoded, classes=np.unique(y_encoded))
     num_classes = len(np.unique(y_encoded))
+    if num_classes == 2 and y_binarized.shape[1] == 1:
+        y_binarized = np.hstack([1 - y_binarized, y_binarized])
 
     # Define outer cross-validation strategy
     cv_outer = StratifiedKFold(n_splits=5, shuffle=True, random_state=1234)
@@ -223,11 +225,19 @@ def random_forest_nested_cv(inp, prefix, feature_selection_method):
                 # Add feature selection based on the method
                 if feature_selection_method != 'none':
                     if feature_selection_method == 'pca':
-                        pca_n_components = trial.suggest_int('pca_n_components', 1, min(X_train_outer_fold.shape[1], X_train_outer_fold.shape[0]-1))
+                        pca_n_components = trial.suggest_int(
+                            'pca_n_components', 
+                            1, 
+                            min(X_train_outer_fold.shape[1], X_train_outer_fold.shape[0]-1)
+                        )
                         steps.append(('feature_selection', PCA(n_components=pca_n_components, random_state=1234)))
                     elif feature_selection_method == 'kpca':
                         kpca_kernel = trial.suggest_categorical('kpca_kernel', ['linear', 'poly', 'rbf', 'sigmoid', 'cosine'])
-                        kpca_n_components = trial.suggest_int('kpca_n_components', 1, min(X_train_outer_fold.shape[1], X_train_outer_fold.shape[0]-1))
+                        kpca_n_components = trial.suggest_int(
+                            'kpca_n_components', 
+                            1, 
+                            min(X_train_outer_fold.shape[1], X_train_outer_fold.shape[0]-1)
+                        )
                         kpca_params = {
                             'n_components': kpca_n_components,
                             'kernel': kpca_kernel,
@@ -256,7 +266,11 @@ def random_forest_nested_cv(inp, prefix, feature_selection_method):
                             random_state=1234
                         )))
                     elif feature_selection_method == 'pls':
-                        pls_n_components = trial.suggest_int('pls_n_components', 1, min(X_train_outer_fold.shape[1], X_train_outer_fold.shape[0]-1))
+                        pls_n_components = trial.suggest_int(
+                            'pls_n_components', 
+                            1, 
+                            min(X_train_outer_fold.shape[1], X_train_outer_fold.shape[0]-1)
+                        )
                         steps.append(('feature_selection', PLSFeatureSelector(
                             n_components=pls_n_components,
                             max_iter=1000,
@@ -290,7 +304,9 @@ def random_forest_nested_cv(inp, prefix, feature_selection_method):
                     min_samples_leaf=min_samples_leaf,
                     max_leaf_nodes=max_leaf_nodes,
                     min_impurity_decrease=min_impurity_decrease,
-                    random_state=1234
+                    random_state=1234,
+                    class_weight='balanced',
+                    n_jobs=-1
                 )))
 
                 pipeline = Pipeline(steps)
@@ -371,7 +387,6 @@ def random_forest_nested_cv(inp, prefix, feature_selection_method):
                     )))
 
             # Add Random Forest to the pipeline
-            # Suggest hyperparameters for RF based on best_params_inner
             best_n_estimators = best_params_inner.get('n_estimators', 100)
             best_max_depth = best_params_inner.get('max_depth', 5)
             best_max_features = best_params_inner.get('max_features', 'sqrt')
@@ -388,7 +403,9 @@ def random_forest_nested_cv(inp, prefix, feature_selection_method):
                 min_samples_leaf=best_min_samples_leaf,
                 max_leaf_nodes=best_max_leaf_nodes,
                 min_impurity_decrease=best_min_impurity_decrease,
-                random_state=1234
+                random_state=1234,
+                class_weight='balanced',
+                n_jobs=-1
             )))
 
             best_model_inner = Pipeline(steps)
@@ -405,13 +422,14 @@ def random_forest_nested_cv(inp, prefix, feature_selection_method):
                         min_samples_leaf=best_min_samples_leaf,
                         max_leaf_nodes=best_max_leaf_nodes,
                         min_impurity_decrease=best_min_impurity_decrease,
-                        random_state=1234
+                        random_state=1234,
+                        class_weight='balanced',
+                        n_jobs=-1
                     ))
                 ])
                 X_train_outer_fold_final = X_transformed_final.iloc[train_idx].reset_index(drop=True)
                 X_test_outer_fold_final = X_transformed_final.iloc[test_idx].reset_index(drop=True)
             else:
-                # For other feature selection methods, include the entire pipeline
                 X_train_outer_fold_final = X_train_outer_fold
                 X_test_outer_fold_final = X_test_outer_fold
 
@@ -471,7 +489,6 @@ def random_forest_nested_cv(inp, prefix, feature_selection_method):
         print("Starting hyperparameter tuning for Random Forest on the entire t-SNE transformed dataset...")
 
         def objective_full_tsne(trial):
-            # Suggest hyperparameters for Random Forest
             n_estimators = trial.suggest_int('n_estimators', 100, 1000, step=100)
             max_depth = trial.suggest_categorical('max_depth', [None] + list(range(5, 51, 5)))
             max_features = trial.suggest_categorical('max_features', ['sqrt', 'log2', None])
@@ -480,7 +497,6 @@ def random_forest_nested_cv(inp, prefix, feature_selection_method):
             max_leaf_nodes = trial.suggest_categorical('max_leaf_nodes', [None] + list(range(10, 1001, 50)))
             min_impurity_decrease = trial.suggest_float('min_impurity_decrease', 0.0, 0.1, step=0.01)
 
-            # Create Random Forest model
             model = RandomForestClassifier(
                 n_estimators=n_estimators,
                 max_depth=max_depth,
@@ -492,7 +508,6 @@ def random_forest_nested_cv(inp, prefix, feature_selection_method):
                 random_state=1234
             )
 
-            # Perform cross-validation
             with SuppressOutput():
                 f1_scores = []
                 for train_idx_full, valid_idx_full in cv_outer.split(X_transformed_final, y_encoded):
@@ -504,19 +519,15 @@ def random_forest_nested_cv(inp, prefix, feature_selection_method):
                         f1 = f1_score(y_valid_full, y_pred_full, average='weighted')
                         f1_scores.append(f1)
                     except (ValueError, ArpackError, NotImplementedError):
-                        # If RF fails
                         f1_scores.append(0.0)
                 return np.mean(f1_scores)
 
-        # Create an Optuna study for the entire dataset with t-SNE
         study_full_tsne = optuna.create_study(direction='maximize', sampler=TPESampler(seed=1234))
         study_full_tsne.optimize(objective_full_tsne, n_trials=50, show_progress_bar=True)
 
-        # Best hyperparameters from the entire dataset
         best_params_full_tsne = study_full_tsne.best_params
         print(f"Best parameters for Random Forest with t-SNE: {best_params_full_tsne}")
 
-        # Initialize the best model with the best hyperparameters
         best_model = RandomForestClassifier(
             n_estimators=best_params_full_tsne.get('n_estimators', 100),
             max_depth=best_params_full_tsne.get('max_depth', 5),
@@ -528,7 +539,6 @@ def random_forest_nested_cv(inp, prefix, feature_selection_method):
             random_state=1234
         )
 
-        # Fit the model on the entire t-SNE transformed dataset
         with SuppressOutput():
             try:
                 best_model.fit(X_transformed_final, y_encoded)
@@ -536,14 +546,11 @@ def random_forest_nested_cv(inp, prefix, feature_selection_method):
                 print(f"Error fitting the final model with t-SNE: {e}")
                 sys.exit(1)
 
-        # Save the best model and transformed data
         joblib.dump(best_model, f"{prefix}_random_forest_model.pkl")
         joblib.dump((X_transformed_final, y_encoded, le), f"{prefix}_random_forest_data.pkl")
 
-        # Output the best parameters
         print(f"Best parameters for Random Forest with t-SNE: {best_params_full_tsne}")
 
-        # Save the transformed data
         X_transformed_df = pd.DataFrame(X_transformed_final, columns=[f"TSNE_Component_{i+1}" for i in range(X_transformed_final.shape[1])])
         X_transformed_df.insert(0, 'SampleID', sample_ids)
         X_transformed_df['Label'] = y
@@ -551,13 +558,11 @@ def random_forest_nested_cv(inp, prefix, feature_selection_method):
         X_transformed_df.to_csv(transformed_csv_path, index=False)
         print(f"t-SNE transformed data saved to {transformed_csv_path}")
 
-        # No variance information available for t-SNE
         variance_csv_path = f"{prefix}_random_forest_variance.csv"
         with open(variance_csv_path, 'w') as f:
             f.write("t-SNE does not provide explained variance information.\n")
         print(f"No variance information available for t-SNE. File created at {variance_csv_path}")
 
-        # Prediction and Evaluation
         try:
             y_pred_prob = best_model.predict_proba(X_transformed_final)
             y_pred_class = best_model.predict(X_transformed_final)
@@ -566,19 +571,16 @@ def random_forest_nested_cv(inp, prefix, feature_selection_method):
             y_pred_class = np.zeros_like(y_encoded)
             y_pred_prob = np.zeros((len(y_encoded), num_classes))
 
-        # Calculate performance metrics
         acc = accuracy_score(y_encoded, y_pred_class)
         f1 = f1_score(y_encoded, y_pred_class, average='weighted')
         cm = confusion_matrix(y_encoded, y_pred_class)
 
-        # Calculate sensitivity and specificity
         if num_classes == 2:
             if cm.shape == (2, 2):
                 tn, fp, fn, tp = cm.ravel()
                 sensitivity = tp / (tp + fn) if (tp + fn) > 0 else 0
                 specificity = tn / (tn + fp) if (tn + fp) > 0 else 0
             else:
-                # Handle cases where one class might be missing in predictions
                 sensitivity = 0
                 specificity = 0
         else:
@@ -590,22 +592,19 @@ def random_forest_nested_cv(inp, prefix, feature_selection_method):
                                                 out=np.zeros_like(np.diag(cm), dtype=float),
                                                 where=np.sum(cm, axis=0)!=0))
 
-        # Confusion matrix
         disp = ConfusionMatrixDisplay(confusion_matrix=cm, display_labels=le.classes_)
         disp.plot(cmap=plt.cm.Blues)
         plt.title('Confusion Matrix for Random Forest with t-SNE')
         plt.savefig(f"{prefix}_random_forest_confusion_matrix.png", dpi=300)
         plt.close()
 
-        # ROC and AUC
         fpr_dict = {}
         tpr_dict = {}
         roc_auc_dict = {}
 
-        # Different handling for binary and multi-class cases
         if num_classes == 2:
             try:
-                fpr_dict[0], tpr_dict[0], _ = roc_curve(y_binarized[:, 0], y_pred_prob[:, 0])
+                fpr_dict[0], tpr_dict[0], _ = roc_curve(y_binarized[:, 1], y_pred_prob[:, 1])
                 roc_auc_dict[0] = auc(fpr_dict[0], tpr_dict[0])
             except ValueError:
                 roc_auc_dict[0] = 0.0
@@ -617,14 +616,12 @@ def random_forest_nested_cv(inp, prefix, feature_selection_method):
                 except ValueError:
                     fpr_dict[i], tpr_dict[i], roc_auc_dict[i] = np.array([0, 1]), np.array([0, 1]), 0.0
 
-            # Compute overall ROC AUC for multi-class
             try:
                 fpr_dict["micro"], tpr_dict["micro"], _ = roc_curve(y_binarized.ravel(), y_pred_prob.ravel())
                 roc_auc_dict["micro"] = auc(fpr_dict["micro"], tpr_dict["micro"])
             except ValueError:
                 fpr_dict["micro"], tpr_dict["micro"], roc_auc_dict["micro"] = np.array([0, 1]), np.array([0, 1]), 0.0
 
-        # Save ROC data
         roc_data = {
             'fpr': fpr_dict,
             'tpr': tpr_dict,
@@ -632,9 +629,7 @@ def random_forest_nested_cv(inp, prefix, feature_selection_method):
         }
         np.save(f"{prefix}_random_forest_roc_data.npy", roc_data)
 
-        # Plot and save ROC curve
         plt.figure(figsize=(10, 8))
-
         if num_classes == 2:
             plt.plot(fpr_dict[0], tpr_dict[0], label=f'AUC = {roc_auc_dict[0]:.2f}')
         else:
@@ -654,7 +649,6 @@ def random_forest_nested_cv(inp, prefix, feature_selection_method):
         plt.savefig(f'{prefix}_random_forest_roc_curve.png', dpi=300)
         plt.close()
 
-        # Output performance metrics as a bar chart
         metrics = {'Accuracy': acc, 'F1 Score': f1, 'Sensitivity': sensitivity, 'Specificity': specificity}
         metrics_df = pd.DataFrame(list(metrics.items()), columns=['Metric', 'Value'])
         ax = metrics_df.plot(kind='bar', x='Metric', y='Value', legend=False)
@@ -668,21 +662,15 @@ def random_forest_nested_cv(inp, prefix, feature_selection_method):
         plt.savefig(f'{prefix}_random_forest_metrics.png', dpi=300)
         plt.close()
 
-        # Create a DataFrame for predictions
         predictions_df = pd.DataFrame({
             'SampleID': sample_ids,
             'Original Label': y,
             'Predicted Label': le.inverse_transform(y_pred_class)
         })
-
-        # Save predictions to CSV
         predictions_df.to_csv(f"{prefix}_random_forest_predictions.csv", index=False)
-
         print(f"Predictions saved to {prefix}_random_forest_predictions.csv")
 
     else:
-        # Handle non-t-SNE feature selection methods
-        # Plot and save the F1 and AUC scores per outer fold
         plt.figure(figsize=(10, 6))
         folds = range(1, cv_outer.get_n_splits() + 1)
         plt.plot(folds, outer_f1_scores, marker='o', label='F1 Score')
@@ -702,21 +690,26 @@ def random_forest_nested_cv(inp, prefix, feature_selection_method):
         print(f"Average F1 Score: {np.mean(outer_f1_scores):.4f} ± {np.std(outer_f1_scores):.4f}")
         print(f"Average AUC: {np.mean(outer_auc_scores):.4f} ± {np.std(outer_auc_scores):.4f}")
 
-        # After nested CV, perform hyperparameter tuning on the entire dataset
         print("Starting hyperparameter tuning on the entire dataset...")
 
-        # Define the objective function for Optuna on the entire dataset
         def objective_full(trial):
             steps = []
 
-            # Add feature selection based on the method
             if feature_selection_method != 'none':
                 if feature_selection_method == 'pca':
-                    pca_n_components = trial.suggest_int('pca_n_components', 1, min(X.shape[1], X.shape[0]-1))
+                    pca_n_components = trial.suggest_int(
+                        'pca_n_components', 
+                        1, 
+                        min(X.shape[1], X.shape[0]-1)
+                    )
                     steps.append(('feature_selection', PCA(n_components=pca_n_components, random_state=1234)))
                 elif feature_selection_method == 'kpca':
                     kpca_kernel = trial.suggest_categorical('kpca_kernel', ['linear', 'poly', 'rbf', 'sigmoid', 'cosine'])
-                    kpca_n_components = trial.suggest_int('kpca_n_components', 1, min(X.shape[1], X.shape[0]-1))
+                    kpca_n_components = trial.suggest_int(
+                        'kpca_n_components', 
+                        1, 
+                        min(X.shape[1], X.shape[0]-1)
+                    )
                     kpca_params = {
                         'n_components': kpca_n_components,
                         'kernel': kpca_kernel,
@@ -745,7 +738,11 @@ def random_forest_nested_cv(inp, prefix, feature_selection_method):
                         random_state=1234
                     )))
                 elif feature_selection_method == 'pls':
-                    pls_n_components = trial.suggest_int('pls_n_components', 1, min(X.shape[1], X.shape[0]-1))
+                    pls_n_components = trial.suggest_int(
+                        'pls_n_components', 
+                        1, 
+                        min(X.shape[1], X.shape[0]-1)
+                    )
                     steps.append(('feature_selection', PLSFeatureSelector(
                         n_components=pls_n_components,
                         max_iter=1000,
@@ -761,8 +758,6 @@ def random_forest_nested_cv(inp, prefix, feature_selection_method):
                         tol=1e-4
                     )))
 
-            # Add Random Forest to the pipeline
-            # Suggest hyperparameters for RF
             n_estimators = trial.suggest_int('n_estimators', 100, 1000, step=100)
             max_depth = trial.suggest_categorical('max_depth', [None] + list(range(5, 51, 5)))
             max_features = trial.suggest_categorical('max_features', ['sqrt', 'log2', None])
@@ -779,12 +774,12 @@ def random_forest_nested_cv(inp, prefix, feature_selection_method):
                 min_samples_leaf=min_samples_leaf,
                 max_leaf_nodes=max_leaf_nodes,
                 min_impurity_decrease=min_impurity_decrease,
+                class_weight='balanced',
                 random_state=1234
             )))
 
             pipeline = Pipeline(steps)
 
-            # Perform cross-validation
             with SuppressOutput():
                 f1_scores = []
                 for train_idx_full, valid_idx_full in cv_outer.split(X, y_encoded):
@@ -796,22 +791,17 @@ def random_forest_nested_cv(inp, prefix, feature_selection_method):
                         f1 = f1_score(y_valid_full, y_pred_full, average='weighted')
                         f1_scores.append(f1)
                     except (ValueError, ArpackError, NotImplementedError):
-                        # If feature selection or RF fails
                         f1_scores.append(0.0)
                 return np.mean(f1_scores)
 
-        # Create an Optuna study for the entire dataset
         study_full = optuna.create_study(direction='maximize', sampler=TPESampler(seed=1234))
         study_full.optimize(objective_full, n_trials=50, show_progress_bar=True)
 
-        # Best hyperparameters from the entire dataset
         best_params_full = study_full.best_params
         print(f"Best parameters for Random Forest: {best_params_full}")
 
-        # Initialize the best model with the best hyperparameters
         steps = []
 
-        # Add feature selection based on the method
         if feature_selection_method != 'none':
             if feature_selection_method == 'pca':
                 best_pca_n_components_full = best_params_full.get('pca_n_components', 2)
@@ -860,8 +850,6 @@ def random_forest_nested_cv(inp, prefix, feature_selection_method):
                     tol=1e-4
                 )))
 
-        # Add Random Forest to the pipeline
-        # Suggest hyperparameters for RF based on best_params_full
         best_n_estimators_full = best_params_full.get('n_estimators', 100)
         best_max_depth_full = best_params_full.get('max_depth', 5)
         best_max_features_full = best_params_full.get('max_features', 'sqrt')
@@ -878,12 +866,11 @@ def random_forest_nested_cv(inp, prefix, feature_selection_method):
             min_samples_leaf=best_min_samples_leaf_full,
             max_leaf_nodes=best_max_leaf_nodes_full,
             min_impurity_decrease=best_min_impurity_decrease_full,
+            class_weight='balanced',
             random_state=1234
         )))
 
         if tsne_selected:
-            # For t-SNE, the data has already been transformed outside the pipeline
-            # Thus, we only add RF
             best_model = Pipeline([
                 ('rf', RandomForestClassifier(
                     n_estimators=best_n_estimators_full,
@@ -897,10 +884,8 @@ def random_forest_nested_cv(inp, prefix, feature_selection_method):
                 ))
             ])
         else:
-            # For other feature selection methods, include the entire pipeline
             best_model = Pipeline(steps)
 
-        # Fit the model on the entire dataset
         with SuppressOutput():
             try:
                 if tsne_selected:
@@ -911,7 +896,6 @@ def random_forest_nested_cv(inp, prefix, feature_selection_method):
                 print(f"Error fitting the final model: {e}")
                 sys.exit(1)
 
-        # Save the best model and data
         if tsne_selected:
             joblib.dump(best_model, f"{prefix}_random_forest_model.pkl")
             joblib.dump((X_transformed_final, y_encoded, le), f"{prefix}_random_forest_data.pkl")
@@ -919,13 +903,11 @@ def random_forest_nested_cv(inp, prefix, feature_selection_method):
             joblib.dump(best_model, f"{prefix}_random_forest_model.pkl")
             joblib.dump((X, y_encoded, le), f"{prefix}_random_forest_data.pkl")
 
-        # Output the best parameters
         if tsne_selected:
             print(f"Best parameters for Random Forest with t-SNE: {best_params_full_tsne}")
         else:
             print(f"Best parameters for Random Forest: {best_params_full}")
 
-        # If feature selection is used and not t-SNE, save the transformed data and variance information
         if feature_selection_method != 'none' and not tsne_selected:
             if 'feature_selection' in best_model.named_steps:
                 try:
@@ -955,8 +937,12 @@ def random_forest_nested_cv(inp, prefix, feature_selection_method):
 
                 variance_csv_path = f"{prefix}_random_forest_variance.csv"
                 if feature_selection_method == 'pca':
-                    # Fit a full PCA to get all components' variance
-                    full_pca = PCA(n_components=X.shape[1], random_state=1234)
+                    # ***** Updated PCA section to avoid error *****
+                    # Dynamically determine allowable max components for PCA
+                    pca_max_components = min(X.shape[0], X.shape[1]) - 1
+                    if pca_max_components < 1:
+                        pca_max_components = 1
+                    full_pca = PCA(n_components=pca_max_components, random_state=1234)
                     with SuppressOutput():
                         full_pca.fit(X)
                     explained_variance = full_pca.explained_variance_ratio_
@@ -967,7 +953,6 @@ def random_forest_nested_cv(inp, prefix, feature_selection_method):
                     explained_variance_df.to_csv(variance_csv_path, index=False)
                     print(f"PCA explained variance ratios saved to {variance_csv_path}")
                 elif feature_selection_method == 'pls':
-                    # Fit a full PLS model to get all components' variance
                     y_full = label_binarize(y_encoded, classes=np.unique(y_encoded))
                     if y_full.ndim == 1:
                         y_full = np.vstack([1 - y_full, y_full]).T
@@ -984,7 +969,6 @@ def random_forest_nested_cv(inp, prefix, feature_selection_method):
                     explained_variance_df.to_csv(variance_csv_path, index=False)
                     print(f"PLS explained variance ratios saved to {variance_csv_path}")
                 elif feature_selection_method in ['kpca']:
-                    # KernelPCA does not provide explained variance directly
                     with open(variance_csv_path, 'w') as f:
                         f.write("KernelPCA does not provide explained variance information.\n")
                     print(f"No variance information available for KernelPCA. File created at {variance_csv_path}")
@@ -1003,7 +987,6 @@ def random_forest_nested_cv(inp, prefix, feature_selection_method):
             else:
                 print("Feature selection failed or no feature selection method selected. Skipping transformed data and variance information saving.")
 
-        # Prediction using cross_val_predict if not using t-SNE
         if not tsne_selected:
             y_pred_prob = None
             try:
@@ -1014,19 +997,16 @@ def random_forest_nested_cv(inp, prefix, feature_selection_method):
                 y_pred_class = np.zeros_like(y_encoded)
                 y_pred_prob = np.zeros((len(y_encoded), num_classes))
 
-            # Calculate performance metrics
             acc = accuracy_score(y_encoded, y_pred_class)
             f1 = f1_score(y_encoded, y_pred_class, average='weighted')
             cm = confusion_matrix(y_encoded, y_pred_class)
 
-            # Calculate sensitivity and specificity
             if num_classes == 2:
                 if cm.shape == (2, 2):
                     tn, fp, fn, tp = cm.ravel()
                     sensitivity = tp / (tp + fn) if (tp + fn) > 0 else 0
                     specificity = tn / (tn + fp) if (tn + fp) > 0 else 0
                 else:
-                    # Handle cases where one class might be missing in predictions
                     sensitivity = 0
                     specificity = 0
             else:
@@ -1038,22 +1018,19 @@ def random_forest_nested_cv(inp, prefix, feature_selection_method):
                                                     out=np.zeros_like(np.diag(cm), dtype=float),
                                                     where=np.sum(cm, axis=0)!=0))
 
-            # Confusion matrix
             disp = ConfusionMatrixDisplay(confusion_matrix=cm, display_labels=le.classes_)
             disp.plot(cmap=plt.cm.Blues)
             plt.title('Confusion Matrix for Random Forest')
             plt.savefig(f"{prefix}_random_forest_confusion_matrix.png", dpi=300)
             plt.close()
 
-            # ROC and AUC
             fpr_dict = {}
             tpr_dict = {}
             roc_auc_dict = {}
 
-            # Different handling for binary and multi-class cases
             if num_classes == 2:
                 try:
-                    fpr_dict[0], tpr_dict[0], _ = roc_curve(y_binarized[:, 0], y_pred_prob[:, 0])
+                    fpr_dict[0], tpr_dict[0], _ = roc_curve(y_binarized[:, 1], y_pred_prob[:, 1])
                     roc_auc_dict[0] = auc(fpr_dict[0], tpr_dict[0])
                 except ValueError:
                     roc_auc_dict[0] = 0.0
@@ -1065,14 +1042,12 @@ def random_forest_nested_cv(inp, prefix, feature_selection_method):
                     except ValueError:
                         fpr_dict[i], tpr_dict[i], roc_auc_dict[i] = np.array([0, 1]), np.array([0, 1]), 0.0
 
-                # Compute overall ROC AUC for multi-class
                 try:
                     fpr_dict["micro"], tpr_dict["micro"], _ = roc_curve(y_binarized.ravel(), y_pred_prob.ravel())
                     roc_auc_dict["micro"] = auc(fpr_dict["micro"], tpr_dict["micro"])
                 except ValueError:
                     fpr_dict["micro"], tpr_dict["micro"], roc_auc_dict["micro"] = np.array([0, 1]), np.array([0, 1]), 0.0
 
-            # Save ROC data
             roc_data = {
                 'fpr': fpr_dict,
                 'tpr': tpr_dict,
@@ -1080,9 +1055,7 @@ def random_forest_nested_cv(inp, prefix, feature_selection_method):
             }
             np.save(f"{prefix}_random_forest_roc_data.npy", roc_data)
 
-            # Plot and save ROC curve
             plt.figure(figsize=(10, 8))
-
             if num_classes == 2:
                 plt.plot(fpr_dict[0], tpr_dict[0], label=f'AUC = {roc_auc_dict[0]:.2f}')
             else:
@@ -1102,7 +1075,6 @@ def random_forest_nested_cv(inp, prefix, feature_selection_method):
             plt.savefig(f'{prefix}_random_forest_roc_curve.png', dpi=300)
             plt.close()
 
-            # Output performance metrics as a bar chart
             metrics = {'Accuracy': acc, 'F1 Score': f1, 'Sensitivity': sensitivity, 'Specificity': specificity}
             metrics_df = pd.DataFrame(list(metrics.items()), columns=['Metric', 'Value'])
             ax = metrics_df.plot(kind='bar', x='Metric', y='Value', legend=False)
@@ -1116,16 +1088,12 @@ def random_forest_nested_cv(inp, prefix, feature_selection_method):
             plt.savefig(f'{prefix}_random_forest_metrics.png', dpi=300)
             plt.close()
 
-            # Create a DataFrame for predictions
             predictions_df = pd.DataFrame({
                 'SampleID': sample_ids,
                 'Original Label': y,
                 'Predicted Label': le.inverse_transform(y_pred_class)
             })
-
-            # Save predictions to CSV
             predictions_df.to_csv(f"{prefix}_random_forest_predictions.csv", index=False)
-
             print(f"Predictions saved to {prefix}_random_forest_predictions.csv")
 
 def main():
@@ -1136,11 +1104,9 @@ def main():
 
     args = parser.parse_args()
 
-    # Inform the user if t-SNE is selected
     if args.f == 'tsne':
         print("Warning: t-SNE does not support transforming new data. The entire dataset will be transformed before cross-validation, which may lead to data leakage.")
 
-    # Run the Random Forest nested cross-validation function
     random_forest_nested_cv(args.i, args.p, args.f)
 
 if __name__ == '__main__':

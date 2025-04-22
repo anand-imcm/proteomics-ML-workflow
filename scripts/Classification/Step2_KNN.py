@@ -30,13 +30,11 @@ from sklearn.exceptions import ConvergenceWarning
 import umap
 from scipy.sparse.linalg import ArpackError
 
-# Suppress specific warnings
 warnings.filterwarnings('ignore', category=FutureWarning)
 warnings.filterwarnings('ignore', category=UserWarning)
 warnings.filterwarnings('ignore', category=DeprecationWarning)
 warnings.filterwarnings('ignore', category=ConvergenceWarning)
 
-# Suppress output
 class SuppressOutput(contextlib.AbstractContextManager):
     def __enter__(self):
         self._stdout = sys.stdout
@@ -49,11 +47,10 @@ class SuppressOutput(contextlib.AbstractContextManager):
         sys.stdout = self._stdout
         sys.stderr = self._stderr
 
-# Custom transformer for PLS
 class PLSFeatureSelector(BaseEstimator, TransformerMixin):
     def __init__(self, n_components=2):
         self.n_components = n_components
-        self.pls = None  # Initialize in fit
+        self.pls = None
 
     def fit(self, X, y):
         self.pls = PLSRegression(n_components=self.n_components)
@@ -61,10 +58,8 @@ class PLSFeatureSelector(BaseEstimator, TransformerMixin):
         return self
 
     def transform(self, X):
-        # Return the entire transformed X instead of just the first sample
         return self.pls.transform(X)
 
-# Custom transformer for t-SNE
 class TSNETransformer(BaseEstimator, TransformerMixin):
     def __init__(
         self,
@@ -93,41 +88,36 @@ class TSNETransformer(BaseEstimator, TransformerMixin):
         return self
 
     def transform(self, X):
-        # t-SNE does not support transforming new data
         if self.X_transformed_ is not None and X.shape[0] == self.X_transformed_.shape[0]:
             return self.X_transformed_
         else:
             raise NotImplementedError("TSNETransformer does not support transforming new data.")
 
 def knn_nested_cv(inp, prefix, feature_selection_method):
-    # Read data
     data = pd.read_csv(inp)
 
-    # Ensure 'SampleID' and 'Label' columns exist
     if 'SampleID' not in data.columns or 'Label' not in data.columns:
         raise ValueError("Input data must contain 'SampleID' and 'Label' columns.")
 
-    # Extract SampleID
     sample_ids = data['SampleID']
-
-    # Data processing
     X = data.drop(columns=['SampleID', 'Label']).copy()
     y = data['Label']
 
-    # Apply data standardization
     scaler = StandardScaler()
     X_scaled = scaler.fit_transform(X)
     X = pd.DataFrame(X_scaled, columns=X.columns)
 
-    # Convert target variable to categorical
     le = LabelEncoder()
     y_encoded = le.fit_transform(y)
     y_binarized = pd.get_dummies(y_encoded).values
     num_classes = len(np.unique(y_encoded))
 
-    # If PLS or PCA is chosen, save all possible component information for reference
     if feature_selection_method == 'pca':
-        full_pca = PCA(n_components=X.shape[1], random_state=1234)
+        # Dynamically cap n_components
+        max_pca_components = min(X.shape[0], X.shape[1]) - 1
+        if max_pca_components < 1:
+            max_pca_components = 1
+        full_pca = PCA(n_components=max_pca_components, random_state=1234)
         X_pca_full = full_pca.fit_transform(X)
         explained_variance = full_pca.explained_variance_ratio_
         explained_variance_df = pd.DataFrame({
@@ -135,11 +125,11 @@ def knn_nested_cv(inp, prefix, feature_selection_method):
             'Explained Variance Ratio': explained_variance
         })
         explained_variance_df.to_csv(f"{prefix}_knn_pca_explained_variance_full.csv", index=False)
-        # Save all components' transformed data
         X_pca_full_df = pd.DataFrame(X_pca_full, columns=[f"PCA_Component_{i+1}" for i in range(X_pca_full.shape[1])])
         X_pca_full_df.insert(0, 'SampleID', sample_ids)
         X_pca_full_df['Label'] = y
         X_pca_full_df.to_csv(f"{prefix}_knn_pca_all_components.csv", index=False)
+
     elif feature_selection_method == 'pls':
         pls = PLSRegression(n_components=min(X.shape[0] - 1, X.shape[1]))
         with SuppressOutput():
@@ -150,11 +140,11 @@ def knn_nested_cv(inp, prefix, feature_selection_method):
             'Explained Variance Ratio': explained_variance
         })
         explained_variance_df.to_csv(f"{prefix}_knn_pls_explained_variance_full.csv", index=False)
-        # Save all components' transformed data
         X_pls_full_df = pd.DataFrame(X_pls_full, columns=[f"PLS_Component_{i+1}" for i in range(X_pls_full.shape[1])])
         X_pls_full_df.insert(0, 'SampleID', sample_ids)
         X_pls_full_df['Label'] = y
         X_pls_full_df.to_csv(f"{prefix}_knn_pls_all_components.csv", index=False)
+
     elif feature_selection_method == 'kpca':
         n_samples = X.shape[0]
         n_features = X.shape[1]
@@ -173,11 +163,11 @@ def knn_nested_cv(inp, prefix, feature_selection_method):
             except ArpackError as e:
                 print(f"KernelPCA fitting failed: {e}")
                 X_kpca_full = np.zeros((X.shape[0], max_kpca_components))
-        # Save transformed data
         X_kpca_full_df = pd.DataFrame(X_kpca_full, columns=[f"KPCA_Component_{i+1}" for i in range(X_kpca_full.shape[1])])
         X_kpca_full_df.insert(0, 'SampleID', sample_ids)
         X_kpca_full_df['Label'] = y
         X_kpca_full_df.to_csv(f"{prefix}_knn_kpca_all_components.csv", index=False)
+
     elif feature_selection_method == 'umap':
         umap_full = umap.UMAP(
             n_components=min(X.shape[1], 100),
@@ -187,7 +177,6 @@ def knn_nested_cv(inp, prefix, feature_selection_method):
         )
         with SuppressOutput():
             X_umap_full = umap_full.fit_transform(X)
-        # Save transformed data
         X_umap_full_df = pd.DataFrame(
             X_umap_full,
             columns=[f"UMAP_Component_{i+1}" for i in range(X_umap_full.shape[1])]
@@ -195,6 +184,7 @@ def knn_nested_cv(inp, prefix, feature_selection_method):
         X_umap_full_df.insert(0, 'SampleID', sample_ids)
         X_umap_full_df['Label'] = y
         X_umap_full_df.to_csv(f"{prefix}_knn_umap_all_components.csv", index=False)
+
     elif feature_selection_method == 'tsne':
         tsne_full = TSNETransformer(
             n_components=2,
@@ -205,7 +195,6 @@ def knn_nested_cv(inp, prefix, feature_selection_method):
         )
         with SuppressOutput():
             X_tsne_full = tsne_full.fit_transform(X)
-        # Save transformed data
         X_tsne_full_df = pd.DataFrame(
             X_tsne_full,
             columns=[f"TSNE_Component_{i+1}" for i in range(X_tsne_full.shape[1])]
@@ -214,28 +203,21 @@ def knn_nested_cv(inp, prefix, feature_selection_method):
         X_tsne_full_df['Label'] = y
         X_tsne_full_df.to_csv(f"{prefix}_knn_tsne_all_components.csv", index=False)
 
-    # Define outer cross-validation strategy
     cv_outer = StratifiedKFold(n_splits=5, shuffle=True, random_state=1234)
-
-    # Lists to store outer fold metrics
     outer_f1_scores = []
     outer_auc_scores = []
 
-    # Iterate over each outer fold
     fold_idx = 1
     for train_idx, test_idx in cv_outer.split(X, y_encoded):
         print(f"Processing outer fold {fold_idx}...")
         X_train_outer, X_test_outer = X.iloc[train_idx], X.iloc[test_idx]
         y_train_outer, y_test_outer = y_encoded[train_idx], y_encoded[test_idx]
 
-        # Define inner cross-validation strategy
         cv_inner = StratifiedKFold(n_splits=5, shuffle=True, random_state=1234)
 
-        # Define the objective function for Optuna within the outer fold
         def objective_inner(trial):
             steps_inner = [('scaler', StandardScaler())]
 
-            # Depending on the feature selection method, add steps and hyperparameters
             if feature_selection_method == 'elasticnet':
                 elasticnet_alpha = trial.suggest_loguniform('elasticnet_alpha', 1e-4, 1e1)
                 l1_ratio = trial.suggest_uniform('elasticnet_l1_ratio', 0.0, 1.0)
@@ -308,34 +290,31 @@ def knn_nested_cv(inp, prefix, feature_selection_method):
                 n_components = trial.suggest_int('pls_n_components', 1, max_pls_components)
                 steps_inner.append(('feature_selection', PLSFeatureSelector(n_components=n_components)))
             elif feature_selection_method == 'tsne':
-                n_components = trial.suggest_int('tsne_n_components', 2, 3)
-                perplexity = trial.suggest_int(
+                n_components_tsne = trial.suggest_int('tsne_n_components', 2, 3)
+                perplexity_tsne = trial.suggest_int(
                     'tsne_perplexity',
                     5,
                     min(50, X_train_outer.shape[0] - 1)
                 )
-                learning_rate = trial.suggest_loguniform('tsne_learning_rate', 10, 1000)
-                max_iter = trial.suggest_int('tsne_max_iter', 250, 2000)
+                learning_rate_tsne = trial.suggest_loguniform('tsne_learning_rate', 10, 1000)
+                max_iter_tsne = trial.suggest_int('tsne_max_iter', 250, 2000)
                 steps_inner.append((
                     'feature_selection',
                     TSNETransformer(
-                        n_components=n_components,
-                        perplexity=perplexity,
-                        learning_rate=learning_rate,
-                        max_iter=max_iter,
+                        n_components=n_components_tsne,
+                        perplexity=perplexity_tsne,
+                        learning_rate=learning_rate_tsne,
+                        max_iter=max_iter_tsne,
                         random_state=1234
                     )
                 ))
-            else:
-                pass
 
-            # Suggest hyperparameters for KNN
             knn_n_neighbors = trial.suggest_int(
                 'knn_n_neighbors',
                 1,
                 min(30, len(X_train_outer) - 1)
             )
-            steps_inner.append(('knn', KNeighborsClassifier(n_neighbors=knn_n_neighbors)))
+            steps_inner.append(('knn', KNeighborsClassifier(n_neighbors=knn_n_neighbors,n_jobs=-1)))
 
             pipeline_inner = Pipeline(steps_inner)
 
@@ -355,18 +334,14 @@ def knn_nested_cv(inp, prefix, feature_selection_method):
                         f1_val = f1_score(y_valid_inner, y_pred_inner, average='weighted')
                         f1_scores_inner.append(f1_val)
                     except (NotImplementedError, ArpackError, ValueError):
-                        # If feature selection fails
                         return 0.0
                 return np.mean(f1_scores_inner)
 
-        # Create an Optuna study for the inner fold
         study_inner = optuna.create_study(direction='maximize', sampler=TPESampler(seed=1234))
         study_inner.optimize(objective_inner, n_trials=50, show_progress_bar=False)
 
-        # Best hyperparameters from the inner fold
         best_params_inner = study_inner.best_params
 
-        # Initialize the best model with the best hyperparameters
         steps_outer = [('scaler', StandardScaler())]
 
         if feature_selection_method == 'elasticnet':
@@ -438,8 +413,6 @@ def knn_nested_cv(inp, prefix, feature_selection_method):
                     random_state=1234
                 )
             ))
-        else:
-            pass
 
         best_knn_n_neighbors = best_params_inner['knn_n_neighbors']
         steps_outer.append(('knn', KNeighborsClassifier(n_neighbors=best_knn_n_neighbors)))
@@ -455,16 +428,12 @@ def knn_nested_cv(inp, prefix, feature_selection_method):
                 y_pred_class_outer = best_model_inner.predict(X_test_outer)
             except (NotImplementedError, ArpackError, ValueError) as e:
                 print(f"Fold {fold_idx} encountered an error: {str(e)}")
-                # Assign zero arrays so that metrics can be recorded as 0
                 y_pred_prob_outer = np.zeros((X_test_outer.shape[0], num_classes))
                 y_pred_class_outer = np.zeros(X_test_outer.shape[0])
 
-        # Compute F1 score
         f1_outer = f1_score(y_test_outer, y_pred_class_outer, average='weighted')
         outer_f1_scores.append(f1_outer)
 
-        # Compute AUC
-        # For each outer fold, we use the predictions y_pred_prob_outer
         if num_classes == 2 and y_pred_prob_outer.shape[1] == 2:
             try:
                 fpr_fold, tpr_fold, _ = roc_curve(y_test_outer, y_pred_prob_outer[:, 1])
@@ -472,9 +441,7 @@ def knn_nested_cv(inp, prefix, feature_selection_method):
             except ValueError:
                 auc_fold = 0.0
         else:
-            # Compute micro-average AUC for multi-class
             try:
-                # Extract the relevant portion of y_binarized for test samples
                 y_binarized_test = y_binarized[test_idx]
                 fpr_fold, tpr_fold, _ = roc_curve(y_binarized_test.ravel(), y_pred_prob_outer.ravel())
                 auc_fold = auc(fpr_fold, tpr_fold)
@@ -485,7 +452,6 @@ def knn_nested_cv(inp, prefix, feature_selection_method):
         print(f"Fold {fold_idx} - F1 Score: {f1_outer:.4f}, AUC: {auc_fold:.4f}")
         fold_idx += 1
 
-    # Plot F1 and AUC for each outer fold
     plt.figure(figsize=(10, 6))
     folds = range(1, cv_outer.get_n_splits() + 1)
     plt.plot(folds, outer_f1_scores, marker='o', label='F1 Score')
@@ -505,7 +471,6 @@ def knn_nested_cv(inp, prefix, feature_selection_method):
     print(f"Average F1 Score: {np.mean(outer_f1_scores):.4f} ± {np.std(outer_f1_scores):.4f}")
     print(f"Average AUC: {np.mean(outer_auc_scores):.4f} ± {np.std(outer_auc_scores):.4f}")
 
-    # Perform hyperparameter tuning on the entire dataset
     print("Starting hyperparameter tuning on the entire dataset...")
 
     def objective_full(trial):
@@ -624,7 +589,6 @@ def knn_nested_cv(inp, prefix, feature_selection_method):
     best_params_full = study_full.best_params
     print(f"Best parameters for KNN: {best_params_full}")
 
-    # Build final model with best params (entire dataset)
     steps_final = [('scaler', StandardScaler())]
 
     if feature_selection_method == 'elasticnet':
@@ -700,7 +664,7 @@ def knn_nested_cv(inp, prefix, feature_selection_method):
         pass
 
     best_knn_n_neighbors_full = best_params_full['knn_n_neighbors']
-    steps_final.append(('knn', KNeighborsClassifier(n_neighbors=best_knn_n_neighbors_full)))
+    steps_final.append(('knn', KNeighborsClassifier(n_neighbors=best_knn_n_neighbors_full,n_jobs=-1)))
 
     best_model = Pipeline(steps_final)
     with SuppressOutput():
@@ -708,19 +672,16 @@ def knn_nested_cv(inp, prefix, feature_selection_method):
             best_model.fit(X, y_encoded)
         except (NotImplementedError, ArpackError, ValueError):
             print("Feature selection method failed on the entire dataset. Skipping feature selection.")
-            # Remove feature selection step and fit KNN only
             steps_final = [('scaler', StandardScaler()), ('knn', KNeighborsClassifier(n_neighbors=best_knn_n_neighbors_full))]
             best_model = Pipeline(steps_final)
             best_model.fit(X, y_encoded)
 
-    # Save the final model and data (including feature names)
     joblib.dump(best_model, f"{prefix}_knn_model.pkl")
     feature_names = X.columns.tolist()
     joblib.dump((X, y_encoded, le, feature_names), f"{prefix}_knn_data.pkl")
 
     print(f"Best parameters for KNN: {best_params_full}")
 
-    # If feature selection is used, save the final transformed data
     if feature_selection_method != 'none':
         if 'feature_selection' in best_model.named_steps:
             try:
@@ -762,7 +723,6 @@ def knn_nested_cv(inp, prefix, feature_selection_method):
             transformed_csv_path = f"{prefix}_knn_transformed_X.csv"
             X_transformed_df.to_csv(transformed_csv_path, index=False)
 
-            # Save variance info if applicable
             variance_csv_path = f"{prefix}_knn_variance.csv"
             if feature_selection_method == 'pca':
                 pca_step = best_model.named_steps['feature_selection']
@@ -800,7 +760,6 @@ def knn_nested_cv(inp, prefix, feature_selection_method):
     else:
         print("No feature selection method selected. Skipping transformed data.")
 
-    # Final cross_val_predict to get overall predictions
     y_pred_prob_final = None
     y_pred_class_final = None
     try:
@@ -821,7 +780,6 @@ def knn_nested_cv(inp, prefix, feature_selection_method):
     f1_final = f1_score(y_encoded, y_pred_class_final, average='weighted')
     cm_final = confusion_matrix(y_encoded, y_pred_class_final)
 
-    # Compute sensitivity and specificity
     if num_classes == 2:
         if cm_final.shape == (2, 2):
             tn, fp, fn, tp = cm_final.ravel()
@@ -855,8 +813,6 @@ def knn_nested_cv(inp, prefix, feature_selection_method):
     plt.savefig(f"{prefix}_knn_confusion_matrix.png", dpi=300)
     plt.close()
 
-    # ROC/AUC for final predictions
-    # fpr, tpr, roc_auc stored in dictionaries
     fpr_final = {}
     tpr_final = {}
     roc_auc_final = {}
@@ -879,7 +835,7 @@ def knn_nested_cv(inp, prefix, feature_selection_method):
                     roc_auc_final[i] = auc(fpr_final[i], tpr_final[i])
                 except ValueError:
                     fpr_final[i], tpr_final[i], roc_auc_final[i] = np.array([0, 1]), np.array([0, 1]), 0.0
-        # Overall micro-average
+
         try:
             fpr_final["micro"], tpr_final["micro"], _ = roc_curve(y_binarized.ravel(), y_pred_prob_final.ravel())
             roc_auc_final["micro"] = auc(fpr_final["micro"], tpr_final["micro"])
@@ -888,7 +844,6 @@ def knn_nested_cv(inp, prefix, feature_selection_method):
             tpr_final["micro"] = np.array([0, 1])
             roc_auc_final["micro"] = 0.0
 
-    # Save ROC data
     roc_data_final = {
         'fpr': fpr_final,
         'tpr': tpr_final,
@@ -922,7 +877,6 @@ def knn_nested_cv(inp, prefix, feature_selection_method):
     plt.savefig(f"{prefix}_knn_roc_curve.png", dpi=300)
     plt.close()
 
-    # Bar chart of final metrics
     metrics_dict_final = {
         'Accuracy': acc_final,
         'F1 Score': f1_final,
@@ -941,7 +895,6 @@ def knn_nested_cv(inp, prefix, feature_selection_method):
     plt.savefig(f"{prefix}_knn_metrics.png", dpi=300)
     plt.close()
 
-    # Save predictions
     predictions_df_final = pd.DataFrame({
         'SampleID': sample_ids,
         'Original Label': y,
@@ -968,4 +921,3 @@ if __name__ == '__main__':
     args = parser.parse_args()
 
     knn_nested_cv(args.csv, args.prefix, args.feature_selection)
-

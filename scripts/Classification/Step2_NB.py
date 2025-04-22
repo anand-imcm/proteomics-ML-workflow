@@ -30,6 +30,7 @@ import umap
 from sklearn.cross_decomposition import PLSRegression
 from sklearn.exceptions import ConvergenceWarning
 from scipy.sparse.linalg import ArpackError
+from sklearn.utils.class_weight import compute_class_weight
 
 # Suppress all warnings except ConvergenceWarning from ElasticNet
 warnings.filterwarnings('ignore', category=FutureWarning)
@@ -248,15 +249,21 @@ def gaussian_nb_nested_cv(inp, prefix, feature_selection_method):
             with SuppressOutput():
                 f1_scores = []
                 for inner_train_idx, inner_valid_idx in cv_inner.split(X_train_outer, y_train_outer):
-                    X_train_inner, X_valid_inner = X_train_outer.iloc[inner_train_idx], X_train_outer.iloc[inner_valid_idx]
-                    y_train_inner, y_valid_inner = y_train_outer[inner_train_idx], y_train_outer[inner_valid_idx]
+                    X_train_inner = X_train_outer.iloc[inner_train_idx]
+                    X_valid_inner = X_train_outer.iloc[inner_valid_idx]
+                    y_train_inner = y_train_outer[inner_train_idx]
+                    y_valid_inner = y_train_outer[inner_valid_idx]
+                    classes = np.unique(y_train_inner)
+                    class_weights = compute_class_weight(class_weight='balanced', classes=classes, y=y_train_inner)
+                    cw_dict = dict(zip(classes, class_weights))
+                    sample_weight_inner = np.array([cw_dict[label] for label in y_train_inner])
+                    
                     try:
-                        pipeline.fit(X_train_inner, y_train_inner)
+                        pipeline.fit(X_train_inner, y_train_inner, gnb__sample_weight=sample_weight_inner)
                         y_pred_inner = pipeline.predict(X_valid_inner)
                         f1 = f1_score(y_valid_inner, y_pred_inner, average='weighted')
                         f1_scores.append(f1)
                     except (ValueError, ArpackError):
-                        # If feature selection or GaussianNB fails
                         f1_scores.append(0.0)
                 return np.mean(f1_scores)
 
@@ -349,7 +356,12 @@ def gaussian_nb_nested_cv(inp, prefix, feature_selection_method):
         # Fit the model on the outer training set
         with SuppressOutput():
             try:
-                best_model_inner.fit(X_train_outer, y_train_outer)
+                classes = np.unique(y_train_outer)
+                class_weights = compute_class_weight(class_weight='balanced', classes=classes, y=y_train_outer)
+                cw_dict = dict(zip(classes, class_weights))
+                sample_weight_outer = np.array([cw_dict[label] for label in y_train_outer])
+                
+                best_model_inner.fit(X_train_outer, y_train_outer, gnb__sample_weight=sample_weight_outer)
             except (ValueError, ArpackError) as e:
                 print(f"Error fitting the model in outer fold {fold_idx}: {e}")
                 outer_f1_scores.append(0)
@@ -612,7 +624,12 @@ def gaussian_nb_nested_cv(inp, prefix, feature_selection_method):
     # Fit the model on the entire dataset
     with SuppressOutput():
         try:
-            best_model.fit(X, y_encoded)
+            classes_full = np.unique(y_encoded)
+            class_weights_full = compute_class_weight(class_weight='balanced', classes=classes_full, y=y_encoded)
+            cw_dict_full = dict(zip(classes_full, class_weights_full))
+            sample_weight_full = np.array([cw_dict_full[label] for label in y_encoded])
+            
+            best_model.fit(X, y_encoded, gnb__sample_weight=sample_weight_full)
         except (ValueError, ArpackError) as e:
             print(f"Error fitting the final model: {e}")
             sys.exit(1)
@@ -674,7 +691,9 @@ def gaussian_nb_nested_cv(inp, prefix, feature_selection_method):
             variance_csv_path = f"{prefix}_gaussiannb_variance.csv"
             if feature_selection_method == 'pca':
                 # Fit a full PCA to get all components' variance
-                full_pca = PCA(n_components=X.shape[1], random_state=1234)
+                # Dynamic n_components fix to avoid the ValueError
+                n_components_full_pca = min(X.shape[0], X.shape[1])
+                full_pca = PCA(n_components=n_components_full_pca, random_state=1234)
                 with SuppressOutput():
                     full_pca.fit(X)
                 explained_variance = full_pca.explained_variance_ratio_

@@ -72,8 +72,17 @@ def main():
 
     # Validate feature selection method for PLSDA
     if 'PLSDA' in args.model:
-        if args.feature_selection not in ['umap', 'elasticnet', 'none']:
+        if args.feature_selection not in ['umap', 'elasticnet', 'none', None]:
             sys.exit("Error: PLSDA only supports 'umap', 'elasticnet', and 'none' as feature selection methods.")
+
+    # If feature selection is used, skip VAE and MLPVAE
+    if args.feature_selection is not None:
+        if "VAE" in args.model:
+            print("Skipping VAE because feature selection is used.")
+            args.model.remove("VAE")
+        if "MLPVAE" in args.model:
+            print("Skipping MLPVAE because feature selection is used.")
+            args.model.remove("MLPVAE")
 
     # Run models in parallel
     Parallel(n_jobs=-1, backend='multiprocessing', verbose=100)(
