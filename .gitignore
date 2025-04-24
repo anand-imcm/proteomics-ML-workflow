@@ -5,3 +5,5 @@ cromwell-*/
 notes-comments.txt
 __pycache__
 .DS_Store
+container/netpath/
+scripts/NetPath/

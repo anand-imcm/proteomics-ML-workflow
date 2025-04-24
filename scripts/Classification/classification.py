@@ -70,6 +70,9 @@ def main():
     if args.prefix:
         prefix = args.prefix
 
+    if args.feature_selection.lower() == 'none':
+        args.feature_selection = None
+
     # Validate feature selection method for PLSDA
     if 'PLSDA' in args.model:
         if args.feature_selection not in ['umap', 'elasticnet', 'none', None]:

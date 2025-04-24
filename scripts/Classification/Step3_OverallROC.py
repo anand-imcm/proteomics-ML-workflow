@@ -55,31 +55,38 @@ def compute_macro_average_roc(fpr_dict, tpr_dict):
 def plot_roc(model_abbrs, file_prefix):
     # Load ROC data for all models
     roc_data = {}
+    valid_model_abbrs = []  # 保存加载成功的模型缩写
     for model_abbr in model_abbrs:
         if model_abbr not in model_map:
-            print(f"Model abbreviation '{model_abbr}' not recognized.")
-            sys.exit(1)
+            print(f"Model abbreviation '{model_abbr}' not recognized. Skipping.")
+            continue
         model_name = model_map[model_abbr]  # e.g., 'knn'
+        # Construct the full file path
+        model_file = f"{file_prefix}_{model_name}_roc_data.npy"
+        print(f"Loading ROC data from: {model_file}")  # Debugging output
+        if not os.path.isfile(model_file):
+            print(f"ROC data file for model '{model_name}' not found at '{model_file}'. Skipping.")
+            continue
         try:
-            # Construct the full file path
-            model_file = f"{file_prefix}_{model_name}_roc_data.npy"
-            print(f"Loading ROC data from: {model_file}")  # Debugging output
-            if not os.path.isfile(model_file):
-                raise FileNotFoundError
             roc_data[model_abbr] = np.load(model_file, allow_pickle=True).item()
-        except FileNotFoundError:
-            print(f"ROC data file for model '{model_name}' not found at '{model_file}'.")
-            sys.exit(1)
+            valid_model_abbrs.append(model_abbr)
+        except Exception as e:
+            print(f"Error loading ROC data for model '{model_name}': {e}. Skipping.")
+            continue
 
-    # Plot ROC curves for the selected models
+    if not valid_model_abbrs:
+        print("No ROC data found for any of the specified models. Exiting.")
+        return
+
+    # Plot ROC curves for the loaded models
     plt.figure(figsize=(15, 12))
     
     # Colors for different models
     colors = cycle(['aqua', 'darkorange', 'cornflowerblue', 'red', 'green', 'purple', 'brown', 'pink', 'gray', 'olive','yellow'])
     
-    for model_abbr, color in zip(model_abbrs, colors):
+    for model_abbr, color in zip(valid_model_abbrs, colors):
         model_roc = roc_data[model_abbr]
-        # Determine if it's binary or multi-class by checking the number of classes
+        # Determine if it's binary or multi-class by checking the type of fpr
         if isinstance(model_roc['fpr'], dict):
             num_classes = len(model_roc['fpr'])
             if num_classes > 1:
@@ -102,7 +109,7 @@ def plot_roc(model_abbrs, file_prefix):
                     plt.plot(fpr_micro, tpr_micro, color=color, linestyle='--', linewidth=2,
                              label=f'{model_abbr} Micro AUC = {roc_auc_micro:.2f}')
             else:
-                # Binary case stored as a dict with single key
+                # Binary case stored as a dict with a single key
                 key = list(model_roc['fpr'].keys())[0]
                 fpr = model_roc['fpr'][key]
                 tpr = model_roc['tpr'][key]

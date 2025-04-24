@@ -20,7 +20,7 @@ workflow main {
         Boolean calculate_shap = false
         Int shap_features = 10
     }
-    String pipeline_version = "1.0.2"
+    String pipeline_version = "1.0.3"
     String container_gen = "ghcr.io/anand-imcm/proteomics-ml-workflow-gen:~{pipeline_version}"
     Array[File] default_arr = []
     call RP.run_plan {
