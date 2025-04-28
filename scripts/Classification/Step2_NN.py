@@ -590,10 +590,14 @@ def neural_network_nested_cv(inp, prefix, feature_selection_method):
 
     # If feature selection is used, save transformed data and variance info
     if feature_selection_method != 'none':
-        try:
-            X_transformed = best_model.named_steps['feature_selection'].transform(X)
-        except (NotImplementedError, ArpackError, ValueError):
+        if 'feature_selection' in best_model.named_steps:
+            try:
+                X_transformed = best_model.named_steps['feature_selection'].transform(X)
+            except (NotImplementedError, ArpackError, ValueError):
+                X_transformed = None
+        else:
             X_transformed = None
+
         if X_transformed is not None:
             if feature_selection_method in ['pca', 'kpca', 'umap', 'pls']:
                 n_components = X_transformed.shape[1]

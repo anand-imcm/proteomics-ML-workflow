@@ -40,10 +40,9 @@ def run_model(model, csv, prefix, feature_selection):
     elif model == "XGB":
         xgboost(csv, prefix, feature_selection)
     elif model == "PLSDA":
-        # Allow 'umap', 'elasticnet', or 'none' for feature selection in PLSDA
         if feature_selection not in ['umap', 'elasticnet', 'none']:
-            raise ValueError("PLSDA only supports 'umap', 'elasticnet', and 'none' for feature selection.")
-        plsda(csv, prefix, feature_selection)
+            print(f"Skipping PLSDA because feature selection {feature_selection} is incompatible.")
+            return
     elif model == "VAE":
         # VAE does not take feature_selection
         vae(csv, prefix)
@@ -74,9 +73,12 @@ def main():
         args.feature_selection = None
 
     # Validate feature selection method for PLSDA
+    # Validate feature selection method for PLSDA
     if 'PLSDA' in args.model:
         if args.feature_selection not in ['umap', 'elasticnet', 'none', None]:
-            sys.exit("Error: PLSDA only supports 'umap', 'elasticnet', and 'none' as feature selection methods.")
+            print("Skipping PLSDA because the selected feature selection method is not compatible.")
+            args.model.remove('PLSDA')
+
 
     # If feature selection is used, skip VAE and MLPVAE
     if args.feature_selection is not None:

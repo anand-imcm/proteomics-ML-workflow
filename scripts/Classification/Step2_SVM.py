@@ -597,9 +597,12 @@ def svm_nested_cv(inp, prefix, feature_selection_method):
     print(f"Best parameters: {best_params_full}")
 
     if feature_selection_method != 'none':
-        try:
-            X_transformed = best_model.named_steps['feature_selection'].transform(X)
-        except (NotImplementedError, ArpackError, ValueError):
+        if 'feature_selection' in best_model.named_steps:
+            try:
+                X_transformed = best_model.named_steps['feature_selection'].transform(X)
+            except (NotImplementedError, ArpackError, ValueError):
+                X_transformed = None
+        else:
             X_transformed = None
 
         if X_transformed is not None:
