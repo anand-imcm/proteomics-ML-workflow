@@ -4,7 +4,7 @@ import argparse
 import shap
 import os
 import warnings
-from concurrent.futures import ProcessPoolExecutor
+from joblib import Parallel, delayed
 from sklearn.preprocessing import label_binarize
 from sklearn.preprocessing import (
     StandardScaler,
@@ -29,6 +29,10 @@ from sklearn.naive_bayes import GaussianNB
 
 # Suppress all warnings
 warnings.filterwarnings("ignore")
+
+import warnings
+warnings.filterwarnings("ignore", category=UserWarning)
+warnings.filterwarnings("ignore", category=FutureWarning)
 
 # Custom transformer for PLS
 class PLSFeatureSelector(BaseEstimator, TransformerMixin):
@@ -729,27 +733,13 @@ def main():
         description="Calculate SHAP values for specified models"
     )
     parser.add_argument(
-        "-m",
-        "--models",
-        type=str,
-        nargs="+",
-        choices=list(model_map.keys()),
-        help="Name of the model(s)",
-        required=True,
+        "-m", "--models", type=str, nargs="+", choices=list(model_map.keys()), required=True
     )
     parser.add_argument(
-        "-p",
-        "--prefix",
-        type=str,
-        required=True,
-        help="Output prefix",
+        "-p", "--prefix", type=str, required=True
     )
     parser.add_argument(
-        "-f",
-        "--num_features",
-        type=int,
-        required=True,
-        help="Number of top features to display in radar chart and bar chart",
+        "-f", "--num_features", type=int, required=True
     )
     args = parser.parse_args()
 
@@ -758,24 +748,16 @@ def main():
     num_features = args.num_features
 
     total_cores = multiprocessing.cpu_count()
-    print(f"Total CPU cores available: {total_cores}")
-    reserved_cores = 2
-    max_workers = max(1, total_cores - reserved_cores)
-    print(
-        f"Using {max_workers} parallel processes for model SHAP calculations."
-    )
-    n_jobs_explainer = max(1, reserved_cores)
+    n_models = len(models)
+    cores_per_model = max(1, total_cores // n_models)
+    print(f"Detected {total_cores} CPU cores.")
+    print(f"Running {n_models} model(s) in parallel with {cores_per_model} cores each for SHAP.")
 
-    with ProcessPoolExecutor(max_workers=max_workers) as executor:
-        futures = []
-        for model_name in models:
-            futures.append(
-                executor.submit(
-                    process_model, model_name, prefix, num_features, n_jobs_explainer
-                )
-            )
-        for future in futures:
-            future.result()
+    Parallel(n_jobs=n_models, backend="loky")(
+        delayed(process_model)(model_name, prefix, num_features, cores_per_model)
+        for model_name in models
+    )
+
 
 if __name__ == "__main__":
     main()
