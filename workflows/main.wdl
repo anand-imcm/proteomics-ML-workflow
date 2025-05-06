@@ -7,6 +7,7 @@ import "./tasks/ml_vae.wdl" as MLVAE
 import "./tasks/summary.wdl" as SUMM
 import "./tasks/pdf_report.wdl" as REP
 import "./tasks/ml_reg.wdl" as MLREG
+import "./tasks/protein_network.wdl" as PPI
 
 workflow main {
     input {
@@ -18,6 +19,7 @@ workflow main {
         String classification_model_choices = "RF" # KNN NN SVM XGB PLSDA VAE LR GNB LGBM MLPVAE
         String regression_model_choices = "RF_reg" # NN_reg SVM_reg XGB_reg PLS_reg KNN_reg LGBM_reg VAE_reg MLPVAE_reg
         Boolean calculate_shap = false
+        Boolean protein_network = false
         Int shap_features = 10
     }
     String pipeline_version = "1.0.3"
@@ -28,7 +30,8 @@ workflow main {
             dimensionality_reduction_choices = dimensionality_reduction_choices,
             regression_choices = regression_model_choices,
             mode = mode,
-            shap = calculate_shap
+            shap = calculate_shap,
+            ppi = protein_network,
     }
     if (run_plan.use_dim){
         scatter (dim_method in run_plan.dim_opt) {
@@ -96,8 +99,17 @@ workflow main {
                 docker = container_gen
         }
     }
+    if(run_plan.use_ppi){
+        call PPI.network{
+            input:
+                summary_set = summary.results,
+                proteinExpFile = input_csv,
+                output_prefix = output_prefix
+        }
+    }
     Array[File] summary_files = if (!run_plan.use_dim) then select_all([summary.results]) else default_arr
-    Array[File] all_results = flatten([dim_out, dim_png, summary_files])
+    Array[File] ppi_files = if (run_plan.use_ppi) then select_all([network.results]) else default_arr
+    Array[File] all_results = flatten([dim_out, dim_png, summary_files, ppi_files])
     call REP.pdf_report {
         input:
             summary_set = all_results,
