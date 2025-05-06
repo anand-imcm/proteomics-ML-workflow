@@ -1,8 +1,8 @@
 version 1.0
 
-task protein_network {
+task network {
     input {
-        File summary_set
+        File? summary_set
         File proteinExpFile
         String output_prefix
         Int score_thresholdHere = 400
