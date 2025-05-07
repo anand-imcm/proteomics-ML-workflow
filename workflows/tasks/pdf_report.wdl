@@ -26,7 +26,7 @@ task pdf_report {
         fi
         python /scripts/Step5_PDF_summary_analysis.py \
             -p ~{output_prefix}
-        tar -czvf ~{output_prefix}_results.tar.gz --ignore-failed-read *.{png,pkl,npy,csv}
+        tar -czvf ~{output_prefix}_results.tar.gz --ignore-failed-read *.{png,pkl,npy,csv,xlsx}
     >>>
     output {
         File out = "model_reports.pdf"
