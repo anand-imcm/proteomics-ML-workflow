@@ -23,6 +23,7 @@ task run_plan {
         reg_options = re.split(r'\s+|,', usr_reg)
         vae_choices = [opt for opt in ml_options if "VAE" in opt]
         gen_choices = [opt for opt in ml_options if "VAE" not in opt]
+        ppi_compatibility = False
         with open("use_gen.txt", "w") as gen_opt, open("use_reg.txt", "w") as reg_opt, open("use_vae.txt", "w") as vae_opt, open("use_shap.txt", "w") as shap_opt,  open("use_dim.txt", "w") as dim_opt, open("use_ppi.txt", "w") as ppi_opt, open("dim_options.txt", "w") as dim_plan, open("cl_options.txt", "w") as cl_plan, open("vae_options.txt", "w") as vae_plan, open("reg_options.txt", "w") as reg_plan:
             dim_opt.write("false")
             gen_opt.write("false")
@@ -40,7 +41,10 @@ task run_plan {
                 else:
                     if any(dim_options):
                         dim_plan.write(dim_options[0].replace("-", "").lower())
+                        if dim_options[0].replace("-", "").lower() == "elasticnet":
+                            ppi_compatibility = True
                     else:
+                        ppi_compatibility = True
                         dim_plan.write("none")
                     if any(reg_options):
                         reg_opt.seek(0)
@@ -52,7 +56,7 @@ task run_plan {
                         shap_opt.seek(0)
                         shap_opt.truncate()
                         shap_opt.write("true")
-                    if usr_ppi.lower() == "true":
+                    if usr_ppi.lower() == "true" and ppi_compatibility:
                         shap_opt.seek(0)
                         shap_opt.truncate()
                         shap_opt.write("true")
@@ -69,8 +73,11 @@ task run_plan {
                 else:
                     if any(dim_options):
                         dim_plan.write(dim_options[0].replace("-", "").lower())
+                        if dim_options[0].replace("-", "").lower() == "elasticnet":
+                            ppi_compatibility = True
                     else:
                         dim_plan.write("none")
+                        ppi_compatibility = True
                     if any(gen_choices):
                         gen_opt.seek(0)
                         gen_opt.truncate()
@@ -87,7 +94,7 @@ task run_plan {
                         shap_opt.seek(0)
                         shap_opt.truncate()
                         shap_opt.write("true")
-                    if usr_ppi.lower() == "true":
+                    if usr_ppi.lower() == "true" and ppi_compatibility:
                         shap_opt.seek(0)
                         shap_opt.truncate()
                         shap_opt.write("true")
