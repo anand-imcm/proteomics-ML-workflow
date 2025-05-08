@@ -111,9 +111,9 @@ def neural_network_nested_cv(inp, prefix, feature_selection_method):
     y = data['Label']
 
     # Apply data standardization
-    scaler = StandardScaler()
-    X_scaled = scaler.fit_transform(X)
-    X = pd.DataFrame(X_scaled, columns=X.columns)
+    # scaler = StandardScaler()
+    # X_scaled = scaler.fit_transform(X)
+    # X = pd.DataFrame(X_scaled, columns=X.columns)
 
     # Convert target variable to categorical
     le = LabelEncoder()

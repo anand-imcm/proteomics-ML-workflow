@@ -40,9 +40,11 @@ def run_model(model, csv, prefix, feature_selection):
     elif model == "XGB":
         xgboost(csv, prefix, feature_selection)
     elif model == "PLSDA":
-        if feature_selection not in ['umap', 'elasticnet', 'none']:
+        if feature_selection not in ['umap', 'elasticnet', None]:
             print(f"Skipping PLSDA because feature selection {feature_selection} is incompatible.")
             return
+        plsda(csv, prefix, feature_selection)
+
     elif model == "VAE":
         # VAE does not take feature_selection
         vae(csv, prefix)

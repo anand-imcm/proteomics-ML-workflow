@@ -194,6 +194,7 @@ def calculate_shap_values(
     """
     if model_type == "tree":
         explainer = shap.TreeExplainer(best_model)
+
     elif model_type == "linear":
         explainer = shap.LinearExplainer(
             best_model, X, feature_perturbation="interventional"
@@ -491,8 +492,10 @@ def get_model_type(model_name):
     """
     Get the SHAP explainer type based on the model name.
     """
-    if model_name in ["random_forest", "xgboost", "lightgbm"]:
+    if model_name in ["random_forest", "xgboost"]:
         return "tree"
+    elif model_name in ["lightgbm"]:  
+        return "permutation"
     elif model_name in ["logistic_regression", "plsda"]:
         return "permutation"  # Use PermutationExplainer for these models
     elif model_name == "neural_network":
@@ -550,7 +553,7 @@ def process_model(model_name, prefix, num_features, n_jobs_explainer):
             best_model, X, y_encoded, num_classes, feature_names, class_names = load_model_and_data(
                 model_name, prefix
             )
-
+            model_type = get_model_type(model_name)
             # Check if the pipeline includes any feature selection or scaler transformers
             if hasattr(best_model, "named_steps"):
                 steps = best_model.named_steps
@@ -579,17 +582,15 @@ def process_model(model_name, prefix, num_features, n_jobs_explainer):
                         break
 
                 # Decide which transformers to remove
-                if is_nn_with_elasticnet:
-                    transformers_to_remove = feature_selection_steps  # Do not remove scalers
-                else:
-                    transformers_to_remove = feature_selection_steps + scaler_steps
+                transformers_to_remove = feature_selection_steps
+
 
                 selected_transformer = None
                 for step_name in feature_selection_steps:
                     transformer = steps[step_name]
                     selected_transformer = transformer
                     break  # Assuming only one feature selection transformer is used
-
+                model_type = get_model_type(model_name)
                 if transformers_to_remove:
                     print(
                         f"Removing transformers {transformers_to_remove} from the pipeline for SHAP explanations."
@@ -653,6 +654,10 @@ def process_model(model_name, prefix, num_features, n_jobs_explainer):
                     # No feature selection transformer was used; use original data
                     X_transformed = X
                     feature_names_transformed = feature_names
+                    # if model_type == "tree":
+                    #     from sklearn.preprocessing import StandardScaler
+                    #     scaler_tmp = StandardScaler().fit(X_transformed)
+                    #     X_transformed = scaler_tmp.transform(X_transformed)
             else:
                 # If the model is not a Pipeline
                 modified_model = best_model
@@ -660,16 +665,39 @@ def process_model(model_name, prefix, num_features, n_jobs_explainer):
                 X_transformed = X
                 feature_names_transformed = feature_names
 
-            # Extract the final estimator from the modified pipeline if it's a Pipeline
-            if isinstance(modified_model, Pipeline):
-                final_estimator = modified_model.steps[-1][1]
+            # for tree models we need both preprocessing (to transform X) and the raw booster
+            if isinstance(modified_model, Pipeline) and model_type == "tree":
+                # split off the final estimator
+                model_step = modified_model.steps[-1][1]        
+                preprocessing_pipeline = Pipeline(modified_model.steps[:-1])
+                if model_name == "lightgbm":
+                    X_transformed = X  # 
+                else:
+                    X_transformed = preprocessing_pipeline.transform(X)
+
+                # for lightGBM, extract the Booster
+                if model_name == "lightgbm":
+                    final_estimator = model_step  # Use LGBMClassifier, NOT booster_
+                else:
+                    final_estimator = model_step
+
+            
             else:
+                # non-tree or no pipeline: use whole pipeline or raw model
                 final_estimator = modified_model
+                X_transformed = X
+
+
 
             model_type = get_model_type(model_name)
             shap_values_mean = calculate_shap_values(
-                final_estimator, X_transformed, num_classes, model_type, n_jobs_explainer
+                final_estimator,
+                X_transformed,
+                num_classes,
+                model_type,
+                n_jobs_explainer
             )
+
 
             # Build final SHAP dataframe
             if shap_values_mean.ndim == 1:

@@ -128,9 +128,9 @@ def gaussian_nb_nested_cv(inp, prefix, feature_selection_method):
     y = data['Label']
 
     # Standardization
-    scaler = StandardScaler()
-    X_scaled = scaler.fit_transform(X)
-    X = pd.DataFrame(X_scaled, columns=X.columns)
+    # scaler = StandardScaler()
+    # X_scaled = scaler.fit_transform(X)
+    # X = pd.DataFrame(X_scaled, columns=X.columns)
 
     # Encode labels
     le = LabelEncoder()

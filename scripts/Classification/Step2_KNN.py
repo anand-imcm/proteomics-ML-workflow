@@ -104,8 +104,8 @@ def knn_nested_cv(inp, prefix, feature_selection_method):
     y = data['Label']
 
     scaler = StandardScaler()
-    X_scaled = scaler.fit_transform(X)
-    X = pd.DataFrame(X_scaled, columns=X.columns)
+    # X_scaled = scaler.fit_transform(X)
+    # X = pd.DataFrame(X_scaled, columns=X.columns)
 
     le = LabelEncoder()
     y_encoded = le.fit_transform(y)

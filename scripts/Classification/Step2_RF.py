@@ -140,8 +140,8 @@ def random_forest_nested_cv(inp, prefix, feature_selection_method):
 
     # Standardization
     scaler = StandardScaler()
-    X_scaled = scaler.fit_transform(X)
-    X = pd.DataFrame(X_scaled, columns=X.columns)
+    # X_scaled = scaler.fit_transform(X)
+    # X = pd.DataFrame(X_scaled, columns=X.columns)
 
     # Encode labels
     le = LabelEncoder()
@@ -220,7 +220,7 @@ def random_forest_nested_cv(inp, prefix, feature_selection_method):
         if not tsne_selected:
             # Define the objective function for Optuna within the outer fold
             def objective_inner(trial):
-                steps = []
+                steps = [('scaler', StandardScaler())]
 
                 # Add feature selection based on the method
                 if feature_selection_method != 'none':
@@ -335,7 +335,7 @@ def random_forest_nested_cv(inp, prefix, feature_selection_method):
             best_params_inner = study_inner.best_params
 
             # Initialize the best model with the best hyperparameters
-            steps = []
+            steps = [('scaler', StandardScaler())]
 
             # Add feature selection based on the method
             if feature_selection_method != 'none':
@@ -693,7 +693,7 @@ def random_forest_nested_cv(inp, prefix, feature_selection_method):
         print("Starting hyperparameter tuning on the entire dataset...")
 
         def objective_full(trial):
-            steps = []
+            steps = [('scaler', StandardScaler())]
 
             if feature_selection_method != 'none':
                 if feature_selection_method == 'pca':
@@ -800,7 +800,7 @@ def random_forest_nested_cv(inp, prefix, feature_selection_method):
         best_params_full = study_full.best_params
         print(f"Best parameters for Random Forest: {best_params_full}")
 
-        steps = []
+        steps = [('scaler', StandardScaler())]
 
         if feature_selection_method != 'none':
             if feature_selection_method == 'pca':
