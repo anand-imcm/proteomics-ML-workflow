@@ -310,7 +310,7 @@ pdf(pdf_fileName)
 ### Read in protein expression profile
 proExpF <- read.csv(proteinExpFile, check.names=FALSE)[,c(-1,-2)] %>% dplyr::select(where(~ any(. != 0)))
 
-for(colCt in colnames(Full_SHAP_F_AllScaled)){
+for(colCt in colnames(Full_SHAP_F_AllScaled)[!grepl("CombinedShap", colnames(Full_SHAP_F_AllScaled))]){
   SHAP_PlotF <- Full_SHAP_F_AllScaled %>% dplyr::select(all_of(colCt)) %>% arrange(desc(!!sym(colCt))) %>%slice_head(n = SHAPthresh) 
   
   ### Prepare data frame of top proteins with highest importance
