@@ -67,9 +67,9 @@ task run_plan {
                         ppi_opt.truncate()
                         ppi_opt.write("true")
                     if usr_ppi.lower() == "true" and ppi_compatibility and usr_shap.lower() == "false":
-                        logging.warning("Protein-protein interaction analysis module is supported only when 'calculate_shap' = 'true' and the 'dimensionality_reduction_choices' = 'ELASTICNET' or 'NONE'." )
+                        logging.warning("The Protein-Protein Interaction analysis module is supported only when 'calculate_shap' is set to 'true', and 'dimensionality_reduction_choices' is set to 'ELASTICNET' or 'NONE'." )
                     if usr_ppi.lower() == "true" and (not ppi_compatibility):
-                        logging.warning("Protein-protein interaction analysis module is supported only when the 'dimensionality_reduction_choices' = 'ELASTICNET' or 'NONE' and the 'calculate_shap' = 'true'." )
+                        logging.warning("The Protein-Protein Interaction analysis module is supported only when 'dimensionality_reduction_choices' is set to 'ELASTICNET' or 'NONE', and 'calculate_shap' is set to 'true'." )
             elif run_mode.lower() == "classification":
                 if any(dim_options) and len(dim_options) > 1:
                     dim_opt.seek(0)
@@ -110,9 +110,9 @@ task run_plan {
                         ppi_opt.truncate()
                         ppi_opt.write("true")
                     if usr_ppi.lower() == "true" and ppi_compatibility and usr_shap.lower() == "false":
-                        logging.warning("Protein-protein interaction analysis module is supported only when 'calculate_shap' = 'true' and the 'dimensionality_reduction_choices' = 'ELASTICNET' or 'NONE'." )
+                        logging.warning("The Protein-Protein Interaction analysis module is supported only when 'calculate_shap' is set to 'true', and 'dimensionality_reduction_choices' is set to 'ELASTICNET' or 'NONE'." )
                     if usr_ppi.lower() == "true" and (not ppi_compatibility):
-                        logging.warning("Protein-protein interaction analysis module is supported only when 'dimensionality_reduction_choices' = 'ELASTICNET' or 'NONE' and the 'calculate_shap' = 'true'." )
+                        logging.warning("The Protein-Protein Interaction analysis module is supported only when 'dimensionality_reduction_choices' is set to 'ELASTICNET' or 'NONE', and 'calculate_shap' is set to 'true'." )
             else:
                 run_mode = "summary"
                 if any(dim_options):
@@ -122,6 +122,7 @@ task run_plan {
                     for dim in dim_options:
                         dim_plan.write(dim.replace("-", "").lower() + "\n")
         EOF
+        [ ! -s warnings.log ] && rm warnings.log || cat warnings.log
     >>>
     output {
         Boolean use_dim = read_boolean("use_dim.txt")
@@ -134,7 +135,6 @@ task run_plan {
         Array[String] reg_opt = read_lines("reg_options.txt")
         Boolean use_shap = read_boolean("use_shap.txt")
         Boolean use_ppi = read_boolean("use_ppi.txt")
-        Array[String] warning = read_lines("warnings.log")
     }
     runtime {
         docker: "python:3.12-slim"
