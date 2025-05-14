@@ -12,6 +12,8 @@ task run_plan {
     command <<<
         python3 <<EOF
         import re
+        import logging
+        logging.basicConfig(filename='warnings.log', filemode='a', level=logging.WARNING, format='%(asctime)s - %(levelname)s - %(message)s')
         usr_models = "~{model_choices}"
         usr_dim = "~{dimensionality_reduction_choices}"
         usr_reg = "~{regression_choices}"
@@ -38,10 +40,11 @@ task run_plan {
                     dim_opt.write("true")
                     for dim in dim_options:
                         dim_plan.write(dim.replace("-", "").lower() + "\n")
+                    logging.warning("Multiple dimentionality reduction option selected. Skipping any regression model(s) if chosen.")
                 else:
                     if any(dim_options):
                         dim_plan.write(dim_options[0].replace("-", "").lower())
-                        if dim_options[0].replace("-", "").lower() == "elasticnet":
+                        if dim_options[0].replace("-", "").lower() == "elasticnet" or dim_options[0].replace("-", "").lower() == "none":
                             ppi_compatibility = True
                     else:
                         ppi_compatibility = True
@@ -56,13 +59,17 @@ task run_plan {
                         shap_opt.seek(0)
                         shap_opt.truncate()
                         shap_opt.write("true")
-                    if usr_ppi.lower() == "true" and ppi_compatibility:
+                    if usr_ppi.lower() == "true" and ppi_compatibility and usr_shap.lower() == "true":
                         shap_opt.seek(0)
                         shap_opt.truncate()
                         shap_opt.write("true")
                         ppi_opt.seek(0)
                         ppi_opt.truncate()
                         ppi_opt.write("true")
+                    if usr_ppi.lower() == "true" and ppi_compatibility and usr_shap.lower() == "false":
+                        logging.warning("Protein-protein interaction analysis module is supported only when 'calculate_shap' = 'true' and the 'dimensionality_reduction_choices' = 'ELASTICNET' or 'NONE'." )
+                    if usr_ppi.lower() == "true" and (not ppi_compatibility):
+                        logging.warning("Protein-protein interaction analysis module is supported only when the 'dimensionality_reduction_choices' = 'ELASTICNET' or 'NONE' and the 'calculate_shap' = 'true'." )
             elif run_mode.lower() == "classification":
                 if any(dim_options) and len(dim_options) > 1:
                     dim_opt.seek(0)
@@ -70,10 +77,11 @@ task run_plan {
                     dim_opt.write("true")
                     for dim in dim_options:
                         dim_plan.write(dim.replace("-", "").lower() + "\n")
+                    logging.warning("Multiple dimentionality reduction option selected. Skipping any classification model(s) if chosen.")
                 else:
                     if any(dim_options):
                         dim_plan.write(dim_options[0].replace("-", "").lower())
-                        if dim_options[0].replace("-", "").lower() == "elasticnet":
+                        if dim_options[0].replace("-", "").lower() == "elasticnet" or dim_options[0].replace("-", "").lower() == "none":
                             ppi_compatibility = True
                     else:
                         dim_plan.write("none")
@@ -94,13 +102,17 @@ task run_plan {
                         shap_opt.seek(0)
                         shap_opt.truncate()
                         shap_opt.write("true")
-                    if usr_ppi.lower() == "true" and ppi_compatibility:
+                    if usr_ppi.lower() == "true" and ppi_compatibility and usr_shap.lower() == "true":
                         shap_opt.seek(0)
                         shap_opt.truncate()
                         shap_opt.write("true")
                         ppi_opt.seek(0)
                         ppi_opt.truncate()
                         ppi_opt.write("true")
+                    if usr_ppi.lower() == "true" and ppi_compatibility and usr_shap.lower() == "false":
+                        logging.warning("Protein-protein interaction analysis module is supported only when 'calculate_shap' = 'true' and the 'dimensionality_reduction_choices' = 'ELASTICNET' or 'NONE'." )
+                    if usr_ppi.lower() == "true" and (not ppi_compatibility):
+                        logging.warning("Protein-protein interaction analysis module is supported only when 'dimensionality_reduction_choices' = 'ELASTICNET' or 'NONE' and the 'calculate_shap' = 'true'." )
             else:
                 run_mode = "summary"
                 if any(dim_options):
@@ -122,6 +134,7 @@ task run_plan {
         Array[String] reg_opt = read_lines("reg_options.txt")
         Boolean use_shap = read_boolean("use_shap.txt")
         Boolean use_ppi = read_boolean("use_ppi.txt")
+        Array[String] warning = read_lines("warnings.log")
     }
     runtime {
         docker: "python:3.12-slim"
