@@ -13,4 +13,7 @@ RUN apt-get update && apt-get install -y \
 
 COPY ./scripts/NetPath /scripts
 
-RUN Rscript /scripts/install_packages.R
+RUN Rscript /scripts/install_packages.R \
+    && wget -q http://stringdb-downloads.org/download/protein.aliases.v12.0/9606.protein.aliases.v12.0.txt.gz -P /scripts \
+    && wget -q http://stringdb-downloads.org/download/protein.info.v12.0/9606.protein.info.v12.0.txt.gz -P /scripts \
+    && wget -q http://stringdb-downloads.org/download/protein.links.v12.0/9606.protein.links.v12.0.txt.gz -P /scripts

@@ -23,6 +23,7 @@ library(writexl)
 library(pdftools)
 
 set.seed(42)
+options(timeout = 300)
 
 # Define the list of options
 option_list <- list(
@@ -322,7 +323,12 @@ for(colCt in colnames(Full_SHAP_F_AllScaled)[!grepl("CombinedShap", colnames(Ful
   
   ### Entrez Symbol is used to display on the network plot, perform the protein name mapping
   if(converProId == TRUE){
-    ensembl <- useMart("ensembl", dataset = "hsapiens_gene_ensembl")
+    # ensembl <- useMart("ensembl", dataset = "hsapiens_gene_ensembl")
+    if (file.exists("/scripts/ensembl.RDS")) {
+      ensembl <- readRDS("/scripts/ensembl.RDS")
+    } else {
+      ensembl <- useMart("ensembl", dataset = "hsapiens_gene_ensembl")
+    }
     Pro_Plot <- getBM(
       attributes = c("uniprotswissprot", "hgnc_symbol"),
       filters = "uniprotswissprot",
@@ -376,7 +382,7 @@ for(colCt in colnames(Full_SHAP_F_AllScaled)[!grepl("CombinedShap", colnames(Ful
   ###############
   ### Initialise the STRINGdb database
   string_db <- STRINGdb$new(version = "12", species = 9606, score_threshold = score_thresholdHere, 
-                            network_type = "full", input_directory = "", protocol = "http")
+                            network_type = "full", input_directory = "/scripts", protocol = "http")
   
   Hub_Proteins_STRING_List <- map2String(string_db, Pro_Plot_F, Full_SHAP_F_Plot, score_thresholdHere, combined_score_thresholdHere, CoPro_EntrezSym, colCt)
   Hub_Proteins_STRING <- Hub_Proteins_STRING_List[[1]] %>% arrange(desc(Degree))
