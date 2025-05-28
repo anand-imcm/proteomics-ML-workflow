@@ -9,7 +9,7 @@
 #     --proteinExpFile "Case1.csv" \
 #     --CorMethod "spearman" \
 #     --CorThreshold 0.8 \
-#     > "/home/rstudio/YD/ML_workflow/output/Network.log" 2>&1 &
+#     > "/home/rstudio/YD/ML_workflow_DY/output/Network_WT.log" 2>&1 &
 
 library(optparse)
 library(tidyverse)
@@ -18,7 +18,8 @@ library(igraph)
 library(STRINGdb)
 library(fields)
 library(ggplot2)
-library(biomaRt)
+library(org.Hs.eg.db)
+library(AnnotationDbi)
 library(writexl)
 library(pdftools)
 
@@ -66,6 +67,23 @@ CorThreshold <- args$CorThreshold
 # FUNCTIONS TO BE CALLED BY MAIN
 #--------------------------------
 #--------------------------------
+# Function to map UniProt IDs to gene symbols (Entrez-style)
+# Input: UniProList – a vector of UniProt IDs
+# Output: DataF_EntrezSym – a data frame mapping each UniProt ID to its corresponding gene symbol
+ConvertUniprot2Symbol <- function(UniProList){
+  DataF_EntrezSym <- AnnotationDbi::select(
+    org.Hs.eg.db,
+    keys = UniProList,
+    keytype = "UNIPROT",
+    columns = c("UNIPROT", "SYMBOL")
+  ) %>%
+    dplyr::group_by(UNIPROT) %>%
+    dplyr::summarize(SYMBOL = paste(na.omit(unique(SYMBOL)), collapse = ";"), .groups = "drop") %>% ### UniProt IDs with duplicated or multiple associated gene symbols
+    dplyr::filter(!is.na(SYMBOL) & SYMBOL != "" & SYMBOL != "NA" & SYMBOL != " ") %>% as.data.frame() ### Possible entries with no mapped gene symbol for the given UniProt ID in the database
+  
+  return(DataF_EntrezSym)
+}
+
 # Function to generate hub protein table based on centrality score
 # Input -- LinkTable: object of links between nodes
 # Output -- centrality_df: data frame displaying centrality score for displayed nodes
@@ -297,6 +315,7 @@ colnames(NewSHAP) <- ModelName
 NewSHAP_scaled <- as.data.frame(lapply(NewSHAP, function(x) {
   (x - min(x, na.rm = TRUE)) / (max(x, na.rm = TRUE) - min(x, na.rm = TRUE))
 })) ### standardize the magnitude per model to 0~1
+colnames(NewSHAP_scaled) <- colnames(NewSHAP)
 rownames(NewSHAP_scaled) <- rownames(NewSHAP)
 
 CombinedShap <- NewSHAP_scaled %>% mutate(CombinedShap = rowMeans(across(everything(), abs), na.rm = TRUE)) %>% dplyr::select("CombinedShap")
@@ -312,84 +331,68 @@ pdf(pdf_fileName)
 proExpF <- read.csv(proteinExpFile, check.names=FALSE)[,c(-1,-2)] %>% dplyr::select(where(~ any(. != 0)))
 
 for(colCt in colnames(Full_SHAP_F_AllScaled)[!grepl("CombinedShap", colnames(Full_SHAP_F_AllScaled))]){
-  SHAP_PlotF <- Full_SHAP_F_AllScaled %>% dplyr::select(all_of(colCt)) %>% arrange(desc(!!sym(colCt))) %>%slice_head(n = SHAPthresh) 
-  
-  ### Prepare data frame of top proteins with highest importance
-  Pro_Plot_Ori <- rownames(SHAP_PlotF)
-  
-  ### Identify the strongly coexpressed proteins with the top important proteins based on SHAP
-  corF <- cor(proExpF,method = CorMethod)[Pro_Plot_Ori,]
-  CoPro_UniPro <- unique(colnames(corF)[which(corF > CorThreshold, arr.ind = TRUE)[, 2]])
-  
-  ### Entrez Symbol is used to display on the network plot, perform the protein name mapping
-  if(converProId == TRUE){
-    # ensembl <- useMart("ensembl", dataset = "hsapiens_gene_ensembl")
-    if (file.exists("/scripts/ensembl.RDS")) {
-      ensembl <- readRDS("/scripts/ensembl.RDS")
-    } else {
-      ensembl <- useMart("ensembl", dataset = "hsapiens_gene_ensembl")
+  tryCatch(
+    {
+      SHAP_PlotF <- Full_SHAP_F_AllScaled %>% dplyr::select(all_of(colCt)) %>% arrange(desc(!!sym(colCt))) %>%slice_head(n = SHAPthresh) 
+      
+      ### Prepare data frame of top proteins with highest importance
+      Pro_Plot_Ori <- rownames(SHAP_PlotF)
+      
+      ### Identify the strongly coexpressed proteins with the top important proteins based on SHAP
+      corF <- cor(proExpF,method = CorMethod)[Pro_Plot_Ori,]
+      CoPro_UniPro <- unique(colnames(corF)[which(corF > CorThreshold, arr.ind = TRUE)[, 2]])
+      
+      ### Entrez Symbol is used to display on the network plot, perform the protein name mapping
+      if(converProId == TRUE){
+        
+        Pro_Plot <- ConvertUniprot2Symbol(Pro_Plot_Ori) ### The warning "'select()' returned 1:many mapping between keys and columns" can be safely ignored, as this scenario is addressed by the function "ConvertUniprot2Symbol".
+        
+        SHAP <- unlist(sapply(Pro_Plot$UNIPROT, function(x) {SHAP_PlotF[which(rownames(SHAP_PlotF)==x)[1], colCt]}))
+        Pro_Plot_F <- Pro_Plot %>% dplyr::select(SYMBOL) %>% mutate(SHAP = SHAP) %>% arrange(desc(SHAP))
+        
+        ### We also need to retreive all the SHAP values for all the proteins for the purpose of expansion network plot
+        Full_SHAP <- ConvertUniprot2Symbol(Full_SHAP_Ori)
+        SHAP_All <- unlist(sapply(Full_SHAP$UNIPROT, function(x) {Full_SHAP_F[which(rownames(Full_SHAP_F)==x)[1], colCt]}))
+        Full_SHAP_F_Plot <- cbind(Full_SHAP$SYMBOL, SHAP_All) %>% as.data.frame() %>% mutate(SHAP_All = as.numeric(SHAP_All))
+        
+        ### Map strongly coexpressed proteins between UniProId and Entrez Symbol
+        CoPro_EntrezSym <- ConvertUniprot2Symbol(Full_SHAP_Ori)
+        
+      }else{
+        Pro_Plot_F <- cbind(rownames(SHAP_PlotF), SHAP_PlotF[,colCt]) %>% as.data.frame()
+        Full_SHAP_F_Plot <- cbind(rownames(Full_SHAP_F),Full_SHAP_F[,colCt]) %>% as.data.frame()
+        CoPro_EntrezSym <- CoPro_UniPro
+      }
+      
+      ###  Set the arbitrary colnames for the convenience of processing data.
+      colnames(Pro_Plot_F) <- colnames(Full_SHAP_F_Plot) <- c("proName", "SHAP")
+      rownames(Pro_Plot_F) <- Pro_Plot_F$proName
+      
+      ### Tackle with the same UniProtID corresponding to different Entrez Symbols and remove the NA SHAP values.
+      Full_SHAP_F_Plot %<>% filter(!(is.na(SHAP)))%<>% group_by(proName) %<>% summarise(SHAP = max(SHAP, na.rm = TRUE), .groups = "drop") %<>% as.data.frame()
+      rownames(Full_SHAP_F_Plot) <- Full_SHAP_F_Plot$proName
+      
+      ### Pro_Plot_F is the SHAP-ordered frame only for the top important proteins; Full_SHAP_F_Plot is NOT SHAP-ordered though for all the proteins.
+      
+      ###############
+      # OUTPUT FILES
+      ###############
+      ### Initialise the STRINGdb database
+      string_db <- STRINGdb$new(version = "12", species = 9606, score_threshold = score_thresholdHere, 
+                                network_type = "full", input_directory = "/scripts", protocol = "http")
+      
+      Hub_Proteins_STRING_List <- map2String(string_db, Pro_Plot_F, Full_SHAP_F_Plot, score_thresholdHere, combined_score_thresholdHere, CoPro_EntrezSym, colCt)
+      Hub_Proteins_STRING <- Hub_Proteins_STRING_List[[1]] %>% arrange(desc(Degree))
+      Hub_Proteins_STRING_WithExpansion <- Hub_Proteins_STRING_List[[2]] %>% arrange(desc(Degree))
+      
+      write_xlsx(Hub_Proteins_STRING, path = paste0(colCt, "_Hub_Proteins_STRING.xlsx"))
+      write_xlsx(Hub_Proteins_STRING_WithExpansion, path = paste0(colCt, "_Hub_Proteins_STRING_WithExpansion.xlsx"))
+    },
+    finally = {
+      # If the PPI network plot cannot be generated properly, notify the user with suggestions to improve the input for better PPI analysis results.
+      message("PPI network plot could not be generated properly. Please ensure you are using Entrez Gene Symbols as protein identifiers for the PPI plot, and verify that SHAP values are meaningful numeric values.")
     }
-    Pro_Plot <- getBM(
-      attributes = c("uniprotswissprot", "hgnc_symbol"),
-      filters = "uniprotswissprot",
-      values = Pro_Plot_Ori,
-      mart = ensembl
-    )
-    SHAP <- unlist(sapply(Pro_Plot$uniprotswissprot, function(x) {SHAP_PlotF[which(rownames(SHAP_PlotF)==x)[1], colCt]}))
-    Pro_Plot_F <- Pro_Plot %>% dplyr::select(hgnc_symbol) %>% mutate(SHAP = SHAP) %>% arrange(desc(SHAP))
-    
-    # Wait for a specified time (e.g., 10 seconds to avoid server Ensembl’s biomaRt API crush)
-    Sys.sleep(10)  
-    
-    ### We also need to retreive all the SHAP values for all the proteins for the purpose of expansion network plot
-    Full_SHAP <- getBM(
-      attributes = c("uniprotswissprot", "hgnc_symbol"),
-      filters = "uniprotswissprot",
-      values = Full_SHAP_Ori,
-      mart = ensembl
-    )
-    SHAP_All <- unlist(sapply(Full_SHAP$uniprotswissprot, function(x) {Full_SHAP_F[which(rownames(Full_SHAP_F)==x)[1], colCt]}))
-    Full_SHAP_F_Plot <- cbind(Full_SHAP$hgnc_symbol, SHAP_All) %>% as.data.frame() %>% mutate(SHAP_All = as.numeric(SHAP_All))
-    
-    Sys.sleep(10)  
-    
-    ### Map strongly coexpressed proteins between UniProId and Entrez Symbol
-    CoPro_EntrezSym <- getBM(
-      attributes = c("uniprotswissprot", "hgnc_symbol"),
-      filters = "uniprotswissprot",
-      values = CoPro_UniPro,
-      mart = ensembl
-    ) %>% dplyr::select(hgnc_symbol)
-    
-  }else{
-    Pro_Plot_F <- cbind(rownames(SHAP_PlotF), SHAP_PlotF[,colCt]) %>% as.data.frame()
-    Full_SHAP_F_Plot <- cbind(rownames(Full_SHAP_F),Full_SHAP_F[,colCt]) %>% as.data.frame()
-    CoPro_EntrezSym <- CoPro_UniPro
-  }
-  
-  ###  Set the arbitrary colnames for the convenience of processing data.
-  colnames(Pro_Plot_F) <- colnames(Full_SHAP_F_Plot) <- c("proName", "SHAP")
-  rownames(Pro_Plot_F) <- Pro_Plot_F$proName
-  
-  ### Tackle with the same UniProtID corresponding to different Entrez Symbols and remove the NA SHAP values.
-  Full_SHAP_F_Plot %<>% filter(!(is.na(SHAP)))%<>% group_by(proName) %<>% summarise(SHAP = max(SHAP, na.rm = TRUE), .groups = "drop") %<>% as.data.frame()
-  rownames(Full_SHAP_F_Plot) <- Full_SHAP_F_Plot$proName
-  
-  ### Pro_Plot_F is the SHAP-ordered frame only for the top important proteins; Full_SHAP_F_Plot is NOT SHAP-ordered though for all the proteins.
-  
-  ###############
-  # OUTPUT FILES
-  ###############
-  ### Initialise the STRINGdb database
-  string_db <- STRINGdb$new(version = "12", species = 9606, score_threshold = score_thresholdHere, 
-                            network_type = "full", input_directory = "/scripts", protocol = "http")
-  
-  Hub_Proteins_STRING_List <- map2String(string_db, Pro_Plot_F, Full_SHAP_F_Plot, score_thresholdHere, combined_score_thresholdHere, CoPro_EntrezSym, colCt)
-  Hub_Proteins_STRING <- Hub_Proteins_STRING_List[[1]] %>% arrange(desc(Degree))
-  Hub_Proteins_STRING_WithExpansion <- Hub_Proteins_STRING_List[[2]] %>% arrange(desc(Degree))
-  
-  write_xlsx(Hub_Proteins_STRING, path = paste0(colCt, "_Hub_Proteins_STRING.xlsx"))
-  write_xlsx(Hub_Proteins_STRING_WithExpansion, path = paste0(colCt, "_Hub_Proteins_STRING_WithExpansion.xlsx"))
+  )
 }
 
 dev.off()
