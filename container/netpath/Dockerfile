@@ -1,4 +1,4 @@
-FROM rocker/tidyverse:4.3
+FROM rocker/tidyverse:4.5
 
 RUN apt-get update && apt-get install -y \
     build-essential \
@@ -8,6 +8,7 @@ RUN apt-get update && apt-get install -y \
     liblapack-dev \
     libboost-all-dev \
     libpoppler-cpp-dev \
+    libglpk-dev \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
 
