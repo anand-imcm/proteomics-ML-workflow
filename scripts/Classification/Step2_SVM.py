@@ -72,6 +72,17 @@ class TSNETransformer(BaseEstimator, TransformerMixin):
         else:
             raise NotImplementedError("TSNETransformer does not support transforming new data.")
 
+def safe_umap(n_components, n_neighbors, min_dist, X, random_state=1234):
+    n_components = min(n_components, max(1, X.shape[0] - 1))
+    n_neighbors = min(n_neighbors, max(2, X.shape[0] - 2))
+    return umap.UMAP(
+        n_components=n_components,
+        n_neighbors=n_neighbors,
+        min_dist=min_dist,
+        random_state=random_state,
+        init='random'
+    )
+
 def svm_nested_cv(inp, prefix, feature_selection_method):
     data = pd.read_csv(inp)
 
@@ -110,7 +121,7 @@ def svm_nested_cv(inp, prefix, feature_selection_method):
         X_pca_full_df.to_csv(f"{prefix}_svm_pca_all_components.csv", index=False)
 
     elif feature_selection_method == 'pls':
-        pls = PLSRegression(n_components=X.shape[1])
+        pls = PLSRegression(n_components=min(X.shape[0]-1, X.shape[1]))
         with SuppressOutput():
             X_pls_full = pls.fit_transform(X, y_encoded)[0]
         explained_variance = np.var(X_pls_full, axis=0) / np.var(X, axis=0).sum()
@@ -244,19 +255,18 @@ def svm_nested_cv(inp, prefix, feature_selection_method):
                 # ensure n_neighbors < n_train
                 n_neighbors_umap = min(n_neighbors_umap, max(n_train - 2, 2))
                 min_dist_umap = trial.suggest_uniform('min_dist', 0.0, 0.99)
-                steps.append(('feature_selection', umap.UMAP(
+                steps.append(('feature_selection', safe_umap(
                     n_components=n_components_umap,
                     n_neighbors=n_neighbors_umap,
                     min_dist=min_dist_umap,
-                    random_state=1234,
-                    init='random'
+                    X=X_train_outer
                 )))
 
             elif feature_selection_method == 'pls':
-                max_pls_components_inner = min(X_train_outer.shape[1], 1000)
+                max_pls_components_inner = min(X_train_outer.shape[0] - 1, X_train_outer.shape[1])
                 if max_pls_components_inner < 1:
                     max_pls_components_inner = 1
-                n_components = trial.suggest_int('n_components', 2, max_pls_components_inner)
+                n_components = trial.suggest_int('n_components', 1, max_pls_components_inner)
                 steps.append(('feature_selection', PLSFeatureSelector(n_components=n_components)))
 
             elif feature_selection_method == 'tsne':
@@ -329,17 +339,17 @@ def svm_nested_cv(inp, prefix, feature_selection_method):
         elif feature_selection_method == 'umap':
             best_n_components = best_params_inner['n_components']
             best_n_neighbors = best_params_inner['n_neighbors']
-            best_n_neighbors = min(best_n_neighbors, max(X_train_outer.shape[0] - 2, 2))
             best_min_dist = best_params_inner['min_dist']
-            steps.append(('feature_selection', umap.UMAP(
+            steps.append(('feature_selection', safe_umap(
                 n_components=best_n_components,
                 n_neighbors=best_n_neighbors,
                 min_dist=best_min_dist,
-                random_state=1234,
-                init='random'
+                X=X_train_outer
             )))
+
         elif feature_selection_method == 'pls':
             best_n_components = best_params_inner['n_components']
+            best_n_components = min(best_n_components, X_train_outer.shape[0] - 1, X_train_outer.shape[1])
             steps.append(('feature_selection', PLSFeatureSelector(n_components=best_n_components)))
         elif feature_selection_method == 'tsne':
             best_n_components = best_params_inner['n_components']
@@ -471,18 +481,18 @@ def svm_nested_cv(inp, prefix, feature_selection_method):
             n_neighbors_umap = trial.suggest_int('n_neighbors', 5, min(50, n_samples_full - 1))
             n_neighbors_umap = min(n_neighbors_umap, max(n_samples_full - 2, 2))
             min_dist_umap = trial.suggest_uniform('min_dist', 0.0, 0.99)
-            steps.append(('feature_selection', umap.UMAP(
+            steps.append(('feature_selection', safe_umap(
                 n_components=n_components_umap,
                 n_neighbors=n_neighbors_umap,
                 min_dist=min_dist_umap,
-                random_state=1234,
-                init='random'
+                X=X
             )))
+
         elif feature_selection_method == 'pls':
-            max_pls_components_full = min(X.shape[1], 1000)
+            max_pls_components_full = min(X.shape[0] - 1, X.shape[1])
             if max_pls_components_full < 1:
                 max_pls_components_full = 1
-            n_components = trial.suggest_int('n_components', 2, max_pls_components_full)
+            n_components = trial.suggest_int('n_components', 1, max_pls_components_full)
             steps.append(('feature_selection', PLSFeatureSelector(n_components=n_components)))
         elif feature_selection_method == 'tsne':
             n_components_tsne = trial.suggest_int('n_components', 2, 3)
@@ -553,13 +563,13 @@ def svm_nested_cv(inp, prefix, feature_selection_method):
         best_n_neighbors_full = best_params_full['n_neighbors']
         best_n_neighbors_full = min(best_n_neighbors_full, max(X.shape[0] - 2, 2))
         best_min_dist_full = best_params_full['min_dist']
-        steps.append(('feature_selection', umap.UMAP(
+        steps.append(('feature_selection', safe_umap(
             n_components=best_n_components_full,
             n_neighbors=best_n_neighbors_full,
             min_dist=best_min_dist_full,
-            random_state=1234,
-            init='random'
+            X=X
         )))
+
     elif feature_selection_method == 'pls':
         best_n_components_full = best_params_full['n_components']
         steps.append(('feature_selection', PLSFeatureSelector(n_components=best_n_components_full)))

@@ -112,6 +112,18 @@ class ElasticNetFeatureSelector(BaseEstimator, TransformerMixin):
     def transform(self, X):
         return self.selector.transform(X)
 
+def safe_umap(n_components, n_neighbors, min_dist, X, random_state=1234):
+    n_samples = X.shape[0]
+    n_components = min(n_components, max(1, n_samples - 1))
+    n_neighbors = min(n_neighbors, max(2, n_samples - 2))
+    return umap.UMAP(
+        n_components=n_components,
+        n_neighbors=n_neighbors,
+        min_dist=min_dist,
+        random_state=random_state,
+        init='random'
+    )
+
 def gaussian_nb_nested_cv(inp, prefix, feature_selection_method):
     # Read data
     data = pd.read_csv(inp)
@@ -206,12 +218,13 @@ def gaussian_nb_nested_cv(inp, prefix, feature_selection_method):
                 umap_n_components = trial.suggest_int('umap_n_components', 2, min(100, X_train_outer.shape[1]))
                 umap_n_neighbors = trial.suggest_int('umap_n_neighbors', 5, min(50, X_train_outer.shape[0]-1))
                 umap_min_dist = trial.suggest_uniform('umap_min_dist', 0.0, 0.99)
-                steps.append(('feature_selection', umap.UMAP(
+                steps.append(('feature_selection', safe_umap(
                     n_components=umap_n_components,
                     n_neighbors=umap_n_neighbors,
                     min_dist=umap_min_dist,
-                    random_state=1234
+                    X=X_train_outer
                 )))
+
                 max_n_components = umap_n_components
             elif feature_selection_method == 'tsne':
                 # Suggest hyperparameters for TSNE
@@ -228,7 +241,9 @@ def gaussian_nb_nested_cv(inp, prefix, feature_selection_method):
                 max_n_components = tsne_n_components
             elif feature_selection_method == 'pls':
                 # Suggest hyperparameters for PLS
-                pls_n_components = trial.suggest_int('pls_n_components', 1, min(X_train_outer.shape[1], X_train_outer.shape[0]-1))
+                #pls_n_components = trial.suggest_int('pls_n_components', 1, min(X_train_outer.shape[1], X_train_outer.shape[0]-1))
+                pls_max_components = min(X_train_outer.shape[0] - 1, X_train_outer.shape[1])
+                pls_n_components = trial.suggest_int('pls_n_components', 1, max(1, pls_max_components))
                 steps.append(('feature_selection', PLSFeatureSelector(
                     n_components=pls_n_components,
                     max_iter=1000,
@@ -316,12 +331,13 @@ def gaussian_nb_nested_cv(inp, prefix, feature_selection_method):
             best_umap_n_components = best_params_inner.get('umap_n_components', 2)
             best_umap_n_neighbors = best_params_inner.get('umap_n_neighbors', 15)
             best_umap_min_dist = best_params_inner.get('umap_min_dist', 0.1)
-            steps.append(('feature_selection', umap.UMAP(
+            steps.append(('feature_selection', safe_umap(
                 n_components=best_umap_n_components,
                 n_neighbors=best_umap_n_neighbors,
                 min_dist=best_umap_min_dist,
-                random_state=1234
+                X=X_train_outer
             )))
+
             max_n_components = best_umap_n_components
         elif feature_selection_method == 'tsne':
             best_tsne_n_components = best_params_inner.get('tsne_n_components', 2)
@@ -336,7 +352,7 @@ def gaussian_nb_nested_cv(inp, prefix, feature_selection_method):
             )))
             max_n_components = best_tsne_n_components
         elif feature_selection_method == 'pls':
-            best_pls_n_components = best_params_inner.get('pls_n_components', 2)
+            best_pls_n_components = min(best_params_inner.get('pls_n_components', 2), X_train_outer.shape[0] - 1, X_train_outer.shape[1])
             steps.append(('feature_selection', PLSFeatureSelector(
                 n_components=best_pls_n_components,
                 max_iter=1000,
@@ -479,12 +495,13 @@ def gaussian_nb_nested_cv(inp, prefix, feature_selection_method):
             umap_n_components = trial.suggest_int('umap_n_components', 2, min(100, X.shape[1]))
             umap_n_neighbors = trial.suggest_int('umap_n_neighbors', 5, min(50, X.shape[0]-1))
             umap_min_dist = trial.suggest_uniform('umap_min_dist', 0.0, 0.99)
-            steps.append(('feature_selection', umap.UMAP(
+            steps.append(('feature_selection', safe_umap(
                 n_components=umap_n_components,
                 n_neighbors=umap_n_neighbors,
                 min_dist=umap_min_dist,
-                random_state=1234
+                X=X
             )))
+
             max_n_components_full = umap_n_components
         elif feature_selection_method == 'tsne':
             # Suggest hyperparameters for TSNE
@@ -501,7 +518,8 @@ def gaussian_nb_nested_cv(inp, prefix, feature_selection_method):
             max_n_components_full = tsne_n_components
         elif feature_selection_method == 'pls':
             # Suggest hyperparameters for PLS
-            pls_n_components = trial.suggest_int('pls_n_components', 1, min(X.shape[1], X.shape[0]-1))
+            pls_max_components = min(X.shape[0] - 1, X.shape[1])
+            pls_n_components = trial.suggest_int('pls_n_components', 1, max(1, pls_max_components))
             steps.append(('feature_selection', PLSFeatureSelector(
                 n_components=pls_n_components,
                 max_iter=1000,
@@ -584,11 +602,11 @@ def gaussian_nb_nested_cv(inp, prefix, feature_selection_method):
         best_umap_n_components_full = best_params_full.get('umap_n_components', 2)
         best_umap_n_neighbors_full = best_params_full.get('umap_n_neighbors', 15)
         best_umap_min_dist_full = best_params_full.get('umap_min_dist', 0.1)
-        steps.append(('feature_selection', umap.UMAP(
+        steps.append(('feature_selection', safe_umap(
             n_components=best_umap_n_components_full,
             n_neighbors=best_umap_n_neighbors_full,
             min_dist=best_umap_min_dist_full,
-            random_state=1234
+            X=X
         )))
         max_n_components_full = best_umap_n_components_full
     elif feature_selection_method == 'tsne':
@@ -604,7 +622,7 @@ def gaussian_nb_nested_cv(inp, prefix, feature_selection_method):
         )))
         max_n_components_full = best_tsne_n_components_full
     elif feature_selection_method == 'pls':
-        best_pls_n_components_full = best_params_full.get('pls_n_components', 2)
+        best_pls_n_components_full = min(best_params_full.get('pls_n_components', 2), X.shape[0] - 1, X.shape[1])
         steps.append(('feature_selection', PLSFeatureSelector(
             n_components=best_pls_n_components_full,
             max_iter=1000,
@@ -708,7 +726,7 @@ def gaussian_nb_nested_cv(inp, prefix, feature_selection_method):
                 y_full = label_binarize(y_encoded, classes=np.unique(y_encoded))
                 if y_full.ndim == 1:
                     y_full = np.vstack([1 - y_full, y_full]).T
-                pls_n_components_full = min(X.shape[1], X.shape[0]-1)
+                pls_n_components_full = max(1, min(X.shape[0] - 1, X.shape[1]))
                 full_pls = PLSRegression(n_components=pls_n_components_full, max_iter=1000, tol=1e-06)
                 with SuppressOutput():
                     full_pls.fit(X, y_full)

@@ -130,6 +130,18 @@ class ElasticNetFeatureSelector(BaseEstimator, TransformerMixin):
     def transform(self, X):
         return self.selector.transform(X)
 
+def safe_umap(n_components, n_neighbors, min_dist, X, random_state=1234):
+    n_samples = X.shape[0]
+    n_components = min(n_components, max(1, n_samples - 1))
+    n_neighbors = min(n_neighbors, max(2, n_samples - 2))
+    return umap.UMAP(
+        n_components=n_components,
+        n_neighbors=n_neighbors,
+        min_dist=min_dist,
+        random_state=random_state,
+        init='random'
+    )
+
 def lightgbm_nested_cv(inp, prefix, feature_selection_method):
     data = pd.read_csv(inp)
     if 'SampleID' not in data.columns or 'Label' not in data.columns:
@@ -244,12 +256,13 @@ def lightgbm_nested_cv(inp, prefix, feature_selection_method):
                         umap_n_components = trial.suggest_int('umap_n_components', 2, min(100, X_train_outer_fold.shape[1]))
                         umap_n_neighbors = trial.suggest_int('umap_n_neighbors', 5, min(50, X_train_outer_fold.shape[0]-1))
                         umap_min_dist = trial.suggest_uniform('umap_min_dist', 0.0, 0.99)
-                        steps.append(('feature_selection', umap.UMAP(
+                        steps.append(('feature_selection', safe_umap(
                             n_components=umap_n_components,
                             n_neighbors=umap_n_neighbors,
                             min_dist=umap_min_dist,
-                            random_state=1234
+                            X=X_train_outer_fold
                         )))
+
                     elif feature_selection_method == 'pls':
                         max_components_pls = min(X_train_outer_fold.shape[1], X_train_outer_fold.shape[0]-1)
                         pls_n_components = trial.suggest_int('pls_n_components', 1, max_components_pls)
@@ -344,12 +357,13 @@ def lightgbm_nested_cv(inp, prefix, feature_selection_method):
                     best_umap_n_components = best_params_inner.get('umap_n_components', 2)
                     best_umap_n_neighbors = best_params_inner.get('umap_n_neighbors', 15)
                     best_umap_min_dist = best_params_inner.get('umap_min_dist', 0.1)
-                    steps.append(('feature_selection', umap.UMAP(
+                    steps.append(('feature_selection', safe_umap(
                         n_components=best_umap_n_components,
                         n_neighbors=best_umap_n_neighbors,
                         min_dist=best_umap_min_dist,
-                        random_state=1234
+                        X=X_train_outer
                     )))
+
                 elif feature_selection_method == 'pls':
                     best_pls_n_components = best_params_inner.get('pls_n_components', 2)
                     steps.append(('feature_selection', PLSFeatureSelector(
@@ -732,12 +746,13 @@ def lightgbm_nested_cv(inp, prefix, feature_selection_method):
                     umap_n_components = trial.suggest_int('umap_n_components', 2, min(100, X.shape[1]))
                     umap_n_neighbors = trial.suggest_int('umap_n_neighbors', 5, min(50, X.shape[0]-1))
                     umap_min_dist = trial.suggest_uniform('umap_min_dist', 0.0, 0.99)
-                    steps.append(('feature_selection', umap.UMAP(
+                    steps.append(('feature_selection', safe_umap(
                         n_components=umap_n_components,
                         n_neighbors=umap_n_neighbors,
                         min_dist=umap_min_dist,
-                        random_state=1234
+                        X=X
                     )))
+
                 elif feature_selection_method == 'pls':
                     max_components_pls = min(X.shape[1], X.shape[0]-1)
                     pls_n_components = trial.suggest_int('pls_n_components', 1, max_components_pls)
@@ -833,12 +848,13 @@ def lightgbm_nested_cv(inp, prefix, feature_selection_method):
                 best_umap_n_components_full = best_params_full.get('umap_n_components', 2)
                 best_umap_n_neighbors_full = best_params_full.get('umap_n_neighbors', 15)
                 best_umap_min_dist_full = best_params_full.get('umap_min_dist', 0.1)
-                steps.append(('feature_selection', umap.UMAP(
+                steps.append(('feature_selection', safe_umap(
                     n_components=best_umap_n_components_full,
                     n_neighbors=best_umap_n_neighbors_full,
                     min_dist=best_umap_min_dist_full,
-                    random_state=1234
+                    X=X
                 )))
+
             elif feature_selection_method == 'pls':
                 best_pls_n_components_full = best_params_full.get('pls_n_components', 2)
                 steps.append(('feature_selection', PLSFeatureSelector(

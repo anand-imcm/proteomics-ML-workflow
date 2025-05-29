@@ -111,8 +111,8 @@ def plot_pairplot(data, plot_prefix, labels, method, dims, label_type):
     # Adjust the figure size to prevent overlapping labels
     g.fig.set_size_inches(12, 12)
     plt.subplots_adjust(top=0.95, wspace=0.3, hspace=0.3)
-    g.fig.suptitle(f"Dimensions' view from {method}", size=16)
-    
+    g.fig.suptitle(f"Dimensions' view from {method}", fontsize=22, fontweight='bold')
+ 
     # Adjust axis tick labels for KPCA plots with large numbers
     if method == 'kpca':
         for ax in g.axes.flatten():

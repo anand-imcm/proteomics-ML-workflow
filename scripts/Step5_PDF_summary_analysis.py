@@ -285,7 +285,12 @@ if found_any:
 # Biological Analysis Section (Network Images)
 ####################################
 # Read files matching the pattern "Network_X.png" where X is one or more digits.
-network_files = [file for file in os.listdir('.') if re.match(r'Network_\d+\.png$', file)]
+# network_files = [file for file in os.listdir('.') if re.match(r'Network_\d+\.png$', file)]
+network_files = sorted(
+    [file for file in os.listdir('.') if re.match(r'Network_\d+\.png$', file)],
+    key=lambda x: int(re.search(r'Network_(\d+)\.png$', x).group(1))
+)
+
 if network_files:
     pdf.chapter_title_centered("Biological Analysis")
     for netfile in network_files:

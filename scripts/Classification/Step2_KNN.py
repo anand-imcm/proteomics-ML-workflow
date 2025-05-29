@@ -92,6 +92,17 @@ class TSNETransformer(BaseEstimator, TransformerMixin):
             return self.X_transformed_
         else:
             raise NotImplementedError("TSNETransformer does not support transforming new data.")
+def safe_umap(n_components, n_neighbors, min_dist, X, random_state=1234):
+    n_samples = X.shape[0]
+    n_components = min(n_components, max(1, n_samples - 1))
+    n_neighbors = min(n_neighbors, max(2, n_samples - 2))
+    return umap.UMAP(
+        n_components=n_components,
+        n_neighbors=n_neighbors,
+        min_dist=min_dist,
+        random_state=random_state,
+        init='random'
+    )
 
 def knn_nested_cv(inp, prefix, feature_selection_method):
     data = pd.read_csv(inp)
@@ -131,7 +142,10 @@ def knn_nested_cv(inp, prefix, feature_selection_method):
         X_pca_full_df.to_csv(f"{prefix}_knn_pca_all_components.csv", index=False)
 
     elif feature_selection_method == 'pls':
-        pls = PLSRegression(n_components=min(X.shape[0] - 1, X.shape[1]))
+        max_pls_components = min(X.shape[0] - 1, X.shape[1])
+        max_pls_components = max(1, max_pls_components)
+        pls = PLSRegression(n_components=max_pls_components)
+
         with SuppressOutput():
             X_pls_full = pls.fit_transform(X, y_encoded)[0]
         explained_variance = np.var(X_pls_full, axis=0) / np.var(X, axis=0).sum()
@@ -169,12 +183,13 @@ def knn_nested_cv(inp, prefix, feature_selection_method):
         X_kpca_full_df.to_csv(f"{prefix}_knn_kpca_all_components.csv", index=False)
 
     elif feature_selection_method == 'umap':
-        umap_full = umap.UMAP(
+        umap_full = safe_umap(
             n_components=min(X.shape[1], 100),
             n_neighbors=15,
             min_dist=0.1,
-            random_state=1234
+            X=X
         )
+
         with SuppressOutput():
             X_umap_full = umap_full.fit_transform(X)
         X_umap_full_df = pd.DataFrame(
@@ -277,13 +292,14 @@ def knn_nested_cv(inp, prefix, feature_selection_method):
                 min_dist = trial.suggest_uniform('umap_min_dist', 0.0, 0.99)
                 steps_inner.append((
                     'feature_selection',
-                    umap.UMAP(
+                    safe_umap(
                         n_components=n_components,
                         n_neighbors=umap_n_neighbors,
                         min_dist=min_dist,
-                        random_state=1234
+                        X=X_train_outer
                     )
                 ))
+
             elif feature_selection_method == 'pls':
                 max_pls_components = min(X_train_outer.shape[1], X_train_outer.shape[0] - 1)
                 max_pls_components = max(1, max_pls_components)
@@ -388,13 +404,14 @@ def knn_nested_cv(inp, prefix, feature_selection_method):
             best_umap_min_dist = best_params_inner['umap_min_dist']
             steps_outer.append((
                 'feature_selection',
-                umap.UMAP(
+                safe_umap(
                     n_components=best_umap_n_components,
                     n_neighbors=best_umap_n_neighbors,
                     min_dist=best_umap_min_dist,
-                    random_state=1234
+                    X=X_train_outer
                 )
             ))
+
         elif feature_selection_method == 'pls':
             best_pls_n_components = best_params_inner['pls_n_components']
             steps_outer.append(('feature_selection', PLSFeatureSelector(n_components=best_pls_n_components)))
@@ -533,11 +550,11 @@ def knn_nested_cv(inp, prefix, feature_selection_method):
             min_dist_all = trial.suggest_uniform('umap_min_dist', 0.0, 0.99)
             steps_full.append((
                 'feature_selection',
-                umap.UMAP(
+                safe_umap(
                     n_components=n_components_all,
                     n_neighbors=umap_n_neighbors_all,
                     min_dist=min_dist_all,
-                    random_state=1234
+                    X=X  
                 )
             ))
         elif feature_selection_method == 'pls':
@@ -635,13 +652,14 @@ def knn_nested_cv(inp, prefix, feature_selection_method):
         best_umap_min_dist_full = best_params_full['umap_min_dist']
         steps_final.append((
             'feature_selection',
-            umap.UMAP(
+            safe_umap(
                 n_components=best_umap_n_components_full,
                 n_neighbors=best_umap_n_neighbors_full,
                 min_dist=best_umap_min_dist_full,
-                random_state=1234
+                X=X
             )
         ))
+
     elif feature_selection_method == 'pls':
         best_pls_n_components_full = best_params_full['pls_n_components']
         steps_final.append(('feature_selection', PLSFeatureSelector(n_components=best_pls_n_components_full)))
