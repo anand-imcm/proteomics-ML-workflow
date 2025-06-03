@@ -51,5 +51,6 @@ task ppi_analysis {
         cpu: "~{cpu}"
         memory: "~{memory_gb}GB"
         disks: "local-disk 20 HDD"
+        continueOnReturnCode: [0, 1]
     }
 }
