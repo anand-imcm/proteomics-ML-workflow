@@ -5,7 +5,7 @@
 #     --combined_score_thresholdHere 800 \
 #     --SHAPthresh 100 \
 #     --patternChosen "shap_values.csv" \
-#     --converProId TRUE \
+#     --converProId FALSE \
 #     --proteinExpFile "Case1.csv" \
 #     --CorMethod "spearman" \
 #     --CorThreshold 0.8 \
@@ -36,9 +36,9 @@ option_list <- list(
               help = "Shap threshhold to define the top important proteins.", metavar = "ShapThresh"),
   make_option(c("-n", "--patternChosen"), type = "character", default = "shap_values.csv", 
               help = "File name pattern defining which SHAP files to be included for analysis.", metavar = "FilePattern"),
-  make_option(c("-v", "--converProId"), type = "logical", default = TRUE, 
+  make_option(c("-v", "--converProId"), type = "logical", default = FALSE, 
               help = "Whether to perform the protein name mappin.", metavar = "converProId"),
-  make_option(c("-x","--proteinExpFile"), type = "character", default = "Case1.csv", 
+  make_option(c("-x","--proteinExpFile"), type = "character", default = "Nulisa_mat-OlinkTargets.csv", 
               help = "Protein expression input file name.", metavar = "EXPRESSION"),
   make_option(c("-m","--CorMethod"), type = "character", default = "spearman", 
               help = "Correlation method to define strongly coexpressed proteins, select from spearman, pearson, kendall.", metavar = "CorMethod"),
@@ -115,6 +115,7 @@ getHubProTable <- function(LinkTable){
 # patternChosen: message to included in the title of network plot
 # Output -- list(Hub_Proteins_STRING, Hub_Proteins_STRING_expanded), protein centrality score for non expanded and expanded protein network.
 ### Initialize STRING database
+
 map2String <- function(string_db, Pro_Plot_F, Full_SHAP_F_Plot, score_thresholdHere, combined_score_thresholdHere, CoPro_EntrezSym, patternChosen){
   set.seed(42)
   
@@ -147,7 +148,7 @@ map2String <- function(string_db, Pro_Plot_F, Full_SHAP_F_Plot, score_thresholdH
   ### Set node color based on SHAP values
   # Color palette and node coloring
   myPalette <- colorRampPalette(c("darkgreen", "lightgreen", "white", "pink", "darkred"))
-  nodeValue <- Pro_Plot_F[nodeName2,"SHAP"]
+  nodeValue <- as.numeric(Pro_Plot_F[nodeName2,"SHAP"])
   nodeColor <- myPalette(1000)[
     as.numeric(cut(nodeValue, breaks = 1000))
   ]
@@ -230,7 +231,7 @@ map2String <- function(string_db, Pro_Plot_F, Full_SHAP_F_Plot, score_thresholdH
     which(mapAll$STRING_id == x)[1]
   }))]
   
-  nodeValue_expanded <- Full_SHAP_F_Plot[nodeName2_expanded, "SHAP"]
+  nodeValue_expanded <- as.numeric(Full_SHAP_F_Plot[nodeName2_expanded, "SHAP"])
   
   # Color palette and node coloring
   nodeColor_expanded <- myPalette(1000)[
@@ -313,7 +314,9 @@ colnames(NewSHAP) <- ModelName
 
 ### Keep NewSHAP for further reference
 NewSHAP_scaled <- as.data.frame(lapply(NewSHAP, function(x) {
-  (x - min(x, na.rm = TRUE)) / (max(x, na.rm = TRUE) - min(x, na.rm = TRUE))
+  if(max(x, na.rm = TRUE) - min(x, na.rm = TRUE) == 0){
+    rep(0, length(x)) # if all the proteins have the same SHAP values
+  }else{(x - min(x, na.rm = TRUE)) / (max(x, na.rm = TRUE) - min(x, na.rm = TRUE))}
 })) ### standardize the magnitude per model to 0~1
 colnames(NewSHAP_scaled) <- colnames(NewSHAP)
 rownames(NewSHAP_scaled) <- rownames(NewSHAP)
@@ -332,7 +335,8 @@ proExpF <- read.csv(proteinExpFile, check.names=FALSE)[,c(-1,-2)] %>% dplyr::sel
 
 for(colCt in colnames(Full_SHAP_F_AllScaled)[!grepl("CombinedShap", colnames(Full_SHAP_F_AllScaled))]){
   tryCatch(
-    {
+    {if(all(Full_SHAP_F_AllScaled[,colCt] == 0)){print(paste0("For ", colCt, " All the proteins have the same important scores."))
+    }else{
       SHAP_PlotF <- Full_SHAP_F_AllScaled %>% dplyr::select(all_of(colCt)) %>% arrange(desc(!!sym(colCt))) %>%slice_head(n = SHAPthresh) 
       
       ### Prepare data frame of top proteins with highest importance
@@ -361,7 +365,7 @@ for(colCt in colnames(Full_SHAP_F_AllScaled)[!grepl("CombinedShap", colnames(Ful
       }else{
         Pro_Plot_F <- cbind(rownames(SHAP_PlotF), SHAP_PlotF[,colCt]) %>% as.data.frame()
         Full_SHAP_F_Plot <- cbind(rownames(Full_SHAP_F),Full_SHAP_F[,colCt]) %>% as.data.frame()
-        CoPro_EntrezSym <- CoPro_UniPro
+        CoPro_EntrezSym <- CoPro_UniPro %>% as.data.frame()
       }
       
       ###  Set the arbitrary colnames for the convenience of processing data.
@@ -387,10 +391,10 @@ for(colCt in colnames(Full_SHAP_F_AllScaled)[!grepl("CombinedShap", colnames(Ful
       
       write_xlsx(Hub_Proteins_STRING, path = paste0(colCt, "_Hub_Proteins_STRING.xlsx"))
       write_xlsx(Hub_Proteins_STRING_WithExpansion, path = paste0(colCt, "_Hub_Proteins_STRING_WithExpansion.xlsx"))
-    },
-    finally = {
-      # If the PPI network plot cannot be generated properly, notify the user with suggestions to improve the input for better PPI analysis results.
-      message("PPI network plot could not be generated properly. Please ensure you are using Entrez Gene Symbols as protein identifiers for the PPI plot, and verify that SHAP values are meaningful numeric values.")
+    }
+      error = function(e) {
+        message(paste0("For ", colCt, ", The PPI network plot could not be generated. Please ensure that protein names are provided as either Entrez Gene Symbols or UniProt IDs."))
+      }
     }
   )
 }
