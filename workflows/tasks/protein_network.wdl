@@ -11,7 +11,7 @@ task ppi_analysis {
         Boolean protein_name_mapping = true
         String correlation_method = "spearman"
         Float correlation_threshold = 0.8
-        String docker = "ghcr.io/anand-imcm/proteomics-ml-workflow-net:1.0.2"
+        String docker
         Int memory_gb = 24
         Int cpu = 16
     }
