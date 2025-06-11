@@ -1,15 +1,27 @@
 # This script serves as module to perform bioinformatic characterizations for protein list provided by ML workflow
-# Example Command line: 
+# Example Command line for case 1: 
+# Rscript Module_ProteinNetwork_WDL.R \
+#     --score_thresholdHere 400 \
+#     --combined_score_thresholdHere 800 \
+#     --SHAPthresh 100 \
+#     --patternChosen "shap_values.csv" \
+#     --converProId TRUE \
+#     --proteinExpFile "Case1.csv" \
+#     --CorMethod "spearman" \
+#     --CorThreshold 0.8 \
+#     > "/home/rstudio/YD/ML_workflow_DY/output/Network_WT.log" 2>&1 &
+
+# Example Command line for case 3: 
 # Rscript Module_ProteinNetwork_WDL.R \
 #     --score_thresholdHere 400 \
 #     --combined_score_thresholdHere 800 \
 #     --SHAPthresh 100 \
 #     --patternChosen "shap_values.csv" \
 #     --converProId FALSE \
-#     --proteinExpFile "Case1.csv" \
+#     --proteinExpFile "Nulisa_mat-OlinkTargets.csv" \
 #     --CorMethod "spearman" \
 #     --CorThreshold 0.8 \
-#     > "/home/rstudio/YD/ML_workflow_DY/output/Network_WT.log" 2>&1 &
+#     > "/home/rstudio/YD/ML_workflow_DY/output/Network_WT48.log" 2>&1 &
 
 library(optparse)
 library(tidyverse)
@@ -24,7 +36,8 @@ library(writexl)
 library(pdftools)
 
 set.seed(42)
-options(timeout = 300)
+suppressWarnings(library(AnnotationDbi))
+suppressMessages(library(pdftools))
 
 # Define the list of options
 option_list <- list(
@@ -79,7 +92,8 @@ ConvertUniprot2Symbol <- function(UniProList){
   ) %>%
     dplyr::group_by(UNIPROT) %>%
     dplyr::summarize(SYMBOL = paste(na.omit(unique(SYMBOL)), collapse = ";"), .groups = "drop") %>% ### UniProt IDs with duplicated or multiple associated gene symbols
-    dplyr::filter(!is.na(SYMBOL) & SYMBOL != "" & SYMBOL != "NA" & SYMBOL != " ") %>% as.data.frame() ### Possible entries with no mapped gene symbol for the given UniProt ID in the database
+    dplyr::filter(!is.na(SYMBOL) & SYMBOL != "" & SYMBOL != "NA" & SYMBOL != " ") %>% as.data.frame() %>% ### Possible entries with no mapped gene symbol for the given UniProt ID in the database
+    distinct(SYMBOL, .keep_all = TRUE) ### Resolve duplicated symbols
   
   return(DataF_EntrezSym)
 }
@@ -283,7 +297,7 @@ map2String <- function(string_db, Pro_Plot_F, Full_SHAP_F_Plot, score_thresholdH
 ################
 # READ IN DATA
 ################
-print(paste0("Network plot for ",  patternChosen, " started at ", format(Sys.time(), "%H:%M:%S"), " on ", Sys.Date(),"."))
+print(paste0("PPI network and Hub Protein analysis based on ",  patternChosen, " started at ", format(Sys.time(), "%H:%M:%S"), " on ", Sys.Date(),"."))
 
 # Choose which SHAP files and which SHAP threshold to make network plot
 proteinImportanceFile_list <- list.files("./" ,pattern=patternChosen)
@@ -334,6 +348,8 @@ pdf(pdf_fileName)
 proExpF <- read.csv(proteinExpFile, check.names=FALSE)[,c(-1,-2)] %>% dplyr::select(where(~ any(. != 0)))
 
 for(colCt in colnames(Full_SHAP_F_AllScaled)[!grepl("CombinedShap", colnames(Full_SHAP_F_AllScaled))]){
+  print(paste0("Proteins with the highest importance scores based on ", colCt, " are selected for PPI analysis."))
+  
   tryCatch(
     {if(all(Full_SHAP_F_AllScaled[,colCt] == 0)){print(paste0("For ", colCt, " All the proteins have the same important scores."))
     }else{
@@ -354,13 +370,13 @@ for(colCt in colnames(Full_SHAP_F_AllScaled)[!grepl("CombinedShap", colnames(Ful
         SHAP <- unlist(sapply(Pro_Plot$UNIPROT, function(x) {SHAP_PlotF[which(rownames(SHAP_PlotF)==x)[1], colCt]}))
         Pro_Plot_F <- Pro_Plot %>% dplyr::select(SYMBOL) %>% mutate(SHAP = SHAP) %>% arrange(desc(SHAP))
         
-        ### We also need to retreive all the SHAP values for all the proteins for the purpose of expansion network plot
+        ### We also need to retrieve all the SHAP values for all the proteins for the purpose of expansion network plot
         Full_SHAP <- ConvertUniprot2Symbol(Full_SHAP_Ori)
         SHAP_All <- unlist(sapply(Full_SHAP$UNIPROT, function(x) {Full_SHAP_F[which(rownames(Full_SHAP_F)==x)[1], colCt]}))
         Full_SHAP_F_Plot <- cbind(Full_SHAP$SYMBOL, SHAP_All) %>% as.data.frame() %>% mutate(SHAP_All = as.numeric(SHAP_All))
         
         ### Map strongly coexpressed proteins between UniProId and Entrez Symbol
-        CoPro_EntrezSym <- ConvertUniprot2Symbol(Full_SHAP_Ori)
+        CoPro_EntrezSym <- ConvertUniprot2Symbol(CoPro_UniPro)
         
       }else{
         Pro_Plot_F <- cbind(rownames(SHAP_PlotF), SHAP_PlotF[,colCt]) %>% as.data.frame()
@@ -393,7 +409,7 @@ for(colCt in colnames(Full_SHAP_F_AllScaled)[!grepl("CombinedShap", colnames(Ful
       write_xlsx(Hub_Proteins_STRING_WithExpansion, path = paste0(colCt, "_Hub_Proteins_STRING_WithExpansion.xlsx"))
     }
       error = function(e) {
-        message(paste0("For ", colCt, ", The PPI network plot could not be generated. Please ensure that protein names are provided as either Entrez Gene Symbols or UniProt IDs."))
+        message(paste0("For ", colCt, ", The PPI network plot could not be generated. Please ensure that (1) protein names are uniquely provided as either Entrez Gene Symbols or UniProt IDs, and (2) the number of top important proteins is properly selected with sufficient number of non-NA SHAP values present."))
       }
     }
   )
