@@ -52,6 +52,8 @@ The workflow is implemented in Python, R and Workflow Description Language (WDL)
 
 - **SHAP analysis** : (Optional) This step calculates SHapley Additive exPlanations (SHAP) values for variable importance (CSV file and radar plot for top features) and plots ROC curves for all the models specified by the user.
 
+- **Protein–Protein Interaction analysis** : (Optional) Biological functional analyses through protein–protein interaction network diagrams for top-ranked biomarkers and first-degree network expansions to highlight functional connectivity.
+
 - **Report generation** : This step aggregates all output plots from the previous steps and compiles them into a `.pdf` report.
 
 ## Installation (local)
