@@ -9,6 +9,7 @@ from sklearn.preprocessing import LabelEncoder, StandardScaler
 from sklearn.base import BaseEstimator, ClassifierMixin
 import shap
 import matplotlib.pyplot as plt
+plt.style.use('default')
 import seaborn as sns
 import warnings
 import sys
@@ -605,7 +606,7 @@ def vae(inp, prefix):
     disp = ConfusionMatrixDisplay(confusion_matrix=cm_total_final, display_labels=le.classes_)
     fig, ax = plt.subplots(figsize=(8, 6))
     disp.plot(ax=ax, cmap=plt.cm.Blues, values_format='d')  # Set values_format='d' to avoid scientific notation
-    plt.title('Confusion Matrix for VAE')
+    plt.title('Confusion Matrix for VAE',fontsize=12,fontweight='bold')
     plt.savefig(f"{prefix}_vae_confusion_matrix.png", dpi=300)
     plt.close()
 
@@ -666,7 +667,7 @@ def vae(inp, prefix):
     })
     print(metrics_df)
     
-    sns.set(style="whitegrid")
+    #sns.set(style="whitegrid")
 
     plt.figure(figsize=(10, 6))
     barplot = sns.barplot(x='Metric', y='Score', data=metrics_df)
@@ -676,15 +677,14 @@ def vae(inp, prefix):
         barplot.annotate(f'{height:.2f}',
                          (p.get_x() + p.get_width() / 2., height),
                          ha='center', va='bottom',
-                         fontsize=11, color='black', xytext=(0, 5),
+                         fontsize=11, color='black', xytext=(0, 9),
                          textcoords='offset points')
     
-    plt.title('Average Evaluation Metrics for VAE')
+    plt.title('Performance Metrics for VAE',fontsize=14,fontweight='bold')
     plt.ylabel('Score')
-    plt.ylim(0, 1.05)  
+    plt.ylim(0, 1.1)  
     plt.savefig(f"{prefix}_vae_metrics.png", dpi=300)
     plt.close()
-
     # Plot evaluation metrics line chart
     # folds = np.arange(1, len(f1_scores_final) + 1)
     # plt.figure(figsize=(12, 8))
@@ -708,15 +708,20 @@ def vae(inp, prefix):
         for i in range(y_binarized.shape[1]):
             plt.plot(fpr[i], tpr[i], label=f'Class {le.inverse_transform([i])[0]} (AUC = {roc_auc[i]:.2f})')
         plt.plot(fpr["micro"], tpr["micro"], label=f'Overall (AUC = {roc_auc["micro"]:.2f})', linestyle='--')
+    
     plt.plot([0, 1], [0, 1], 'k--')
     plt.xlim([0.0, 1.0])
     plt.ylim([0.0, 1.05])
-    plt.xlabel('False Positive Rate')
-    plt.ylabel('True Positive Rate')
-    plt.title('ROC Curves for VAE')
-    plt.legend(loc="lower right")
+    plt.xlabel('False Positive Rate (1 - Specificity)', fontsize=18, labelpad=10)
+    plt.ylabel('True Positive Rate (Sensitivity)', fontsize=18, labelpad=10)
+    plt.title('ROC Curves for VAE', fontsize=22, fontweight='bold', pad=15)
+    plt.legend(loc="lower right", fontsize=14, title_fontsize=16)
+    plt.xticks(fontsize=14)
+    plt.yticks(fontsize=14)
+    plt.tight_layout()
     plt.savefig(f"{prefix}_vae_roc_curve.png", dpi=300)
     plt.close()
+
 
     # Train final model on the entire dataset with the best hyperparameters from the last outer fold
     # Fit scaler_final on the entire dataset
@@ -799,13 +804,15 @@ def vae(inp, prefix):
     plt.figure(figsize=(12, 8))
     plt.plot(folds, f1_scores_final, marker='o', label='F1 Score')
     plt.plot(folds, auc_scores_final, marker='s', label='AUC')
-    plt.title('F1 Score and AUC Across Folds for VAE')
-    plt.xlabel('Fold Number')
-    plt.ylabel('Score')
-    plt.xticks(folds)
+    plt.title('F1 and AUC Scores per Outer Fold', fontsize=16, fontweight='bold', pad=15)
+    plt.xlabel('Outer Fold Number', fontsize=18, labelpad=10)
+    plt.ylabel('Score (F1 / AUC)', fontsize=18, labelpad=10)
+    plt.xticks(folds, fontsize=14)
+    plt.yticks(fontsize=14)
+    plt.legend(fontsize=14, title_fontsize=16)
     plt.ylim(0, 1.05)
-    plt.legend()
     plt.grid(True)
+    plt.tight_layout()
     plt.savefig(f"{prefix}_vae_nested_cv_f1_auc.png", dpi=300)
     plt.close()
 
@@ -817,13 +824,17 @@ def vae(inp, prefix):
         for i in range(y_binarized.shape[1]):
             plt.plot(fpr_final[i], tpr_final[i], label=f'Class {le.inverse_transform([i])[0]} (AUC = {roc_auc_final[i]:.2f})')
         plt.plot(fpr_final["micro"], tpr_final["micro"], label=f'Overall (AUC = {roc_auc_final["micro"]:.2f})', linestyle='--')
+    
     plt.plot([0, 1], [0, 1], 'k--')
     plt.xlim([0.0, 1.0])
     plt.ylim([0.0, 1.05])
-    plt.xlabel('False Positive Rate')
-    plt.ylabel('True Positive Rate')
-    plt.title('ROC Curves for VAE')
-    plt.legend(loc="lower right")
+    plt.xlabel('False Positive Rate (1 - Specificity)', fontsize=18, labelpad=10)
+    plt.ylabel('True Positive Rate (Sensitivity)', fontsize=18, labelpad=10)
+    plt.title('ROC Curves for VAE', fontsize=22, fontweight='bold', pad=15)
+    plt.legend(loc="lower right", fontsize=14, title_fontsize=16)
+    plt.xticks(fontsize=14)
+    plt.yticks(fontsize=14)
+    plt.tight_layout()
     plt.savefig(f"{prefix}_vae_roc_curve.png", dpi=300)
     plt.close()
 

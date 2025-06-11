@@ -85,7 +85,7 @@ def plot_pairplot(data, plot_prefix, labels, method, dims, label_type):
         g = sns.PairGrid(df, vars=dim_columns, hue='Label', corner=True)
         g.map_lower(sns.scatterplot, s=40, edgecolor="w", linewidth=0.5)
         g.map_diag(sns.histplot, kde=True, fill=True, alpha=0.6)
-        g.add_legend()
+        g.add_legend(fontsize=22, title_fontsize=24)
     else:
         # For continuous labels, plot without hue and map colors based on 'Label'
         g = sns.PairGrid(df, vars=dim_columns, corner=True)
@@ -106,13 +106,15 @@ def plot_pairplot(data, plot_prefix, labels, method, dims, label_type):
         # Add colorbar to the right of the entire figure
         g.fig.subplots_adjust(right=0.92)  # Adjust subplot to make room for colorbar
         cbar_ax = g.fig.add_axes([0.94, 0.15, 0.02, 0.7])  # x, y, width, height
-        g.fig.colorbar(sm, cax=cbar_ax, orientation="vertical", label="Label")
+        g.fig.colorbar(sm, cax=cbar_ax, orientation="vertical", label="Label").ax.tick_params(labelsize=18)
+        cbar_ax.set_ylabel("Label", fontsize=22)
+
     
     # Adjust the figure size to prevent overlapping labels
     g.fig.set_size_inches(12, 12)
     plt.subplots_adjust(top=0.95, wspace=0.3, hspace=0.3)
-    g.fig.suptitle(f"Dimensions' view from {method}", size=16)
-    
+    g.fig.suptitle(f"Dimensions' view from {method}", fontsize=26, fontweight='bold')
+ 
     # Adjust axis tick labels for KPCA plots with large numbers
     if method == 'kpca':
         for ax in g.axes.flatten():
@@ -126,7 +128,7 @@ def plot_pairplot(data, plot_prefix, labels, method, dims, label_type):
                 ax.set_xlabel(ax.get_xlabel().split('[')[0])
                 ax.set_ylabel(ax.get_ylabel().split('[')[0])
     
-    plt.savefig(f"{plot_prefix}_{method}_result.png", bbox_inches='tight')
+    plt.savefig(f"{plot_prefix}_{method}_result.png", bbox_inches='tight',dpi=300)
     plt.close()
 
 def detect_label_type(labels, threshold=10):

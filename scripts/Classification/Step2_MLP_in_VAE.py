@@ -9,6 +9,7 @@ from sklearn.preprocessing import LabelEncoder, StandardScaler
 from sklearn.base import BaseEstimator, ClassifierMixin
 import shap
 import matplotlib.pyplot as plt
+plt.style.use('default')
 import warnings
 import sys
 import contextlib
@@ -668,7 +669,7 @@ def vae(inp, prefix):
     ax.yaxis.set_major_formatter(mticker.ScalarFormatter())  # Use ScalarFormatter for y-axis
     # Ensure tick labels are not in scientific notation
     ax.ticklabel_format(style='plain', axis='both')
-    plt.title('Average Confusion Matrix for VAE_MLP (Nested CV)')
+    plt.title('Confusion Matrix for VAE_MLP',fontsize=12,fontweight='bold')
     plt.savefig(f"{prefix}_vaemlp_confusion_matrix.png", dpi=300)
     plt.close()
 
@@ -753,14 +754,20 @@ def vae(inp, prefix):
 
     plt.figure(figsize=(12, 8))
     bars = plt.bar(metrics, mean_scores)
+    
+    max_yval = max(mean_scores)
+    plt.ylim(0, max_yval + 0.05)
 
     # Add value labels on top of each bar
     for bar, score in zip(bars, mean_scores):
         yval = bar.get_height()
-        plt.text(bar.get_x() + bar.get_width() / 2, yval, round(score, 3), ha='center', va='bottom', fontsize=12)
+        plt.text(bar.get_x() + bar.get_width() / 2, yval+0.01, round(score, 3), ha='center', va='bottom', fontsize=12)
 
-    plt.title('Average Evaluation Metrics for VAE_MLP (Nested CV)')
-    plt.ylabel('Score')
+    plt.title('Performance Metrics for VAE_MLP',fontsize=14,fontweight='bold', pad=15)
+    plt.ylabel('Score', fontsize=16, labelpad=10)
+    plt.xticks(fontsize=14)
+    plt.yticks(fontsize=14)
+    plt.tight_layout()
     plt.savefig(f"{prefix}_vaemlp_metrics.png", dpi=300)
     plt.close()
 
@@ -774,13 +781,16 @@ def vae(inp, prefix):
                 plt.plot(fpr[i], tpr[i], label=f'Class {le.inverse_transform([i])[0]} (AUC = {roc_auc[i]:.2f})')
         if "micro" in roc_auc:
             plt.plot(fpr["micro"], tpr["micro"], label=f'Overall (AUC = {roc_auc["micro"]:.2f})', linestyle='--')
+    
     plt.plot([0, 1], [0, 1], 'k--')
     plt.xlim([0.0, 1.0])
     plt.ylim([0.0, 1.05])
-    plt.xlabel('False Positive Rate')
-    plt.ylabel('True Positive Rate')
-    plt.title('ROC Curves for VAE_MLP (Nested CV)')
-    plt.legend(loc="lower right")
+    plt.xlabel('False Positive Rate (1 - Specificity)', fontsize=18, labelpad=10)
+    plt.ylabel('True Positive Rate (Sensitivity)', fontsize=18, labelpad=10)
+    plt.title('ROC Curves for VAE_MLP', fontsize=22, fontweight='bold', pad=15)
+    plt.legend(loc="lower right", fontsize=14, title_fontsize=16)
+    plt.xticks(fontsize=14)
+    plt.yticks(fontsize=14)
 
     # Ensure ScalarFormatter is used to avoid AttributeError
     ax = plt.gca()
@@ -791,28 +801,22 @@ def vae(inp, prefix):
     plt.savefig(f"{prefix}_vaemlp_roc_curve.png", dpi=300)
     plt.close()
 
-    # Plot F1 and AUC scores per fold as line plots
+    # Plot F1 and AUC scores per fold using default matplotlib style
     folds = np.arange(1, outer_fold + 1)
     
     plt.figure(figsize=(10, 6))
-    plt.plot(folds, per_fold_f1, marker='o', linestyle='-', color='b', label='F1 Score')
-    plt.plot(folds, per_fold_auc, marker='s', linestyle='--', color='g', label='AUC Score')
-    plt.title('F1 and AUC Scores Across Outer Folds')
-    plt.xlabel('Fold Number')
-    plt.ylabel('Score')
-    plt.xticks(folds)
-    plt.ylim(0, 1)
+    plt.plot(folds, per_fold_f1, marker='o', linestyle='-', label='F1 Score')
+    plt.plot(folds, per_fold_auc, marker='s', linestyle='-', label='AUC Score')
     
-    # Add value labels for F1 scores
-    for i, f1 in zip(folds, per_fold_f1):
-        plt.text(i, f1 + 0.01, f"{f1:.2f}", ha='center', va='bottom', fontsize=10, color='b')
-    
-    # Add value labels for AUC scores
-    for i, auc_val in zip(folds, per_fold_auc):
-        plt.text(i, auc_val - 0.05, f"{auc_val:.2f}", ha='center', va='top', fontsize=10, color='g')
-    
-    plt.legend()
-    plt.grid(True)
+    plt.title('F1 and AUC Scores per Outer Fold',fontsize=16,fontweight='bold')
+    plt.xlabel('Outer Fold Number', fontsize=16)
+    plt.ylabel('Score', fontsize=16)
+    plt.xticks(folds, fontsize=12)
+    plt.yticks(fontsize=12)
+    plt.ylim(0, 1.05)
+    plt.legend(fontsize=12)
+    plt.grid(True)  # Remove background grid
+    plt.tight_layout()
     plt.savefig(f"{prefix}_vaemlp_nested_cv_f1_auc.png", dpi=300)
     plt.close()
 
