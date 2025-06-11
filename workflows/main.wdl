@@ -24,6 +24,7 @@ workflow main {
     }
     String pipeline_version = "1.0.3"
     String container_gen = "ghcr.io/anand-imcm/proteomics-ml-workflow-gen:~{pipeline_version}"
+    String container_ppi = "ghcr.io/anand-imcm/proteomics-ml-workflow-net:1.0.2"
     Array[File] default_arr = []
     call RP.run_plan {
         input: model_choices = classification_model_choices,
@@ -104,7 +105,8 @@ workflow main {
             input:
                 summary_set = summary.results,
                 proteinExpFile = input_csv,
-                output_prefix = output_prefix
+                output_prefix = output_prefix,
+                docker = container_ppi
         }
     }
     Array[File] summary_files = if (!run_plan.use_dim) then select_all([summary.results]) else default_arr
