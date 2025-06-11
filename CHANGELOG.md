@@ -2,6 +2,18 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.0.2] - 2025-06-11
+
+### Added
+
+- New Protein-Protein Interaction (PPI) module.
+- Additional docker image to handle the dependencies related to PPI module.
+
+### Updated
+
+- Simplified the inputs and default parameters.
+- Usage guide includes the instruction to setup the workflow locally.
+
 ## [1.0.1] - 2024-08-27
 
 ### Fixed
