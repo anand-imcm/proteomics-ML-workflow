@@ -1,15 +1,27 @@
-# This script serves as module to perform bioinformatic characterizations for protein list provided by ML workflow
-# Example Command line: 
+# This script is a module for performing protein-protein interaction (PPI) network analysis on proteins selected based on protein importance derived from classification or regression machine learning models.
+
+# Example Command line for case: 
+# Rscript Module_ProteinNetwork_WDL.R \
+#     --score_thresholdHere 400 \
+#     --combined_score_thresholdHere 800 \
+#     --SHAPthresh 100 \
+#     --patternChosen "shap_values.csv" \
+#     --converProId TRUE \
+#     --proteinExpFile "Case1.csv" \
+#     --CorMethod "spearman" \
+#     --CorThreshold 0.8 \
+#     > "/home/rstudio/YD/ML_workflow_DY/output/Network_WT1.log" 2>&1 &
+
 # Rscript Module_ProteinNetwork_WDL.R \
 #     --score_thresholdHere 400 \
 #     --combined_score_thresholdHere 800 \
 #     --SHAPthresh 100 \
 #     --patternChosen "shap_values.csv" \
 #     --converProId FALSE \
-#     --proteinExpFile "Case1.csv" \
+#     --proteinExpFile "Nulisa_mat-OlinkTargets.csv" \
 #     --CorMethod "spearman" \
 #     --CorThreshold 0.8 \
-#     > "/home/rstudio/YD/ML_workflow_DY/output/Network_WT.log" 2>&1 &
+#     > "/home/rstudio/YD/ML_workflow_DY/output/Network_WT3.log" 2>&1 &
 
 library(optparse)
 library(tidyverse)
@@ -24,35 +36,36 @@ library(writexl)
 library(pdftools)
 
 set.seed(42)
-options(timeout = 300)
+suppressWarnings(library(AnnotationDbi))
+suppressMessages(library(AnnotationDbi))
 
-# Define the list of options
+### Define the list of options
 option_list <- list(
   make_option(c("-s", "--score_thresholdHere"), type = "integer", default = 400, 
-              help = "Score threshold for STRING database.", metavar = "SCORE"),
+              help = "Confidence score threshold for STRING database.", metavar = "SCORE"),
   make_option(c("-c", "--combined_score_thresholdHere"), type = "integer", default = 800, 
-              help = "Combined score threshold to select the nodes to be plotted.", metavar = "SCORE"),
+              help = "Confidence score threshold for selecting nodes to plot in the network.", metavar = "SCORE"),
   make_option(c("-a", "--SHAPthresh"), type = "integer", default = 100, 
-              help = "Shap threshhold to define the top important proteins.", metavar = "ShapThresh"),
+              help = "The number of top important proteins.", metavar = "ShapThresh"),
   make_option(c("-n", "--patternChosen"), type = "character", default = "shap_values.csv", 
               help = "File name pattern defining which SHAP files to be included for analysis.", metavar = "FilePattern"),
   make_option(c("-v", "--converProId"), type = "logical", default = FALSE, 
-              help = "Whether to perform the protein name mappin.", metavar = "converProId"),
+              help = "Whether to perform protein name mapping from UniProt IDs to Entrez Gene Symbols.", metavar = "converProId"),
   make_option(c("-x","--proteinExpFile"), type = "character", default = "Nulisa_mat-OlinkTargets.csv", 
-              help = "Protein expression input file name.", metavar = "EXPRESSION"),
+              help = "Name of the input file containing the protein expression profile.", metavar = "EXPRESSION"),
   make_option(c("-m","--CorMethod"), type = "character", default = "spearman", 
-              help = "Correlation method to define strongly coexpressed proteins, select from spearman, pearson, kendall.", metavar = "CorMethod"),
+              help = "Correlation method used to define strongly co-expressed proteins; choose from Spearman, Pearson, or Kendall.", metavar = "CorMethod"),
   make_option(c("-d","--CorThreshold"), type = "numeric", default = 0.8, 
-              help = "Threshold to define strongly coexpressed proteins.", metavar = "CorThreshold")
+              help = "Threshold value of the correlation coefficient used to identify strongly co-expressed proteins.", metavar = "CorThreshold")
 )
 
-# Create an OptionParser object
+### Create an OptionParser object
 parser <- OptionParser(option_list = option_list)
 
-# Parse the command-line arguments
+### Parse the command-line arguments
 args <- parse_args(parser)
 
-# Assign parsed values to variables
+### Assign parsed values to variables
 score_thresholdHere <- args$score_thresholdHere
 combined_score_thresholdHere <- args$combined_score_thresholdHere
 SHAPthresh <- args$SHAPthresh
@@ -67,9 +80,9 @@ CorThreshold <- args$CorThreshold
 # FUNCTIONS TO BE CALLED BY MAIN
 #--------------------------------
 #--------------------------------
-# Function to map UniProt IDs to gene symbols (Entrez-style)
+# Function to map UniProt IDs to Entrez Gene Symbols
 # Input: UniProList – a vector of UniProt IDs
-# Output: DataF_EntrezSym – a data frame mapping each UniProt ID to its corresponding gene symbol
+# Output: DataF_EntrezSym – a data frame mapping each UniProt ID to its corresponding Entrez Gene Symbol
 ConvertUniprot2Symbol <- function(UniProList){
   DataF_EntrezSym <- AnnotationDbi::select(
     org.Hs.eg.db,
@@ -79,7 +92,8 @@ ConvertUniprot2Symbol <- function(UniProList){
   ) %>%
     dplyr::group_by(UNIPROT) %>%
     dplyr::summarize(SYMBOL = paste(na.omit(unique(SYMBOL)), collapse = ";"), .groups = "drop") %>% ### UniProt IDs with duplicated or multiple associated gene symbols
-    dplyr::filter(!is.na(SYMBOL) & SYMBOL != "" & SYMBOL != "NA" & SYMBOL != " ") %>% as.data.frame() ### Possible entries with no mapped gene symbol for the given UniProt ID in the database
+    dplyr::filter(!is.na(SYMBOL) & SYMBOL != "" & SYMBOL != "NA" & SYMBOL != " ") %>% as.data.frame() %>% ### Possible entries with no mapped gene symbol for the given UniProt ID in the database
+    distinct(SYMBOL, .keep_all = TRUE) ### Resolve duplicated symbols
   
   return(DataF_EntrezSym)
 }
@@ -111,11 +125,11 @@ getHubProTable <- function(LinkTable){
 # Input -- Pro_Plot_F: SHAP-ordered data frame of selected top proteins with corresponding SHAP values, protein name must be Entrez Symbol; 
 # Full_SHAP_F_Plot: data frame of all the proteins with corresponding SHAP values, protein name must be Entrez Symbol; 
 # score_thresholdHere: score threshold to initialize STRING database;
-# combined_score_thresholdHere: score thresold to make network plot;
-# patternChosen: message to included in the title of network plot
-# Output -- list(Hub_Proteins_STRING, Hub_Proteins_STRING_expanded), protein centrality score for non expanded and expanded protein network.
-### Initialize STRING database
-
+# combined_score_thresholdHere: score thresold to select nodes and make network plot;
+# CoPro_EntrezSym: Entrez Symbols of proteins strongly co-expressed with the top important proteins identified by SHAP values;
+# patternChosen: message to included in the title of network plot;
+# Output -- Plots of networks composed of top important proteins identified by SHAP values;
+#           list(Hub_Proteins_STRING, Hub_Proteins_STRING_expanded), protein centrality score for non expanded and expanded protein network.
 map2String <- function(string_db, Pro_Plot_F, Full_SHAP_F_Plot, score_thresholdHere, combined_score_thresholdHere, CoPro_EntrezSym, patternChosen){
   set.seed(42)
   
@@ -146,7 +160,7 @@ map2String <- function(string_db, Pro_Plot_F, Full_SHAP_F_Plot, score_thresholdH
   }))]
   
   ### Set node color based on SHAP values
-  # Color palette and node coloring
+  ### Color palette and node coloring
   myPalette <- colorRampPalette(c("darkgreen", "lightgreen", "white", "pink", "darkred"))
   nodeValue <- as.numeric(Pro_Plot_F[nodeName2,"SHAP"])
   nodeColor <- myPalette(1000)[
@@ -170,7 +184,7 @@ map2String <- function(string_db, Pro_Plot_F, Full_SHAP_F_Plot, score_thresholdH
        main = paste0("Protein-Protein Interaction Network\n", patternChosen), 
        rescale = TRUE)
   
-  # Add a color legend
+  ### Add a color legend
   image.plot(legend.only = TRUE, 
              #zlim = range(as.numeric(nodeValue[which(!is.na(nodeValue))])), 
              zlim = c(0,1),
@@ -188,21 +202,21 @@ map2String <- function(string_db, Pro_Plot_F, Full_SHAP_F_Plot, score_thresholdH
   Hub_Proteins_STRING %<>% mutate("Protein" = prot) %<>% dplyr::select(Protein,Betweenness,Closeness,Degree)
   
   ### Further make network plot including more nodes restored in STRINGdb with 1 degree connection with the selected top proteins with highest SHAP values
-  # Identify all the interactions between proteins in our full protein list
+  ### Identify all the interactions between proteins in our full protein list
   all_mapped <- string_db$map(data.frame("prot" = Full_SHAP_F_Plot$proName), "prot", removeUnmappedRows = TRUE)
   
-  # Retrieve interactions involving all proteins
+  ### Retrieve interactions involving all proteins
   all_interaction_network <- string_db$get_interactions(all_mapped$STRING_id) %>%
     distinct(from, to, .keep_all = TRUE)
   
-  # Identify 1st-degree seed nodes (top important proteins)
+  ### Identify 1st-degree seed nodes (top important proteins)
   one_degree_nodes <- unique(c(interaction_network$from, interaction_network$to))
   
-  # Identify highly coexpressed proteins with the seed nodes
+  ### Identify highly coexpressed proteins with the seed nodes
   CoPro_mapped <- string_db$map(data.frame("prot" = CoPro_EntrezSym[,1]), "prot", removeUnmappedRows = TRUE)
   CoPro_ENSEMBL <- CoPro_mapped$STRING_id
   
-  # Within the all_interaction_network, identify which interactions include the seed node or 1st degree connection between seed node and strongly coexpressed proteins 
+  ### Within the all_interaction_network, identify which interactions include the seed node or 1st degree connection between seed node and strongly coexpressed proteins 
   keepID <- which(
     (all_interaction_network$from %in% one_degree_nodes & 
        all_interaction_network$to %in% CoPro_ENSEMBL) |
@@ -233,7 +247,7 @@ map2String <- function(string_db, Pro_Plot_F, Full_SHAP_F_Plot, score_thresholdH
   
   nodeValue_expanded <- as.numeric(Full_SHAP_F_Plot[nodeName2_expanded, "SHAP"])
   
-  # Color palette and node coloring
+  ### Color palette and node coloring
   nodeColor_expanded <- myPalette(1000)[
     as.numeric(cut(nodeValue_expanded, breaks = 1000))
   ]
@@ -255,7 +269,7 @@ map2String <- function(string_db, Pro_Plot_F, Full_SHAP_F_Plot, score_thresholdH
        main = paste0("Protein-Protein Expanded Interaction Network\n", patternChosen), 
        rescale = TRUE)
   
-  # Add a color legend
+  ### Add a color legend
   image.plot(legend.only = TRUE, 
              #zlim = range(as.numeric(nodeValue_expanded[which(!is.na(nodeValue_expanded))])), 
              zlim = c(0,1),
@@ -283,9 +297,9 @@ map2String <- function(string_db, Pro_Plot_F, Full_SHAP_F_Plot, score_thresholdH
 ################
 # READ IN DATA
 ################
-print(paste0("Network plot for ",  patternChosen, " started at ", format(Sys.time(), "%H:%M:%S"), " on ", Sys.Date(),"."))
+print(paste0("PPI network and Hub Protein analysis based on ",  patternChosen, " started at ", format(Sys.time(), "%H:%M:%S"), " on ", Sys.Date(),"."))
 
-# Choose which SHAP files and which SHAP threshold to make network plot
+### Choose which SHAP files and which SHAP threshold to make network plot
 proteinImportanceFile_list <- list.files("./" ,pattern=patternChosen)
 
 ModelName <- gsub("_shap_values.csv", "",proteinImportanceFile_list)
@@ -307,7 +321,7 @@ ProImportance_aligned <- lapply(ProImportance, function(df) {
 ### Data frame with all the proteins and corresponding SHAP values without filtering
 NewSHAP <- Reduce(function(x, y) full_join(x, y, by = "Protein"), ProImportance_aligned)
 
-# Set row names back to "Protein" and remove the extra column. This is indispensable for SHAP values derived from multiple importance files
+### Set row names back to "Protein" and remove the extra column. This is indispensable for SHAP values derived from multiple importance files
 rownames(NewSHAP) <- NewSHAP$Protein
 NewSHAP$Protein <- NULL
 colnames(NewSHAP) <- ModelName
@@ -334,6 +348,8 @@ pdf(pdf_fileName)
 proExpF <- read.csv(proteinExpFile, check.names=FALSE)[,c(-1,-2)] %>% dplyr::select(where(~ any(. != 0)))
 
 for(colCt in colnames(Full_SHAP_F_AllScaled)[!grepl("CombinedShap", colnames(Full_SHAP_F_AllScaled))]){
+  print(paste0("Proteins with the highest importance scores based on ", colCt, " are selected for PPI analysis."))
+  
   tryCatch(
     {if(all(Full_SHAP_F_AllScaled[,colCt] == 0)){print(paste0("For ", colCt, " All the proteins have the same important scores."))
     }else{
@@ -354,13 +370,13 @@ for(colCt in colnames(Full_SHAP_F_AllScaled)[!grepl("CombinedShap", colnames(Ful
         SHAP <- unlist(sapply(Pro_Plot$UNIPROT, function(x) {SHAP_PlotF[which(rownames(SHAP_PlotF)==x)[1], colCt]}))
         Pro_Plot_F <- Pro_Plot %>% dplyr::select(SYMBOL) %>% mutate(SHAP = SHAP) %>% arrange(desc(SHAP))
         
-        ### We also need to retreive all the SHAP values for all the proteins for the purpose of expansion network plot
+        ### We also need to retrieve all the SHAP values for all the proteins for the purpose of expansion network plot
         Full_SHAP <- ConvertUniprot2Symbol(Full_SHAP_Ori)
         SHAP_All <- unlist(sapply(Full_SHAP$UNIPROT, function(x) {Full_SHAP_F[which(rownames(Full_SHAP_F)==x)[1], colCt]}))
         Full_SHAP_F_Plot <- cbind(Full_SHAP$SYMBOL, SHAP_All) %>% as.data.frame() %>% mutate(SHAP_All = as.numeric(SHAP_All))
         
         ### Map strongly coexpressed proteins between UniProId and Entrez Symbol
-        CoPro_EntrezSym <- ConvertUniprot2Symbol(Full_SHAP_Ori)
+        CoPro_EntrezSym <- ConvertUniprot2Symbol(CoPro_UniPro)
         
       }else{
         Pro_Plot_F <- cbind(rownames(SHAP_PlotF), SHAP_PlotF[,colCt]) %>% as.data.frame()
@@ -368,7 +384,7 @@ for(colCt in colnames(Full_SHAP_F_AllScaled)[!grepl("CombinedShap", colnames(Ful
         CoPro_EntrezSym <- CoPro_UniPro %>% as.data.frame()
       }
       
-      ###  Set the arbitrary colnames for the convenience of processing data.
+      ### Set the arbitrary colnames for the convenience of processing data.
       colnames(Pro_Plot_F) <- colnames(Full_SHAP_F_Plot) <- c("proName", "SHAP")
       rownames(Pro_Plot_F) <- Pro_Plot_F$proName
       
@@ -393,7 +409,7 @@ for(colCt in colnames(Full_SHAP_F_AllScaled)[!grepl("CombinedShap", colnames(Ful
       write_xlsx(Hub_Proteins_STRING_WithExpansion, path = paste0(colCt, "_Hub_Proteins_STRING_WithExpansion.xlsx"))
     }
       error = function(e) {
-        message(paste0("For ", colCt, ", The PPI network plot could not be generated. Please ensure that protein names are provided as either Entrez Gene Symbols or UniProt IDs."))
+        message(paste0("For ", colCt, ", The PPI network plot could not be generated. Please ensure that (1) protein names are uniquely provided as either Entrez Gene Symbols or UniProt IDs, and (2) the number of top important proteins is properly selected with sufficient number of non-NA SHAP values present."))
       }
     }
   )
