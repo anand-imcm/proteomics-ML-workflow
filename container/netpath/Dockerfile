@@ -1,4 +1,4 @@
-FROM rocker/tidyverse:4.5
+FROM rocker/r-ver:4.5.0
 
 RUN apt-get update && apt-get install -y \
     build-essential \
@@ -14,7 +14,8 @@ RUN apt-get update && apt-get install -y \
 
 COPY ./scripts/NetPath /scripts
 
-RUN Rscript /scripts/install_packages.R \
+RUN R -e "install.packages('BiocManager', repos='https://cloud.r-project.org')" \
+    && Rscript /scripts/install_packages.R \
     && wget -q http://stringdb-downloads.org/download/protein.aliases.v12.0/9606.protein.aliases.v12.0.txt.gz -P /scripts \
     && wget -q http://stringdb-downloads.org/download/protein.info.v12.0/9606.protein.info.v12.0.txt.gz -P /scripts \
     && wget -q http://stringdb-downloads.org/download/protein.links.v12.0/9606.protein.links.v12.0.txt.gz -P /scripts
