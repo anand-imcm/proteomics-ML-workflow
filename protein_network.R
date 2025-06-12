@@ -1,4 +1,4 @@
-# This script is a module for performing protein-protein interaction (PPI) network analysis on proteins selected based on protein importance derived from classification machine learning models.
+# This script is a module for performing protein-protein interaction (PPI) network analysis on proteins selected based on protein importance derived from classification or regression machine learning models.
 
 # Example Command line for case: 
 # Rscript Module_ProteinNetwork_WDL.R \
