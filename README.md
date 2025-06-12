@@ -175,7 +175,7 @@ The workflow is implemented in Python, R and Workflow Description Language (WDL)
 ## Components
 
 | Package | License |
-|:---------|:---------|
+|:--------|:--------|
 | [micromamba==1.5.5](www.github.com/mamba-org/mamba#micromamba) | BSD-3-Clause |
 | [python](www.python.org/) | PSF/GPL-compat |
 | [joblib](www.github.com/joblib/joblib) | BSD-3-Clause |
@@ -183,14 +183,26 @@ The workflow is implemented in Python, R and Workflow Description Language (WDL)
 | [numpy](www.numpy.org/) | BSD |
 | [pandas](www.pandas.pydata.org/) | BSD 3-Clause |
 | [scikit-learn](www.scikit-learn.org) | BSD-3-Clause |
-| [xgboost](https://github.com/dmlc/xgboost) |  Apache-2.0 |
-| [shap](https://github.com/shap/shap) |  MIT |
-| [pillow](https://github.com/python-pillow/Pillow) |  Open Source HPND |
-| [PyTorch](https://github.com/pytorch/pytorch) |  BSD |
+| [xgboost](https://github.com/dmlc/xgboost) | Apache-2.0 |
+| [shap](https://github.com/shap/shap) | MIT |
+| [pillow](https://github.com/python-pillow/Pillow) | Open Source HPND |
+| [PyTorch](https://github.com/pytorch/pytorch) | BSD |
 | [Optuna](https://github.com/optuna) | MIT |
-| [fpdf](https://github.com/reingart/pyfpdf) |  LGPL-3.0 |
-| [seaborn](https://github.com/mwaskom/seaborn) |  BSD-3-Clause |
-| [umap-learn](https://github.com/lmcinnes/umap) |  BSD-3-Clause |
+| [fpdf](https://github.com/reingart/pyfpdf) | LGPL-3.0 |
+| [seaborn](https://github.com/mwaskom/seaborn) | BSD-3-Clause |
+| [umap-learn](https://github.com/lmcinnes/umap) | BSD-3-Clause |
+| [AnnotationDbi](https://bioconductor.org/packages/release/bioc/html/AnnotationDbi.html) | Artistic-2.0 |
+| [BiocManager](https://bioconductor.github.io/BiocManager/) | Artistic-2.0 |
+| [fields](https://cran.r-project.org/web/packages/fields/index.html) | GPL (>= 2) |
+| [ggplot2](https://ggplot2.tidyverse.org/index.html) | MIT |
+| [igraph](https://r.igraph.org/) | GPL (>= 2) |
+| [magrittr](https://magrittr.tidyverse.org/) | MIT |
+| [optparse](https://cran.r-project.org/web/packages/optparse/index.html) | GPL (>= 2) |
+| [pdftools](https://cran.r-project.org/web/packages/pdftools/index.html) | MIT |
+| [STRINGdb](https://bioconductor.org/packages/release/bioc/html/STRINGdb.html) | GPL (>= 2) |
+| [tidyverse](https://www.tidyverse.org/) | GPL-3 |
+| [writexl](https://cloud.r-project.org/web/packages/writexl/index.html) | BSD-2-clause |
+| [org.Hs.eg.db](https://bioconductor.org/packages/release/data/annotation/html/org.Hs.eg.db.html) | Artistic-2.0 |
 
 ## Citations
 
