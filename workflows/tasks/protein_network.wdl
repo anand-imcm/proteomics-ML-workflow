@@ -39,9 +39,9 @@ task ppi_analysis {
             --converProId ${converProId} \
             --proteinExpFile ~{proteinExpFile} \
             --CorMethod ~{correlation_method} \
-            --CorThreshold ~{correlation_threshold}
-        
-        tar -czvf ~{output_prefix}_pro_net_results.tar.gz --ignore-failed-read Network*.png *.xlsx
+            --CorThreshold ~{correlation_threshold} || true
+        tar -czvf ~{output_prefix}_pro_net_results.tar.gz --ignore-failed-read Network* *.xlsx
+        exit 0
     >>>
     output {
         File results = output_prefix + "_pro_net_results.tar.gz"
