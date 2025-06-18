@@ -1,33 +1,7 @@
-FROM --platform=linux/amd64 rocker/r-ver:4.5.0 AS builder
+FROM rocker/r-ver:4.4
 
 ENV DEBIAN_FRONTEND=noninteractive
-
 ENV LANG=en_US.UTF-8
-
-RUN apt-get update && apt-get install -y \
-    libcurl4-openssl-dev libssl-dev libxml2-dev libgit2-dev libjpeg-dev libpng-dev libtiff-dev zlib1g-dev \
-    libbz2-dev liblzma-dev liblapack-dev libfftw3-dev libhdf5-dev libpoppler-cpp-dev libglpk-dev libboost-all-dev \
-    libncurses-dev xz-utils \
-    && apt-get clean && rm -rf /var/lib/apt/lists/*
-
-RUN mkdir -p /etc/R && \
-    echo "options(repos = c(CRAN = 'https://packagemanager.posit.co/cran/latest'))" > /etc/R/Rprofile.site
-
-RUN Rscript -e "install.packages(c('BiocManager', 'optparse', 'tidyverse', 'magrittr', 'igraph', 'fields', 'ggplot2', 'writexl', 'pdftools'))"
-
-RUN Rscript -e " \
-  options(repos = BiocManager::repositories()); \
-  BiocManager::install(version = '3.21', ask = FALSE, update = FALSE); \
-  BiocManager::install(c('STRINGdb', 'org.Hs.eg.db', 'AnnotationDbi', 'ensembldb', 'EnsDb.Hsapiens.v75'), ask = FALSE, update = FALSE)"
-
-RUN tar -czf /tmp/site-library.tar.gz -C /usr/local/lib/R site-library
-
-FROM --platform=$TARGETPLATFORM rocker/r-ver:4.5.0
-
-ENV DEBIAN_FRONTEND=noninteractive
-
-ENV LANG=en_US.UTF-8
-
 ENV MAKEFLAGS=-j1
 
 RUN apt-get update && apt-get install -y \
@@ -39,9 +13,12 @@ RUN apt-get update && apt-get install -y \
 RUN mkdir -p /etc/R && \
     echo "options(repos = c(CRAN = 'https://packagemanager.posit.co/cran/latest'))" > /etc/R/Rprofile.site
 
-COPY --from=builder /tmp/site-library.tar.gz /tmp/site-library.tar.gz
+RUN Rscript -e "install.packages(c('BiocManager', 'optparse', 'tidyverse', 'magrittr', 'igraph', 'fields', 'ggplot2', 'writexl', 'pdftools'))"
 
-RUN tar -xzf /tmp/site-library.tar.gz -C /usr/local/lib/R && rm /tmp/site-library.tar.gz
+RUN Rscript -e " \
+  options(repos = BiocManager::repositories()); \
+  BiocManager::install(version = '3.20', ask = FALSE, update = FALSE); \
+  BiocManager::install(c('STRINGdb', 'org.Hs.eg.db', 'AnnotationDbi', 'ensembldb', 'EnsDb.Hsapiens.v75'), ask = FALSE, update = FALSE)"
 
 COPY ./scripts/NetPath /scripts
 
