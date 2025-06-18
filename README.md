@@ -119,10 +119,10 @@ The workflow is implemented in Python, R and Workflow Description Language (WDL)
 ## Inputs
 
 - **`main.input_csv`** : [File] Input file in `.csv` format, includes a `Label` column, with each row representing a sample and each column representing a feature. An example of the `.csv` is shown below:
-  | Label  | Protein1 | Protein2 | ... | ProteinN |
-  |:-------|:---------|:---------|-----|:---------|
-  | Label1 | 0.1      | 0.4      | ... | 0.01     |
-  | Label2 | 0.2      | 0.1      | ... | 0.3      |
+  SampleID | Label  | Protein1 | Protein2 | ... | ProteinN |
+  |:-------|:-------|:---------|:---------|-----|:---------|
+  | ID1 | Label1 | 0.1      | 0.4      | ... | 0.01     |
+  | ID2 | Label2 | 0.2      | 0.1      | ... | 0.3      |
 
 - **`main.output_prefix`** : [String] Analysis ID. This will be used as prefix for all the output files.
 
@@ -136,15 +136,15 @@ The workflow is implemented in Python, R and Workflow Description Language (WDL)
 > If multiple dimensionality reduction methods are specified, the workflow will only perform the dimentinality reduction and generate a report.
 
 
-- **`main.num_of_dimensions`**: [Int] Total number of expected dimensions after applying dimensionality reduction. Default value: `3`.
+- **`main.num_of_dimensions`**: [Int] Total number of expected dimensions after applying dimensionality reduction for the visualization. This option only works when multiple `dimensionality_reduction_choices` are selected. Default value: `3`.
 
 - **`main.classification_model_choices`** : [String] Specify the classification model name(s) to use. Options include `RF`, `KNN`, `NN`, `SVM`, `XGB`, `PLSDA`, `VAE`, `LR`, `GNB`, `LGBM` and `MLPVAE`. Multiple model names can be entered together, separated by a space. Default value: `RF`
 
 - **`main.regression_model_choices`** : [String] Specify the regression model name(s) to use. Options include `RF_reg`, `NN_reg`, `SVM_reg`, `XGB_reg`, `PLS_reg`, `KNN_reg`, `LGBM_reg`, `VAE_reg` and `MLPVAE_reg`. Multiple model names can be entered together, separated by a space. Default value: `RF_reg`
 
-- **`main.calculate_shap`**: [Boolean] Top features to display on the radar chart. Default value: `false`
+- **`main.calculate_shap`**: [Boolean] Top features to display on the radar/bar chart. Default value: `false`
 
-- **`main.shap_features`**: [Int] Top features to display on the radar chart. Default value: `10`
+- **`main.shap_features`**: [Int] Number of features to display on the radar/bar chart. Default value: `10`
 
 - **`main.run_ppi`**: [Boolean] Execute Protein-Protein interaction (ppi) analysis. Default value: `false`
 
