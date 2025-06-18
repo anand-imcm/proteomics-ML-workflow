@@ -1,4 +1,4 @@
-name: build-vae
+name: build-net
 
 on: workflow_dispatch
 
