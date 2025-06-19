@@ -3,7 +3,7 @@ FROM rocker/r-ver:4.5.0
 RUN apt-get update && apt-get install -y \
     libcurl4-openssl-dev libssl-dev libxml2-dev libgit2-dev libjpeg-dev libpng-dev libtiff-dev zlib1g-dev \
     libbz2-dev liblzma-dev liblapack-dev libfftw3-dev libhdf5-dev libpoppler-cpp-dev libglpk-dev libboost-all-dev \
-    libncurses-dev xz-utils \
+    libncurses-dev xz-utils wget \
     && apt-get clean && rm -rf /var/lib/apt/lists/*
 
 RUN Rscript -e "install.packages(c('BiocManager', 'optparse', 'tidyverse', 'magrittr', 'igraph', 'fields', 'ggplot2', 'writexl', 'pdftools'))"
