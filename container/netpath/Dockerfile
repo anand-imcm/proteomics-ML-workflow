@@ -1,4 +1,4 @@
-FROM r-base:4.4
+FROM r-base:4.5.0
 
 RUN apt-get update && apt-get install -y \
     libcurl4-openssl-dev libssl-dev libxml2-dev libgit2-dev libjpeg-dev libpng-dev libtiff-dev zlib1g-dev \
