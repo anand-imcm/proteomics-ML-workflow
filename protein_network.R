@@ -93,7 +93,7 @@ ConvertUniprot2Symbol <- function(UniProList){
     dplyr::group_by(UNIPROT) %>%
     dplyr::summarize(SYMBOL = paste(na.omit(unique(SYMBOL)), collapse = ";"), .groups = "drop") %>% ### UniProt IDs with duplicated or multiple associated gene symbols
     dplyr::filter(!is.na(SYMBOL) & SYMBOL != "" & SYMBOL != "NA" & SYMBOL != " ") %>% as.data.frame() %>% ### Possible entries with no mapped gene symbol for the given UniProt ID in the database
-    distinct(SYMBOL, .keep_all = TRUE) ### Resolve duplicated symbols
+    distinct(SYMBOL, .keep_all = TRUE) ### Resolve duplicated symbols ### For case1,  one protein HLA seem to have potential issue in the plot, need to further investigate those multiple mapping issue. Maybe just remove than try to curate concatenation by ;
   
   return(DataF_EntrezSym)
 }
