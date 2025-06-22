@@ -10,18 +10,7 @@
 #     --proteinExpFile "Case1.csv" \
 #     --CorMethod "spearman" \
 #     --CorThreshold 0.8 \
-#     > "/home/rstudio/YD/ML_workflow_DY/output/Network_WT1.log" 2>&1 &
-
-# Rscript Module_ProteinNetwork_WDL.R \
-#     --score_thresholdHere 400 \
-#     --combined_score_thresholdHere 800 \
-#     --SHAPthresh 100 \
-#     --patternChosen "shap_values.csv" \
-#     --converProId FALSE \
-#     --proteinExpFile "Nulisa_mat-OlinkTargets.csv" \
-#     --CorMethod "spearman" \
-#     --CorThreshold 0.8 \
-#     > "/home/rstudio/YD/ML_workflow_DY/output/Network_WT3.log" 2>&1 &
+#     > "/home/rstudio/YD/ML_workflow_DY/output/Network_WT.log" 2>&1 
 
 library(optparse)
 library(tidyverse)
@@ -91,6 +80,7 @@ ConvertUniprot2Symbol <- function(UniProList){
     columns = c("UNIPROT", "SYMBOL")
   ) %>%
     dplyr::group_by(UNIPROT) %>%
+  # dplyr::summarize(SYMBOL = paste(na.omit(unique(SYMBOL))[1], .groups = "drop") # maybe easier to simplify the case
     dplyr::summarize(SYMBOL = paste(na.omit(unique(SYMBOL)), collapse = ";"), .groups = "drop") %>% ### UniProt IDs with duplicated or multiple associated gene symbols
     dplyr::filter(!is.na(SYMBOL) & SYMBOL != "" & SYMBOL != "NA" & SYMBOL != " ") %>% as.data.frame() %>% ### Possible entries with no mapped gene symbol for the given UniProt ID in the database
     distinct(SYMBOL, .keep_all = TRUE) ### Resolve duplicated symbols ### For case1,  one protein HLA seem to have potential issue in the plot, need to further investigate those multiple mapping issue. Maybe just remove than try to curate concatenation by ;
