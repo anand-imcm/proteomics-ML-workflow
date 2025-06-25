@@ -9,7 +9,7 @@ on:
 
 env:
   REGISTRY: ghcr.io
-  IMAGE_NAME: ${{ github.repository }}-gen
+  IMAGE_NAME: proteomics-ml-workflow-net
   VERSION_TAG: ${{ github.event.inputs.version }}
 
 jobs:
