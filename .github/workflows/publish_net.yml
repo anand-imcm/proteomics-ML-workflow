@@ -48,5 +48,5 @@ jobs:
           file: ./container/netpath/Dockerfile
           push: true
           platforms: linux/amd64
-          tags: ${{ env.VERSION_TAG }}
+          tags: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ env.VERSION_TAG }}
           labels: ${{ steps.meta.outputs.labels }}
