@@ -1,7 +1,7 @@
 # This script is a module for performing protein-protein interaction (PPI) network analysis on proteins selected based on protein importance derived from classification or regression machine learning models.
 
 # Example Command line for case: 
-# Rscript Module_ProteinNetwork_WDL.R \
+# Rscript protein_network.R \
 #     --score_thresholdHere 400 \
 #     --combined_score_thresholdHere 800 \
 #     --SHAPthresh 100 \
@@ -38,9 +38,9 @@ option_list <- list(
               help = "The number of top important proteins.", metavar = "ShapThresh"),
   make_option(c("-n", "--patternChosen"), type = "character", default = "shap_values.csv", 
               help = "File name pattern defining which SHAP files to be included for analysis.", metavar = "FilePattern"),
-  make_option(c("-v", "--converProId"), type = "logical", default = FALSE, 
+  make_option(c("-v", "--converProId"), type = "logical", default = TRUE, 
               help = "Whether to perform protein name mapping from UniProt IDs to Entrez Gene Symbols.", metavar = "converProId"),
-  make_option(c("-x","--proteinExpFile"), type = "character", default = "Nulisa_mat-OlinkTargets.csv", 
+  make_option(c("-x","--proteinExpFile"), type = "character", default = "Case1.csv", 
               help = "Name of the input file containing the protein expression profile.", metavar = "EXPRESSION"),
   make_option(c("-m","--CorMethod"), type = "character", default = "spearman", 
               help = "Correlation method used to define strongly co-expressed proteins; choose from Spearman, Pearson, or Kendall.", metavar = "CorMethod"),
@@ -80,10 +80,9 @@ ConvertUniprot2Symbol <- function(UniProList){
     columns = c("UNIPROT", "SYMBOL")
   ) %>%
     dplyr::group_by(UNIPROT) %>%
-  # dplyr::summarize(SYMBOL = paste(na.omit(unique(SYMBOL))[1], .groups = "drop") # maybe easier to simplify the case
     dplyr::summarize(SYMBOL = paste(na.omit(unique(SYMBOL)), collapse = ";"), .groups = "drop") %>% ### UniProt IDs with duplicated or multiple associated gene symbols
     dplyr::filter(!is.na(SYMBOL) & SYMBOL != "" & SYMBOL != "NA" & SYMBOL != " ") %>% as.data.frame() %>% ### Possible entries with no mapped gene symbol for the given UniProt ID in the database
-    distinct(SYMBOL, .keep_all = TRUE) ### Resolve duplicated symbols ### For case1,  one protein HLA seem to have potential issue in the plot, need to further investigate those multiple mapping issue. Maybe just remove than try to curate concatenation by ;
+    distinct(SYMBOL, .keep_all = TRUE) ### Resolve duplicated symbols
   
   return(DataF_EntrezSym)
 }
@@ -203,7 +202,7 @@ map2String <- function(string_db, Pro_Plot_F, Full_SHAP_F_Plot, score_thresholdH
   one_degree_nodes <- unique(c(interaction_network$from, interaction_network$to))
   
   ### Identify highly coexpressed proteins with the seed nodes
-  CoPro_mapped <- string_db$map(data.frame("prot" = CoPro_EntrezSym[,1]), "prot", removeUnmappedRows = TRUE)
+  CoPro_mapped <- string_db$map(data.frame("prot" = CoPro_EntrezSym), "prot", removeUnmappedRows = TRUE)
   CoPro_ENSEMBL <- CoPro_mapped$STRING_id
   
   ### Within the all_interaction_network, identify which interactions include the seed node or 1st degree connection between seed node and strongly coexpressed proteins 
@@ -218,7 +217,8 @@ map2String <- function(string_db, Pro_Plot_F, Full_SHAP_F_Plot, score_thresholdH
          all_interaction_network$to %in% one_degree_nodes)
   )
   
-  expanded_interaction_network <- all_interaction_network[keepID, ] %>%
+  ### Include the original network only composed of the top important proteins based on SHAP
+  expanded_interaction_network <- rbind(all_interaction_network[keepID, ],interaction_network) %>%
     distinct(from, to, .keep_all = TRUE)
   
   ### Filter interactions for high-confidence edges
@@ -343,35 +343,35 @@ for(colCt in colnames(Full_SHAP_F_AllScaled)[!grepl("CombinedShap", colnames(Ful
   tryCatch(
     {if(all(Full_SHAP_F_AllScaled[,colCt] == 0)){print(paste0("For ", colCt, " All the proteins have the same important scores."))
     }else{
-      SHAP_PlotF <- Full_SHAP_F_AllScaled %>% dplyr::select(all_of(colCt)) %>% arrange(desc(!!sym(colCt))) %>%slice_head(n = SHAPthresh) 
+      SHAP_PlotF <- Full_SHAP_F_AllScaled %>% dplyr::select(all_of(colCt)) %>% arrange(desc(!!sym(colCt))) %>% slice_head(n = SHAPthresh) 
       
       ### Prepare data frame of top proteins with highest importance
       Pro_Plot_Ori <- rownames(SHAP_PlotF)
       
       ### Identify the strongly coexpressed proteins with the top important proteins based on SHAP
       corF <- cor(proExpF,method = CorMethod)[Pro_Plot_Ori,]
-      CoPro_UniPro <- unique(colnames(corF)[which(corF > CorThreshold, arr.ind = TRUE)[, 2]])
+      CoPro_UniPro <- unique(colnames(corF)[which(abs(corF) > CorThreshold, arr.ind = TRUE)[, 2]])
       
       ### Entrez Symbol is used to display on the network plot, perform the protein name mapping
       if(converProId == TRUE){
         
-        Pro_Plot <- ConvertUniprot2Symbol(Pro_Plot_Ori) ### The warning "'select()' returned 1:many mapping between keys and columns" can be safely ignored, as this scenario is addressed by the function "ConvertUniprot2Symbol".
-        
-        SHAP <- unlist(sapply(Pro_Plot$UNIPROT, function(x) {SHAP_PlotF[which(rownames(SHAP_PlotF)==x)[1], colCt]}))
-        Pro_Plot_F <- Pro_Plot %>% dplyr::select(SYMBOL) %>% mutate(SHAP = SHAP) %>% arrange(desc(SHAP))
-        
-        ### We also need to retrieve all the SHAP values for all the proteins for the purpose of expansion network plot
+        ### Retrieve SHAP values for all proteins to generate the expansion network plot.
+        ### Map UniProt IDs to Entrez symbols for all proteins. NAs might be introduced due to missing mapping information in the database.
         Full_SHAP <- ConvertUniprot2Symbol(Full_SHAP_Ori)
         SHAP_All <- unlist(sapply(Full_SHAP$UNIPROT, function(x) {Full_SHAP_F[which(rownames(Full_SHAP_F)==x)[1], colCt]}))
         Full_SHAP_F_Plot <- cbind(Full_SHAP$SYMBOL, SHAP_All) %>% as.data.frame() %>% mutate(SHAP_All = as.numeric(SHAP_All))
+        colnames(Full_SHAP_F_Plot) <- c("SYMBOL", "SHAP")
         
-        ### Map strongly coexpressed proteins between UniProId and Entrez Symbol
-        CoPro_EntrezSym <- ConvertUniprot2Symbol(CoPro_UniPro)
+        ### SHAP frame for the top important proteins
+        Pro_Plot_F <- Full_SHAP_F_Plot[intersect(Pro_Plot_Ori, rownames(Full_SHAP_F_Plot)),] %>% arrange(desc(SHAP))
+        
+        ### Map strongly coexpressed proteins between UniProt Id and Entrez Symbol
+        CoPro_EntrezSym <- Full_SHAP_F_Plot[intersect(CoPro_UniPro, rownames(Full_SHAP_F_Plot)), "SYMBOL"]
         
       }else{
         Pro_Plot_F <- cbind(rownames(SHAP_PlotF), SHAP_PlotF[,colCt]) %>% as.data.frame()
         Full_SHAP_F_Plot <- cbind(rownames(Full_SHAP_F),Full_SHAP_F[,colCt]) %>% as.data.frame()
-        CoPro_EntrezSym <- CoPro_UniPro %>% as.data.frame()
+        CoPro_EntrezSym <- CoPro_UniPro
       }
       
       ### Set the arbitrary colnames for the convenience of processing data.
