@@ -45,7 +45,7 @@ jobs:
         uses: docker/build-push-action@v5
         with:
           context: .
-          file: ./container/general/Dockerfile
+          file: ./container/netpath/Dockerfile
           push: true
           platforms: linux/amd64
           tags: ${{ env.VERSION_TAG }}
