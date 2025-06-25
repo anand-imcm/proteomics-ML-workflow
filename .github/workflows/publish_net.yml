@@ -9,12 +9,11 @@ on:
 
 env:
   REGISTRY: ghcr.io
-  IMAGE_NAME: ${{ github.repository }}-net
+  IMAGE_NAME: ${{ github.repository }}-gen
   VERSION_TAG: ${{ github.event.inputs.version }}
 
 jobs:
-  build-amd64:
-    name: Build amd64 Image
+  build-and-push-image:
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -24,87 +23,30 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Log in to GHCR
+      - name: Log in to the Container registry
         uses: docker/login-action@v3
         with:
           registry: ${{ env.REGISTRY }}
           username: ${{ github.actor }}
           password: ${{ secrets.GH_PAT }}
 
-      - name: downcase REPO
-        run: |
-          echo "REPO=${IMAGE_NAME,,}" >>${GITHUB_ENV}
-
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
-      - name: Build and Push amd64 Image
+      - name: Extract metadata (tags, labels) for Docker
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          tags: |
+            type=semver,pattern={{version}}
+
+      - name: Build and push Docker image
         uses: docker/build-push-action@v5
         with:
           context: .
-          file: ./container/netpath/Dockerfile
+          file: ./container/general/Dockerfile
           push: true
           platforms: linux/amd64
-          tags: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ env.VERSION_TAG }}
-
-  build-arm64:
-    name: Build arm64 Image
-    runs-on: ubuntu-24.04-arm
-    permissions:
-      contents: write
-      packages: write
-
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
-      - name: Log in to GHCR
-        uses: docker/login-action@v3
-        with:
-          registry: ${{ env.REGISTRY }}
-          username: ${{ github.actor }}
-          password: ${{ secrets.GH_PAT }}
-
-      - name: downcase REPO
-        run: |
-          echo "REPO=${IMAGE_NAME,,}" >>${GITHUB_ENV}
-
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
-
-      - name: Build and Push arm64 Image
-        uses: docker/build-push-action@v5
-        with:
-          context: .
-          file: ./container/netpath/Dockerfile
-          push: true
-          platforms: linux/arm64
-          tags: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ env.VERSION_TAG }}
-
-  create-manifest:
-    name: Create and Push Multi-Arch Manifest
-    needs: [build-amd64, build-arm64]
-    runs-on: ubuntu-latest
-    permissions:
-      contents: write
-      packages: write
-
-    steps:
-      - name: Log in to GHCR
-        uses: docker/login-action@v3
-        with:
-          registry: ${{ env.REGISTRY }}
-          username: ${{ github.actor }}
-          password: ${{ secrets.GH_PAT }}
-
-      - name: Create and Push Manifest
-        run: |
-          docker manifest create ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ env.VERSION_TAG }} \
-            --amend ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ env.VERSION_TAG }}@$(docker buildx imagetools inspect --format '{{ (index .Manifest.Descriptor.Digests 0) }}' ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ env.VERSION_TAG }} --platform linux/amd64) \
-            --amend ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ env.VERSION_TAG }}@$(docker buildx imagetools inspect --format '{{ (index .Manifest.Descriptor.Digests 0) }}' ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ env.VERSION_TAG }} --platform linux/arm64)
-
-          docker manifest push ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ env.VERSION_TAG }}
-
-          docker manifest create ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest \
-            --amend ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ env.VERSION_TAG }}
-          docker manifest push ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest
+          tags: ${{ env.VERSION_TAG }}
+          labels: ${{ steps.meta.outputs.labels }}
