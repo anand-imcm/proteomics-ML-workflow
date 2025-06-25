@@ -52,7 +52,7 @@ The workflow is implemented in Python, R and Workflow Description Language (WDL)
 
 - **SHAP analysis** : (Optional) This step calculates SHapley Additive exPlanations (SHAP) values for variable importance (CSV file and radar plot for top features) and plots ROC curves for all the models specified by the user.
 
-- **Protein–Protein Interaction analysis** : (Optional) Biological functional analyses through protein–protein interaction network diagrams for top-ranked biomarkers and first-degree network expansions to highlight functional connectivity.
+- **Protein–Protein Interaction analysis** : (Optional) Biological functional analyses through protein–protein interaction network diagrams for top-ranked biomarkers and first-degree network expansions combining protein coexpression patterns to highlight functional connectivity.
 
 - **Report generation** : This step aggregates all output plots from the previous steps and compiles them into a `.pdf` report.
 
@@ -151,17 +151,17 @@ The workflow is implemented in Python, R and Workflow Description Language (WDL)
 > [!WARNING]
 > The Protein-Protein interaction analysis can be performed only when the `dimensionality_reduction_choices` option is set to either `ELASTICNET` or `NONE`, and `calculate_shap` option is set to `true`.
 
-- **`main.ppi_analysis.score_threshold`** : [Int] Score threshold for STRING database. Default value: `400`
+- **`main.ppi_analysis.score_threshold`** : [Int] Confidence score threshold for STRING database. Default value: `400`
 
-- **`main.ppi_analysis.combined_score_threshold`** : [Int] Combined score threshold to select the nodes to be plotted. Default value: `800`
+- **`main.ppi_analysis.combined_score_threshold`** : [Int] Confidence score threshold for selecting nodes to plot in the network. Default value: `800`
 
-- **`main.ppi_analysis.SHAP_threshold`** : [Int] SHAP threshhold to define the top important proteins. Default value: `100`
+- **`main.ppi_analysis.SHAP_threshold`** : [Int] The number of top important proteins. Default value: `100`
 
-- **`main.ppi_analysis.protein_name_mapping`** : [Boolean] Whether to perform the protein name mapping. Default value: `true`
+- **`main.ppi_analysis.protein_name_mapping`** : [Boolean] Whether to perform protein name mapping from UniProt IDs to Entrez Gene Symbols. Default value: `true`
 
-- **`main.ppi_analysis.correlation_method`** : [String] Correlation method to define strongly coexpressed proteins. Options include `spearman`, `pearson` and `kendall`. Default value: `spearman`
+- **`main.ppi_analysis.correlation_method`** : [String] Correlation method used to define strongly co-expressed proteins. Options include `spearman`, `pearson` and `kendall`. Default value: `spearman`
 
-- **`main.ppi_analysis.correlation_threshold`** : [Float] Threshold to define strongly coexpressed proteins. Default value: `0.8`
+- **`main.ppi_analysis.correlation_threshold`** : [Float] Threshold value of the correlation coefficient used to identify strongly co-expressed proteins. Default value: `0.8`
 
 - **`main.*.memory_gb`** : [Int] Amount of memory in GB needed to execute the specific task. Default value: `24`
 
