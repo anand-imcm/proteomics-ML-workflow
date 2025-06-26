@@ -171,7 +171,7 @@ The workflow is implemented in Python, R and Workflow Description Language (WDL)
 # The mapping process handles edge cases as follows:
 # UniProt IDs mapped to multiple Entrez symbols: All matched Entrez symbols are concatenated using a semicolon (;), and assigned to the corresponding UniProt ID.
 # UniProt IDs with no associated Entrez symbol: These entries are removed from the dataset.
-# Multiple UniProt IDs mapping to the same gene symbol: Only the first occurrence is retained in the final dataset.
+# Multiple UniProt IDs mapping to the same Entrez symbol: Only the first occurrence is retained in the final dataset.
 
 ## Outputs
 
