@@ -167,7 +167,7 @@ The workflow is implemented in Python, R and Workflow Description Language (WDL)
 
 - **`main.*.cpu`** : [Int] Number of CPUs needed to execute the specific task. Default value: `16`
 
-We recommend that users adopt *unique Entrez Symbols* as the protein naming convention for our network analysis. We also provide an approach using the R/Bioconductor annotation package **`org.Hs.eg.db`** to map UniProt IDs to Entrez Gene Symbols.
+<span style="color:#999999; font-style:italic;">&#9432; Note:</span> We recommend that users adopt *unique Entrez Symbols* as the protein naming convention for our network analysis. We also provide an approach using the R/Bioconductor annotation package **`org.Hs.eg.db`** to map UniProt IDs to Entrez Gene Symbols.
 
 The mapping process handles edge cases as follows:
 
