@@ -155,9 +155,9 @@ The workflow is implemented in Python, R and Workflow Description Language (WDL)
 
 - **`main.ppi_analysis.combined_score_threshold`** : [Int] Confidence score threshold for selecting nodes to plot in the network. Default value: `800`
 
-- **`main.ppi_analysis.SHAP_threshold`** : [Int] The number of top important proteins used for network analysis. Default value: `100`
+- **`main.ppi_analysis.SHAP_threshold`** : [Int] The number of top important proteins selected for network analysis based on SHAP values. Default value: `100`
 
-- **`main.ppi_analysis.protein_name_mapping`** : [Boolean] Whether to perform protein name mapping from UniProt IDs to Entrez Gene Symbols. Default value: `true`
+- **`main.ppi_analysis.protein_name_mapping`** : [Boolean] Whether to perform protein name mapping from UniProt IDs to Entrez Symbols. Default value: `TRUE`
 
 - **`main.ppi_analysis.correlation_method`** : [String] Correlation method used to define strongly co-expressed proteins. Options include `spearman`, `pearson` and `kendall`. Default value: `spearman`
 
@@ -167,7 +167,7 @@ The workflow is implemented in Python, R and Workflow Description Language (WDL)
 
 - **`main.*.cpu`** : [Int] Number of CPUs needed to execute the specific task. Default value: `16`
 
-<span style="color:#999999; font-style:italic;">&#9432; Note:</span> We recommend that users adopt *unique Entrez Symbols* as the protein naming convention for our network analysis. We also provide an approach using the R/Bioconductor annotation package **`org.Hs.eg.db`** to map UniProt IDs to Entrez Gene Symbols.
+<span style="color:#999999; font-style:italic;">&#9432; Note:</span> We recommend that users adopt *unique Entrez Symbols* as the protein naming convention for our network analysis, although we provide an approach using the R/Bioconductor annotation package **`org.Hs.eg.db`** to map UniProt IDs to Entrez Symbols.
 
 The mapping process handles edge cases as follows:
 
