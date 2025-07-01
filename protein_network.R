@@ -7,7 +7,7 @@
 #     --SHAPthresh 100 \
 #     --patternChosen "shap_values.csv" \
 #     --converProId TRUE \
-#     --proteinExpFile "Case1.csv" \
+#     --proteinExpFile "Case1-1.csv" \
 #     --CorMethod "spearman" \
 #     --CorThreshold 0.8 \
 #     > "/home/rstudio/YD/ML_workflow_DY/output/Network_WT.log" 2>&1 
@@ -40,7 +40,7 @@ option_list <- list(
               help = "File name pattern defining which SHAP files to be included for analysis.", metavar = "FilePattern"),
   make_option(c("-v", "--converProId"), type = "logical", default = TRUE, 
               help = "Whether to perform protein name mapping from UniProt IDs to Entrez Gene Symbols.", metavar = "converProId"),
-  make_option(c("-x","--proteinExpFile"), type = "character", default = "Case1.csv", 
+  make_option(c("-x","--proteinExpFile"), type = "character", default = "Case1-1.csv", 
               help = "Name of the input file containing the protein expression profile.", metavar = "EXPRESSION"),
   make_option(c("-m","--CorMethod"), type = "character", default = "spearman", 
               help = "Correlation method used to define strongly co-expressed proteins; choose from Spearman, Pearson, or Kendall.", metavar = "CorMethod"),
@@ -346,7 +346,7 @@ for(colCt in colnames(Full_SHAP_F_AllScaled)[!grepl("CombinedShap", colnames(Ful
       SHAP_PlotF <- Full_SHAP_F_AllScaled %>% dplyr::select(all_of(colCt)) %>% arrange(desc(!!sym(colCt))) %>% slice_head(n = SHAPthresh) 
       
       ### Prepare data frame of top proteins with highest importance
-      Pro_Plot_Ori <- rownames(SHAP_PlotF)
+      Pro_Plot_Ori <- intersect(rownames(SHAP_PlotF), colnames(proExpF))
       
       ### Identify the strongly coexpressed proteins with the top important proteins based on SHAP
       corF <- cor(proExpF,method = CorMethod)[Pro_Plot_Ori,]
