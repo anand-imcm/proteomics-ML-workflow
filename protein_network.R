@@ -341,7 +341,7 @@ for(colCt in colnames(Full_SHAP_F_AllScaled)[!grepl("CombinedShap", colnames(Ful
   print(paste0("Proteins with the highest importance scores based on ", colCt, " are selected for PPI analysis."))
   
   tryCatch(
-    {if(all(Full_SHAP_F_AllScaled[,colCt] == 0)){message(paste0("For ", colCt, " All the proteins have the same important scores."))
+    {if(all(Full_SHAP_F_AllScaled[,colCt] == 0)){message(paste0("For ", colCt, " All proteins have identical importance scores, so the most important ones cannot be distinguished."))
     }else{
       SHAP_PlotF <- Full_SHAP_F_AllScaled %>% dplyr::select(all_of(colCt)) %>% arrange(desc(!!sym(colCt))) %>% filter(!!sym(colCt) != 0) 
       
