@@ -6,3 +6,4 @@ notes-comments.txt
 __pycache__
 .DS_Store
 build.*
+.vscode/
