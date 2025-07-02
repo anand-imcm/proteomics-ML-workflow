@@ -7,7 +7,7 @@
 #     --SHAPthresh 100 \
 #     --patternChosen "shap_values.csv" \
 #     --converProId TRUE \
-#     --proteinExpFile "Case1.csv" \
+#     --proteinExpFile "Case1-1.csv" \
 #     --CorMethod "spearman" \
 #     --CorThreshold 0.8 \
 #     > "/home/rstudio/YD/ML_workflow_DY/output/Network_WT.log" 2>&1 
@@ -31,16 +31,16 @@ suppressMessages(library(AnnotationDbi))
 ### Define the list of options
 option_list <- list(
   make_option(c("-s", "--score_thresholdHere"), type = "integer", default = 400, 
-              help = "Confidence score threshold for STRING database.", metavar = "SCORE"),
+              help = "Confidence score threshold for loading STRING database.", metavar = "SCORE"),
   make_option(c("-c", "--combined_score_thresholdHere"), type = "integer", default = 800, 
               help = "Confidence score threshold for selecting nodes to plot in the network.", metavar = "SCORE"),
   make_option(c("-a", "--SHAPthresh"), type = "integer", default = 100, 
-              help = "The number of top important proteins.", metavar = "ShapThresh"),
+              help = "The number of top important proteins used for network analysis.", metavar = "ShapThresh"),
   make_option(c("-n", "--patternChosen"), type = "character", default = "shap_values.csv", 
               help = "File name pattern defining which SHAP files to be included for analysis.", metavar = "FilePattern"),
   make_option(c("-v", "--converProId"), type = "logical", default = TRUE, 
               help = "Whether to perform protein name mapping from UniProt IDs to Entrez Gene Symbols.", metavar = "converProId"),
-  make_option(c("-x","--proteinExpFile"), type = "character", default = "Case1.csv", 
+  make_option(c("-x","--proteinExpFile"), type = "character", default = "Case1-1.csv", 
               help = "Name of the input file containing the protein expression profile.", metavar = "EXPRESSION"),
   make_option(c("-m","--CorMethod"), type = "character", default = "spearman", 
               help = "Correlation method used to define strongly co-expressed proteins; choose from Spearman, Pearson, or Kendall.", metavar = "CorMethod"),
@@ -81,8 +81,8 @@ ConvertUniprot2Symbol <- function(UniProList){
   ) %>%
     dplyr::group_by(UNIPROT) %>%
     dplyr::summarize(SYMBOL = paste(na.omit(unique(SYMBOL)), collapse = ";"), .groups = "drop") %>% ### UniProt IDs with duplicated or multiple associated gene symbols
-    dplyr::filter(!is.na(SYMBOL) & SYMBOL != "" & SYMBOL != "NA" & SYMBOL != " ") %>% as.data.frame() %>% ### Possible entries with no mapped gene symbol for the given UniProt ID in the database
-    distinct(SYMBOL, .keep_all = TRUE) ### Resolve duplicated symbols
+    dplyr::filter(!is.na(SYMBOL) & SYMBOL != "" & SYMBOL != "NA" & SYMBOL != " ") %>% as.data.frame() %>% ### Possible entries with no mapped gene symbol for the given UniProt ID in the database 
+    distinct(SYMBOL, .keep_all = TRUE) ### Multiple UniProt IDs mapping to the same Entrez symbol: Only the first occurrence is retained in the final dataset.
   
   return(DataF_EntrezSym)
 }
@@ -334,19 +334,28 @@ Full_SHAP_F_AllScaled <- cbind(NewSHAP_scaled,CombinedShap) %>% arrange(desc(Com
 pdf_fileName <- "Network.pdf"
 pdf(pdf_fileName)
 
-### Read in protein expression profile
-proExpF <- read.csv(proteinExpFile, check.names=FALSE)[,c(-1,-2)] %>% dplyr::select(where(~ any(. != 0)))
+### Read in protein expression profile 
+proExpF <- read.csv(proteinExpFile, check.names=FALSE)[,c(-1,-2)] %>% dplyr::select(where(~ any(. != 0))) ### filter out proteins with all-zero values
 
 for(colCt in colnames(Full_SHAP_F_AllScaled)[!grepl("CombinedShap", colnames(Full_SHAP_F_AllScaled))]){
   print(paste0("Proteins with the highest importance scores based on ", colCt, " are selected for PPI analysis."))
   
   tryCatch(
-    {if(all(Full_SHAP_F_AllScaled[,colCt] == 0)){print(paste0("For ", colCt, " All the proteins have the same important scores."))
+    {if(all(Full_SHAP_F_AllScaled[,colCt] == 0)){message(paste0("For ", colCt, " All proteins have identical importance scores, so the most important ones cannot be distinguished."))
     }else{
-      SHAP_PlotF <- Full_SHAP_F_AllScaled %>% dplyr::select(all_of(colCt)) %>% arrange(desc(!!sym(colCt))) %>% slice_head(n = SHAPthresh) 
+      SHAP_PlotF <- Full_SHAP_F_AllScaled %>% dplyr::select(all_of(colCt)) %>% arrange(desc(!!sym(colCt))) %>% filter(!!sym(colCt) != 0) 
+      
+      # Handle case where the requested number of proteins exceeds available non-zero SHAP values
+      if (SHAPthresh > nrow(SHAP_PlotF)) {
+        message(paste0("For ", colCt, " Not enough proteins with non-zero SHAP values for the requested threshold of ", SHAPthresh, ". Using all available proteins with non-zero SHAP values for PPI analysis instead."
+        ))
+        SHAPthresh <- nrow(SHAP_PlotF)
+      }
+      
+      SHAP_PlotF %<>% slice_head(n = SHAPthresh) 
       
       ### Prepare data frame of top proteins with highest importance
-      Pro_Plot_Ori <- rownames(SHAP_PlotF)
+      Pro_Plot_Ori <- intersect(rownames(SHAP_PlotF), colnames(proExpF))
       
       ### Identify the strongly coexpressed proteins with the top important proteins based on SHAP
       corF <- cor(proExpF,method = CorMethod)[Pro_Plot_Ori,]
