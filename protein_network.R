@@ -343,7 +343,16 @@ for(colCt in colnames(Full_SHAP_F_AllScaled)[!grepl("CombinedShap", colnames(Ful
   tryCatch(
     {if(all(Full_SHAP_F_AllScaled[,colCt] == 0)){print(paste0("For ", colCt, " All the proteins have the same important scores."))
     }else{
-      SHAP_PlotF <- Full_SHAP_F_AllScaled %>% dplyr::select(all_of(colCt)) %>% arrange(desc(!!sym(colCt))) %>% slice_head(n = SHAPthresh) 
+      SHAP_PlotF <- Full_SHAP_F_AllScaled %>% dplyr::select(all_of(colCt)) %>% arrange(desc(!!sym(colCt))) %>% filter(!!sym(colCt) != 0) 
+      
+      # Handle case where the requested number of proteins exceeds available non-zero SHAP values
+      if (SHAPthresh > nrow(SHAP_PlotF)) {
+        message(paste0("Not enough proteins with non-zero SHAP values for the requested threshold of ", SHAPthresh, ". Using all available proteins with non-zero SHAP values for PPI analysis instead."
+        ))
+        SHAPthresh <- nrow(SHAP_PlotF)
+      }
+      
+      SHAP_PlotF %<>% slice_head(n = SHAPthresh) 
       
       ### Prepare data frame of top proteins with highest importance
       Pro_Plot_Ori <- intersect(rownames(SHAP_PlotF), colnames(proExpF))
