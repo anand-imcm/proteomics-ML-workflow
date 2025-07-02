@@ -334,8 +334,8 @@ Full_SHAP_F_AllScaled <- cbind(NewSHAP_scaled,CombinedShap) %>% arrange(desc(Com
 pdf_fileName <- "Network.pdf"
 pdf(pdf_fileName)
 
-### Read in protein expression profile
-proExpF <- read.csv(proteinExpFile, check.names=FALSE)[,c(-1,-2)] %>% dplyr::select(where(~ any(. != 0)))
+### Read in protein expression profile 
+proExpF <- read.csv(proteinExpFile, check.names=FALSE)[,c(-1,-2)] %>% dplyr::select(where(~ any(. != 0))) ### filter out proteins with all-zero values
 
 for(colCt in colnames(Full_SHAP_F_AllScaled)[!grepl("CombinedShap", colnames(Full_SHAP_F_AllScaled))]){
   print(paste0("Proteins with the highest importance scores based on ", colCt, " are selected for PPI analysis."))
@@ -347,7 +347,7 @@ for(colCt in colnames(Full_SHAP_F_AllScaled)[!grepl("CombinedShap", colnames(Ful
       
       # Handle case where the requested number of proteins exceeds available non-zero SHAP values
       if (SHAPthresh > nrow(SHAP_PlotF)) {
-        message(paste0("Not enough proteins with non-zero SHAP values for the requested threshold of ", SHAPthresh, ". Using all available proteins with non-zero SHAP values for PPI analysis instead."
+        message(paste0("For ", colCt, " Not enough proteins with non-zero SHAP values for the requested threshold of ", SHAPthresh, ". Using all available proteins with non-zero SHAP values for PPI analysis instead."
         ))
         SHAPthresh <- nrow(SHAP_PlotF)
       }
