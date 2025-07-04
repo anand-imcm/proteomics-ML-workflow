@@ -1,16 +1,13 @@
 name: build-net
 
 on:
-  workflow_dispatch:
-    inputs:
-      version:
-        description: 'Image version (e.g. 1.0.2)'
-        required: true
+  push:
+    tags:
+      - v*
 
 env:
   REGISTRY: ghcr.io
-  IMAGE_NAME: anand-imcm/proteomics-ml-workflow-net
-  VERSION_TAG: ${{ github.event.inputs.version }}
+  IMAGE_NAME: ${{ github.repository }}-net
 
 jobs:
   build-and-push-image:
@@ -48,5 +45,5 @@ jobs:
           file: ./container/netpath/Dockerfile
           push: true
           platforms: linux/amd64
-          tags: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ env.VERSION_TAG }}
+          tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
