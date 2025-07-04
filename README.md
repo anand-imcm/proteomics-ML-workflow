@@ -1,4 +1,4 @@
-# proteomics-ML-workflow
+# BiomarkerML
 
 [![Open](https://img.shields.io/badge/Open-Dockstore-blue)](https://dockstore.org/workflows/github.com/anand-imcm/proteomics-ML-workflow)&nbsp;&nbsp;
 [![publish](https://img.shields.io/github/actions/workflow/status/anand-imcm/proteomics-ML-workflow/publish_gen.yml)](https://github.com/anand-imcm/proteomics-ML-workflow/releases)&nbsp;&nbsp;
@@ -151,13 +151,13 @@ The workflow is implemented in Python, R and Workflow Description Language (WDL)
 > [!WARNING]
 > The Protein-Protein interaction analysis can be performed only when the `dimensionality_reduction_choices` option is set to either `ELASTICNET` or `NONE`, and `calculate_shap` option is set to `true`.
 
-- **`main.ppi_analysis.score_threshold`** : [Int] Confidence score threshold for STRING database. Default value: `400`
+- **`main.ppi_analysis.score_threshold`** : [Int] Confidence score threshold for loading STRING database. Default value: `400`
 
 - **`main.ppi_analysis.combined_score_threshold`** : [Int] Confidence score threshold for selecting nodes to plot in the network. Default value: `800`
 
-- **`main.ppi_analysis.SHAP_threshold`** : [Int] The number of top important proteins. Default value: `100`
+- **`main.ppi_analysis.SHAP_threshold`** : [Int] The number of top important proteins selected for network analysis based on SHAP values. Default value: `100`
 
-- **`main.ppi_analysis.protein_name_mapping`** : [Boolean] Whether to perform protein name mapping from UniProt IDs to Entrez Gene Symbols. Default value: `true`
+- **`main.ppi_analysis.protein_name_mapping`** : [Boolean] Whether to perform protein name mapping from UniProt IDs to Entrez Symbols. Default value: `TRUE`
 
 - **`main.ppi_analysis.correlation_method`** : [String] Correlation method used to define strongly co-expressed proteins. Options include `spearman`, `pearson` and `kendall`. Default value: `spearman`
 
@@ -166,6 +166,15 @@ The workflow is implemented in Python, R and Workflow Description Language (WDL)
 - **`main.*.memory_gb`** : [Int] Amount of memory in GB needed to execute the specific task. Default value: `24`
 
 - **`main.*.cpu`** : [Int] Number of CPUs needed to execute the specific task. Default value: `16`
+
+> [!NOTE]
+> We recommend that users adopt *unique Entrez Symbols* as the protein naming convention for our network analysis, although we provide an approach using the R/Bioconductor annotation package **`org.Hs.eg.db`** to map UniProt IDs to Entrez Symbols.
+> The mapping process handles edge cases as follows:
+>
+> - **UniProt IDs mapped to multiple Entrez symbols**: All matched Entrez symbols are concatenated using a semicolon (`;`) and assigned to the corresponding UniProt ID.
+> - **UniProt IDs with no associated Entrez symbol**: These entries are removed from the dataset.
+>
+> - **Multiple UniProt IDs mapping to the same Entrez symbol**: Only the first occurrence is retained in the final dataset.
 
 ## Outputs
 
