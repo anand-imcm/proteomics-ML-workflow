@@ -13,6 +13,7 @@ All notable changes to this project will be documented in this file.
 
 - Edge cases to handle protein IDs in the PPI module.
 - Conditional flow of execution for the PPI module based on `ELASTICNET` and `NONE`.
+- Multi-arch images for both `biomarkerml-gen` and `biomarkerml-net`.
 
 ### Updated
 
