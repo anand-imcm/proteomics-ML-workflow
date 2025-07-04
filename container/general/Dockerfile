@@ -1,7 +1,5 @@
 FROM mambaorg/micromamba:1.5.5
 
-USER micromamba
-
 COPY --chown=$MAMBA_USER:$MAMBA_USER ./container/general/environment.yml /tmp/
 
 COPY --chown=$MAMBA_USER:$MAMBA_USER ./scripts /scripts
