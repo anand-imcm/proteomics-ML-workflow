@@ -8,7 +8,7 @@ RUN apt-get update && \
   apt-get clean && \
   rm -rf /var/lib/apt/lists/*
 
-USER micromamba
+USER $MAMBA_USER
 
 COPY --chown=$MAMBA_USER:$MAMBA_USER ./container/netpath/environment.yml /tmp/
 

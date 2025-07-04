@@ -10,7 +10,7 @@ env:
   IMAGE_NAME: ${{ github.repository_owner }}/biomarkerml-net
 
 jobs:
-  build-and-push-image:
+  build-net:
     runs-on: ubuntu-latest
     permissions:
       contents: write
