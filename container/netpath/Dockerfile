@@ -1,20 +1,26 @@
-FROM rocker/r-ver:4.5.0
+FROM mambaorg/micromamba:1.5.5
 
-RUN apt-get update && apt-get install -y \
-    libcurl4-openssl-dev libssl-dev libxml2-dev libgit2-dev libjpeg-dev libpng-dev libtiff-dev zlib1g-dev \
-    libbz2-dev liblzma-dev liblapack-dev libfftw3-dev libhdf5-dev libpoppler-cpp-dev libglpk-dev libboost-all-dev \
-    libncurses-dev xz-utils wget \
-    && apt-get clean && rm -rf /var/lib/apt/lists/*
+USER root
 
-RUN Rscript -e "install.packages(c('BiocManager', 'optparse', 'tidyverse', 'magrittr', 'igraph', 'fields', 'ggplot2', 'writexl', 'pdftools'))"
+RUN apt-get update && \
+  apt-get install -y \
+  wget && \
+  apt-get clean && \
+  rm -rf /var/lib/apt/lists/*
 
-RUN Rscript -e " \
-  options(repos = BiocManager::repositories()); \
-  BiocManager::install(version = '3.21', ask = FALSE, update = FALSE); \
-  BiocManager::install(c('STRINGdb', 'org.Hs.eg.db', 'AnnotationDbi', 'ensembldb', 'EnsDb.Hsapiens.v75'), ask = FALSE, update = FALSE)"
+USER micromamba
 
-COPY ./scripts/NetPath /scripts
+COPY --chown=$MAMBA_USER:$MAMBA_USER ./container/netpath/environment.yml /tmp/
+
+COPY --chown=$MAMBA_USER:$MAMBA_USER ./scripts /scripts
+
+RUN micromamba install -y -n base -f /tmp/environment.yml && \
+    micromamba clean --all --yes
 
 RUN wget -q http://stringdb-downloads.org/download/protein.aliases.v12.0/9606.protein.aliases.v12.0.txt.gz -P /scripts && \
-    wget -q http://stringdb-downloads.org/download/protein.info.v12.0/9606.protein.info.v12.0.txt.gz -P /scripts && \
-    wget -q http://stringdb-downloads.org/download/protein.links.v12.0/9606.protein.links.v12.0.txt.gz -P /scripts
+  wget -q http://stringdb-downloads.org/download/protein.info.v12.0/9606.protein.info.v12.0.txt.gz -P /scripts && \
+  wget -q http://stringdb-downloads.org/download/protein.links.v12.0/9606.protein.links.v12.0.txt.gz -P /scripts
+
+ARG MAMBA_DOCKERFILE_ACTIVATE=1
+
+ENV PATH="/opt/conda/bin:$PATH"
