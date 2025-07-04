@@ -7,7 +7,7 @@ on:
 
 env:
   REGISTRY: ghcr.io
-  IMAGE_NAME: biomarkerml-net
+  IMAGE_NAME: ${{ github.repository_owner }}/biomarkerml-net
 
 jobs:
   build-and-push-image:
