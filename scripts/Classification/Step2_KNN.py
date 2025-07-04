@@ -92,6 +92,17 @@ class TSNETransformer(BaseEstimator, TransformerMixin):
             return self.X_transformed_
         else:
             raise NotImplementedError("TSNETransformer does not support transforming new data.")
+def safe_umap(n_components, n_neighbors, min_dist, X, random_state=1234):
+    n_samples = X.shape[0]
+    n_components = min(n_components, max(1, n_samples - 1))
+    n_neighbors = min(n_neighbors, max(2, n_samples - 2))
+    return umap.UMAP(
+        n_components=n_components,
+        n_neighbors=n_neighbors,
+        min_dist=min_dist,
+        random_state=random_state,
+        init='random'
+    )
 
 def knn_nested_cv(inp, prefix, feature_selection_method):
     data = pd.read_csv(inp)
@@ -104,8 +115,8 @@ def knn_nested_cv(inp, prefix, feature_selection_method):
     y = data['Label']
 
     scaler = StandardScaler()
-    X_scaled = scaler.fit_transform(X)
-    X = pd.DataFrame(X_scaled, columns=X.columns)
+    # X_scaled = scaler.fit_transform(X)
+    # X = pd.DataFrame(X_scaled, columns=X.columns)
 
     le = LabelEncoder()
     y_encoded = le.fit_transform(y)
@@ -131,7 +142,10 @@ def knn_nested_cv(inp, prefix, feature_selection_method):
         X_pca_full_df.to_csv(f"{prefix}_knn_pca_all_components.csv", index=False)
 
     elif feature_selection_method == 'pls':
-        pls = PLSRegression(n_components=min(X.shape[0] - 1, X.shape[1]))
+        max_pls_components = min(X.shape[0] - 1, X.shape[1])
+        max_pls_components = max(1, max_pls_components)
+        pls = PLSRegression(n_components=max_pls_components)
+
         with SuppressOutput():
             X_pls_full = pls.fit_transform(X, y_encoded)[0]
         explained_variance = np.var(X_pls_full, axis=0) / np.var(X, axis=0).sum()
@@ -169,12 +183,13 @@ def knn_nested_cv(inp, prefix, feature_selection_method):
         X_kpca_full_df.to_csv(f"{prefix}_knn_kpca_all_components.csv", index=False)
 
     elif feature_selection_method == 'umap':
-        umap_full = umap.UMAP(
+        umap_full = safe_umap(
             n_components=min(X.shape[1], 100),
             n_neighbors=15,
             min_dist=0.1,
-            random_state=1234
+            X=X
         )
+
         with SuppressOutput():
             X_umap_full = umap_full.fit_transform(X)
         X_umap_full_df = pd.DataFrame(
@@ -277,13 +292,14 @@ def knn_nested_cv(inp, prefix, feature_selection_method):
                 min_dist = trial.suggest_uniform('umap_min_dist', 0.0, 0.99)
                 steps_inner.append((
                     'feature_selection',
-                    umap.UMAP(
+                    safe_umap(
                         n_components=n_components,
                         n_neighbors=umap_n_neighbors,
                         min_dist=min_dist,
-                        random_state=1234
+                        X=X_train_outer
                     )
                 ))
+
             elif feature_selection_method == 'pls':
                 max_pls_components = min(X_train_outer.shape[1], X_train_outer.shape[0] - 1)
                 max_pls_components = max(1, max_pls_components)
@@ -388,13 +404,14 @@ def knn_nested_cv(inp, prefix, feature_selection_method):
             best_umap_min_dist = best_params_inner['umap_min_dist']
             steps_outer.append((
                 'feature_selection',
-                umap.UMAP(
+                safe_umap(
                     n_components=best_umap_n_components,
                     n_neighbors=best_umap_n_neighbors,
                     min_dist=best_umap_min_dist,
-                    random_state=1234
+                    X=X_train_outer
                 )
             ))
+
         elif feature_selection_method == 'pls':
             best_pls_n_components = best_params_inner['pls_n_components']
             steps_outer.append(('feature_selection', PLSFeatureSelector(n_components=best_pls_n_components)))
@@ -456,16 +473,18 @@ def knn_nested_cv(inp, prefix, feature_selection_method):
     folds = range(1, cv_outer.get_n_splits() + 1)
     plt.plot(folds, outer_f1_scores, marker='o', label='F1 Score')
     plt.plot(folds, outer_auc_scores, marker='s', label='AUC')
-    plt.xlabel('Outer Fold')
-    plt.ylabel('Score')
-    plt.title('F1 and AUC Scores per Outer Fold')
-    plt.xticks(folds)
+    plt.xlabel('Outer Fold Number', fontsize=18, labelpad=10)
+    plt.ylabel('Score (F1 / AUC)', fontsize=18, labelpad=10)
+    plt.title('F1 and AUC Scores per Outer Fold', fontsize=16, fontweight='bold', pad=15)
+    plt.xticks(folds, fontsize=14)
+    plt.yticks(fontsize=14)
+    plt.legend(fontsize=14, title_fontsize=16)
     plt.ylim(0, 1)
-    plt.legend()
     plt.grid(True)
     plt.tight_layout()
     plt.savefig(f"{prefix}_knn_nested_cv_f1_auc.png", dpi=300)
     plt.close()
+
 
     print("Nested cross-validation completed.")
     print(f"Average F1 Score: {np.mean(outer_f1_scores):.4f} ± {np.std(outer_f1_scores):.4f}")
@@ -533,11 +552,11 @@ def knn_nested_cv(inp, prefix, feature_selection_method):
             min_dist_all = trial.suggest_uniform('umap_min_dist', 0.0, 0.99)
             steps_full.append((
                 'feature_selection',
-                umap.UMAP(
+                safe_umap(
                     n_components=n_components_all,
                     n_neighbors=umap_n_neighbors_all,
                     min_dist=min_dist_all,
-                    random_state=1234
+                    X=X  
                 )
             ))
         elif feature_selection_method == 'pls':
@@ -635,13 +654,14 @@ def knn_nested_cv(inp, prefix, feature_selection_method):
         best_umap_min_dist_full = best_params_full['umap_min_dist']
         steps_final.append((
             'feature_selection',
-            umap.UMAP(
+            safe_umap(
                 n_components=best_umap_n_components_full,
                 n_neighbors=best_umap_n_neighbors_full,
                 min_dist=best_umap_min_dist_full,
-                random_state=1234
+                X=X
             )
         ))
+
     elif feature_selection_method == 'pls':
         best_pls_n_components_full = best_params_full['pls_n_components']
         steps_final.append(('feature_selection', PLSFeatureSelector(n_components=best_pls_n_components_full)))
@@ -809,7 +829,7 @@ def knn_nested_cv(inp, prefix, feature_selection_method):
 
     disp_final = ConfusionMatrixDisplay(confusion_matrix=cm_final, display_labels=le.classes_)
     disp_final.plot(cmap=plt.cm.Blues)
-    plt.title('Confusion Matrix for KNN (Final)')
+    plt.title('Confusion Matrix for KNN',fontsize=12,fontweight='bold')
     plt.savefig(f"{prefix}_knn_confusion_matrix.png", dpi=300)
     plt.close()
 
@@ -870,10 +890,13 @@ def knn_nested_cv(inp, prefix, feature_selection_method):
     plt.plot([0, 1], [0, 1], 'k--')
     plt.xlim([0.0, 1.0])
     plt.ylim([0.0, 1.05])
-    plt.xlabel('False Positive Rate')
-    plt.ylabel('True Positive Rate')
-    plt.title('ROC Curves for KNN (Final)')
-    plt.legend(loc="lower right")
+    plt.xlabel('False Positive Rate (1 - Specificity)', fontsize=18, labelpad=10)
+    plt.ylabel('True Positive Rate (Sensitivity)', fontsize=18, labelpad=10)
+    plt.title('ROC Curves for KNN', fontsize=22, fontweight='bold', pad=15)
+    plt.legend(loc="lower right", fontsize=14, title_fontsize=16)
+    plt.xticks(fontsize=14)
+    plt.yticks(fontsize=14)
+    plt.tight_layout()
     plt.savefig(f"{prefix}_knn_roc_curve.png", dpi=300)
     plt.close()
 
@@ -885,11 +908,11 @@ def knn_nested_cv(inp, prefix, feature_selection_method):
     }
     metrics_df_final = pd.DataFrame(list(metrics_dict_final.items()), columns=['Metric', 'Value'])
     ax_final = metrics_df_final.plot(kind='bar', x='Metric', y='Value', legend=False)
-    plt.title('Performance Metrics for KNN (Final)')
+    plt.title('Performance Metrics for KNN',fontsize=14,fontweight='bold')
     plt.ylabel('Value')
-    plt.ylim(0, 1)
+    plt.ylim(0, 1.1)
     for container in ax_final.containers:
-        ax_final.bar_label(container, fmt='%.2f')
+        ax_final.bar_label(container, fmt='%.2f', label_type='edge', padding=5)
     plt.xticks(rotation=45, ha='right')
     plt.tight_layout()
     plt.savefig(f"{prefix}_knn_metrics.png", dpi=300)

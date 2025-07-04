@@ -7,7 +7,7 @@ task dim_reduction {
         String dim_method = "PCA"
         Int num_dimensions = 3
         String docker
-        Int memory_gb = 16
+        Int memory_gb = 24
         Int cpu = 16
     }
     Int disk_size_gb = ceil(size(input_csv, "GB")) + 5

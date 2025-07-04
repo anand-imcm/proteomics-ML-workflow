@@ -72,6 +72,17 @@ class TSNETransformer(BaseEstimator, TransformerMixin):
         else:
             raise NotImplementedError("TSNETransformer does not support transforming new data.")
 
+def safe_umap(n_components, n_neighbors, min_dist, X, random_state=1234):
+    n_components = min(n_components, max(1, X.shape[0] - 1))
+    n_neighbors = min(n_neighbors, max(2, X.shape[0] - 2))
+    return umap.UMAP(
+        n_components=n_components,
+        n_neighbors=n_neighbors,
+        min_dist=min_dist,
+        random_state=random_state,
+        init='random'
+    )
+
 def svm_nested_cv(inp, prefix, feature_selection_method):
     data = pd.read_csv(inp)
 
@@ -87,9 +98,9 @@ def svm_nested_cv(inp, prefix, feature_selection_method):
     y_binarized = pd.get_dummies(y_encoded).values
     num_classes = len(np.unique(y_encoded))
 
-    scaler = StandardScaler()
-    X_scaled = scaler.fit_transform(X)
-    X = pd.DataFrame(X_scaled, columns=X.columns)
+    # scaler = StandardScaler()
+    # X_scaled = scaler.fit_transform(X)
+    # X = pd.DataFrame(X_scaled, columns=X.columns)
 
     # Dynamically adjust PCA components to avoid ValueError
     if feature_selection_method == 'pca':
@@ -110,7 +121,7 @@ def svm_nested_cv(inp, prefix, feature_selection_method):
         X_pca_full_df.to_csv(f"{prefix}_svm_pca_all_components.csv", index=False)
 
     elif feature_selection_method == 'pls':
-        pls = PLSRegression(n_components=X.shape[1])
+        pls = PLSRegression(n_components=min(X.shape[0]-1, X.shape[1]))
         with SuppressOutput():
             X_pls_full = pls.fit_transform(X, y_encoded)[0]
         explained_variance = np.var(X_pls_full, axis=0) / np.var(X, axis=0).sum()
@@ -244,19 +255,18 @@ def svm_nested_cv(inp, prefix, feature_selection_method):
                 # ensure n_neighbors < n_train
                 n_neighbors_umap = min(n_neighbors_umap, max(n_train - 2, 2))
                 min_dist_umap = trial.suggest_uniform('min_dist', 0.0, 0.99)
-                steps.append(('feature_selection', umap.UMAP(
+                steps.append(('feature_selection', safe_umap(
                     n_components=n_components_umap,
                     n_neighbors=n_neighbors_umap,
                     min_dist=min_dist_umap,
-                    random_state=1234,
-                    init='random'
+                    X=X_train_outer
                 )))
 
             elif feature_selection_method == 'pls':
-                max_pls_components_inner = min(X_train_outer.shape[1], 1000)
+                max_pls_components_inner = min(X_train_outer.shape[0] - 1, X_train_outer.shape[1])
                 if max_pls_components_inner < 1:
                     max_pls_components_inner = 1
-                n_components = trial.suggest_int('n_components', 2, max_pls_components_inner)
+                n_components = trial.suggest_int('n_components', 1, max_pls_components_inner)
                 steps.append(('feature_selection', PLSFeatureSelector(n_components=n_components)))
 
             elif feature_selection_method == 'tsne':
@@ -329,17 +339,17 @@ def svm_nested_cv(inp, prefix, feature_selection_method):
         elif feature_selection_method == 'umap':
             best_n_components = best_params_inner['n_components']
             best_n_neighbors = best_params_inner['n_neighbors']
-            best_n_neighbors = min(best_n_neighbors, max(X_train_outer.shape[0] - 2, 2))
             best_min_dist = best_params_inner['min_dist']
-            steps.append(('feature_selection', umap.UMAP(
+            steps.append(('feature_selection', safe_umap(
                 n_components=best_n_components,
                 n_neighbors=best_n_neighbors,
                 min_dist=best_min_dist,
-                random_state=1234,
-                init='random'
+                X=X_train_outer
             )))
+
         elif feature_selection_method == 'pls':
             best_n_components = best_params_inner['n_components']
+            best_n_components = min(best_n_components, X_train_outer.shape[0] - 1, X_train_outer.shape[1])
             steps.append(('feature_selection', PLSFeatureSelector(n_components=best_n_components)))
         elif feature_selection_method == 'tsne':
             best_n_components = best_params_inner['n_components']
@@ -399,14 +409,16 @@ def svm_nested_cv(inp, prefix, feature_selection_method):
 
     plt.figure(figsize=(10, 6))
     folds = range(1, cv_outer.get_n_splits() + 1)
-    plt.plot(folds, outer_f1_scores, marker='o', label='F1 Score')
-    plt.plot(folds, outer_auc_scores, marker='s', label='AUC')
-    plt.xlabel('Outer Fold')
-    plt.ylabel('Score')
-    plt.title('F1 and AUC Scores per Outer Fold')
-    plt.xticks(folds)
-    plt.ylim(0, 1)
-    plt.legend()
+    plt.plot(folds, outer_f1_scores, marker='o', linestyle='-', label='F1 Score')
+    plt.plot(folds, outer_auc_scores, marker='s', linestyle='-', label='AUC Score')
+    
+    plt.title('F1 and AUC Scores per Outer Fold', fontsize=16, fontweight='bold', pad=15)
+    plt.xlabel('Outer Fold Number', fontsize=18, labelpad=10)
+    plt.ylabel('Score (F1 / AUC)', fontsize=18, labelpad=10)
+    plt.xticks(folds, fontsize=14)
+    plt.yticks(fontsize=14)
+    plt.legend(fontsize=14, title_fontsize=16)
+    plt.ylim(0, 1.05)
     plt.grid(True)
     plt.tight_layout()
     plt.savefig(f"{prefix}_svm_nested_cv_f1_auc.png", dpi=300)
@@ -471,18 +483,18 @@ def svm_nested_cv(inp, prefix, feature_selection_method):
             n_neighbors_umap = trial.suggest_int('n_neighbors', 5, min(50, n_samples_full - 1))
             n_neighbors_umap = min(n_neighbors_umap, max(n_samples_full - 2, 2))
             min_dist_umap = trial.suggest_uniform('min_dist', 0.0, 0.99)
-            steps.append(('feature_selection', umap.UMAP(
+            steps.append(('feature_selection', safe_umap(
                 n_components=n_components_umap,
                 n_neighbors=n_neighbors_umap,
                 min_dist=min_dist_umap,
-                random_state=1234,
-                init='random'
+                X=X
             )))
+
         elif feature_selection_method == 'pls':
-            max_pls_components_full = min(X.shape[1], 1000)
+            max_pls_components_full = min(X.shape[0] - 1, X.shape[1])
             if max_pls_components_full < 1:
                 max_pls_components_full = 1
-            n_components = trial.suggest_int('n_components', 2, max_pls_components_full)
+            n_components = trial.suggest_int('n_components', 1, max_pls_components_full)
             steps.append(('feature_selection', PLSFeatureSelector(n_components=n_components)))
         elif feature_selection_method == 'tsne':
             n_components_tsne = trial.suggest_int('n_components', 2, 3)
@@ -553,13 +565,13 @@ def svm_nested_cv(inp, prefix, feature_selection_method):
         best_n_neighbors_full = best_params_full['n_neighbors']
         best_n_neighbors_full = min(best_n_neighbors_full, max(X.shape[0] - 2, 2))
         best_min_dist_full = best_params_full['min_dist']
-        steps.append(('feature_selection', umap.UMAP(
+        steps.append(('feature_selection', safe_umap(
             n_components=best_n_components_full,
             n_neighbors=best_n_neighbors_full,
             min_dist=best_min_dist_full,
-            random_state=1234,
-            init='random'
+            X=X
         )))
+
     elif feature_selection_method == 'pls':
         best_n_components_full = best_params_full['n_components']
         steps.append(('feature_selection', PLSFeatureSelector(n_components=best_n_components_full)))
@@ -691,7 +703,7 @@ def svm_nested_cv(inp, prefix, feature_selection_method):
 
     disp = ConfusionMatrixDisplay(confusion_matrix=cm, display_labels=le.classes_)
     disp.plot(cmap=plt.cm.Blues)
-    plt.title('Confusion Matrix for SVM')
+    plt.title('Confusion Matrix for SVM',fontsize=12,fontweight='bold')
     plt.savefig(f"{prefix}_svm_confusion_matrix.png", dpi=300)
     plt.close()
 
@@ -732,7 +744,7 @@ def svm_nested_cv(inp, prefix, feature_selection_method):
     np.save(f"{prefix}_svm_roc_data.npy", roc_data)
 
     plt.figure(figsize=(10, 8))
-
+    
     if num_classes == 2 and y_pred_prob.shape[1] == 2:
         plt.plot(fpr[0], tpr[0], label=f'AUC = {roc_auc[0]:.2f}')
     else:
@@ -741,25 +753,28 @@ def svm_nested_cv(inp, prefix, feature_selection_method):
                 plt.plot(fpr[i], tpr[i], label=f'{le.inverse_transform([i])[0]} (AUC = {roc_auc[i]:.2f})')
         if roc_auc.get("micro", 0.0) > 0.0:
             plt.plot(fpr["micro"], tpr["micro"], label=f'Overall (AUC = {roc_auc["micro"]:.2f})', linestyle='--')
-
+    
     plt.plot([0, 1], [0, 1], 'k--')
     plt.xlim([0.0, 1.0])
     plt.ylim([0.0, 1.05])
-    plt.xlabel('False Positive Rate')
-    plt.ylabel('True Positive Rate')
-    plt.title('ROC Curves for SVM')
-    plt.legend(loc="lower right")
+    plt.xlabel('False Positive Rate (1 - Specificity)', fontsize=18, labelpad=10)
+    plt.ylabel('True Positive Rate (Sensitivity)', fontsize=18, labelpad=10)
+    plt.title('ROC Curves for SVM', fontsize=22, fontweight='bold', pad=15)
+    plt.legend(loc="lower right", fontsize=14, title_fontsize=16)
+    plt.xticks(fontsize=14)
+    plt.yticks(fontsize=14)
+    plt.tight_layout()
     plt.savefig(f"{prefix}_svm_roc_curve.png", dpi=300)
     plt.close()
 
     metrics = {'Accuracy': acc, 'F1 Score': f1, 'Sensitivity': sensitivity, 'Specificity': specificity}
     metrics_df = pd.DataFrame(list(metrics.items()), columns=['Metric', 'Value'])
     ax = metrics_df.plot(kind='bar', x='Metric', y='Value', legend=False)
-    plt.title('Performance Metrics for SVM')
+    plt.title('Performance Metrics for SVM',fontsize=14,fontweight='bold')
     plt.ylabel('Value')
-    plt.ylim(0, 1)
+    plt.ylim(0, 1.1)
     for container in ax.containers:
-        ax.bar_label(container, fmt='%.2f')
+        ax.bar_label(container, fmt='%.2f', padding=5)
     plt.xticks(rotation=45, ha='right')
     plt.tight_layout()
     plt.savefig(f"{prefix}_svm_metrics.png", dpi=300)

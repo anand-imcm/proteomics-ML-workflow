@@ -57,6 +57,10 @@ class PLSFeatureSelector(BaseEstimator, TransformerMixin):
         self.n_components = n_components
         self.pls = PLSRegression(n_components=self.n_components)
     def fit(self, X, y):
+        max_allowed = min(X.shape[0] - 1, X.shape[1])
+        if self.n_components > max_allowed:
+            raise ValueError(f"n_components={self.n_components} exceeds max allowed {max_allowed}")
+        self.pls = PLSRegression(n_components=self.n_components)
         self.pls.fit(X, y)
         return self
     def transform(self, X):
@@ -94,6 +98,17 @@ class TSNETransformer(BaseEstimator, TransformerMixin):
             return self.X_transformed_
         else:
             raise NotImplementedError("TSNETransformer does not support transforming new data.")
+def safe_umap(n_components, n_neighbors, min_dist, X, random_state=1234):
+    n_samples = X.shape[0]
+    n_components = min(n_components, max(1, n_samples - 1))
+    n_neighbors = min(n_neighbors, max(2, n_samples - 2))
+    return umap.UMAP(
+        n_components=n_components,
+        n_neighbors=n_neighbors,
+        min_dist=min_dist,
+        random_state=random_state,
+        init='random'
+    )
 
 def neural_network_nested_cv(inp, prefix, feature_selection_method):
     # Read data
@@ -111,9 +126,9 @@ def neural_network_nested_cv(inp, prefix, feature_selection_method):
     y = data['Label']
 
     # Apply data standardization
-    scaler = StandardScaler()
-    X_scaled = scaler.fit_transform(X)
-    X = pd.DataFrame(X_scaled, columns=X.columns)
+    # scaler = StandardScaler()
+    # X_scaled = scaler.fit_transform(X)
+    # X = pd.DataFrame(X_scaled, columns=X.columns)
 
     # Convert target variable to categorical
     le = LabelEncoder()
@@ -139,7 +154,9 @@ def neural_network_nested_cv(inp, prefix, feature_selection_method):
         X_pca_full_df['Label'] = y
         X_pca_full_df.to_csv(f"{prefix}_neural_network_pca_all_components.csv", index=False)
     elif feature_selection_method == 'pls':
-        pls = PLSRegression(n_components=min(X.shape[0]-1, X.shape[1]))
+        max_pls_components_full = min(X.shape[0] - 1, X.shape[1])
+        pls = PLSRegression(n_components=max_pls_components_full)
+
         with SuppressOutput():
             X_pls_full = pls.fit_transform(X, y_encoded)[0]
         explained_variance = np.var(X_pls_full, axis=0) / np.var(X, axis=0).sum()
@@ -170,9 +187,10 @@ def neural_network_nested_cv(inp, prefix, feature_selection_method):
         X_kpca_full_df['Label'] = y
         X_kpca_full_df.to_csv(f"{prefix}_neural_network_kpca_all_components.csv", index=False)
     elif feature_selection_method == 'umap':
-        umap_full = umap.UMAP(n_components=min(X.shape[1], 100), n_neighbors=15, min_dist=0.1, random_state=1234)
+        umap_full = safe_umap(n_components=min(X.shape[1], 100), n_neighbors=15, min_dist=0.1, X=X)
         with SuppressOutput():
             X_umap_full = umap_full.fit_transform(X)
+
         # Save transformed data
         X_umap_full_df = pd.DataFrame(X_umap_full, columns=[f"UMAP_Component_{i+1}" for i in range(X_umap_full.shape[1])])
         X_umap_full_df.insert(0, 'SampleID', sample_ids)
@@ -252,10 +270,13 @@ def neural_network_nested_cv(inp, prefix, feature_selection_method):
                 n_components = trial.suggest_int('n_components', 2, max_umap_components)
                 n_neighbors = trial.suggest_int('n_neighbors', 5, min(50, X_train_outer.shape[0]-1))
                 min_dist = trial.suggest_uniform('min_dist', 0.0, 0.99)
-                steps.append(('feature_selection', umap.UMAP(n_components=n_components, n_neighbors=n_neighbors, min_dist=min_dist, random_state=1234)))
+                steps.append(('feature_selection', safe_umap(n_components=n_components, n_neighbors=n_neighbors, min_dist=min_dist, X=X_train_outer)))
+
             elif feature_selection_method == 'pls':
-                max_pls_components = min(X_train_outer.shape[1], X_train_outer.shape[0]-1)
-                n_components = trial.suggest_int('n_components', 2, max_pls_components)
+                max_pls_components = min(X_train_outer.shape[0] - 1, X_train_outer.shape[1])
+                max_pls_components = max(1, max_pls_components)
+                n_components = trial.suggest_int('n_components', 1, max_pls_components)
+
                 steps.append(('feature_selection', PLSFeatureSelector(n_components=n_components)))
             elif feature_selection_method == 'tsne':
                 n_components = trial.suggest_int('n_components', 2, 3)
@@ -333,7 +354,8 @@ def neural_network_nested_cv(inp, prefix, feature_selection_method):
             best_n_components = best_params_inner['n_components']
             best_n_neighbors = best_params_inner['n_neighbors']
             best_min_dist = best_params_inner['min_dist']
-            steps.append(('feature_selection', umap.UMAP(n_components=best_n_components, n_neighbors=best_n_neighbors, min_dist=best_min_dist, random_state=1234)))
+            steps.append(('feature_selection', safe_umap(n_components=best_n_components, n_neighbors=best_n_neighbors, min_dist=best_min_dist, X=X_train_outer)))
+
         elif feature_selection_method == 'pls':
             best_n_components = best_params_inner['n_components']
             steps.append(('feature_selection', PLSFeatureSelector(n_components=best_n_components)))
@@ -402,14 +424,16 @@ def neural_network_nested_cv(inp, prefix, feature_selection_method):
     # Plot and save F1 and AUC per outer fold
     plt.figure(figsize=(10, 6))
     folds = range(1, cv_outer.get_n_splits() + 1)
-    plt.plot(folds, outer_f1_scores, marker='o', label='F1 Score')
-    plt.plot(folds, outer_auc_scores, marker='s', label='AUC')
-    plt.xlabel('Outer Fold')
-    plt.ylabel('Score')
-    plt.title('F1 and AUC Scores per Outer Fold')
-    plt.xticks(folds)
-    plt.ylim(0, 1)
-    plt.legend()
+    plt.plot(folds, outer_f1_scores, marker='o', linestyle='-', label='F1 Score')
+    plt.plot(folds, outer_auc_scores, marker='s', linestyle='-', label='AUC Score')
+    
+    plt.title('F1 and AUC Scores per Outer Fold', fontsize=16, fontweight='bold', pad=15)
+    plt.xlabel('Outer Fold Number', fontsize=18, labelpad=10)
+    plt.ylabel('Score (F1 / AUC)', fontsize=18, labelpad=10)
+    plt.xticks(folds, fontsize=14)
+    plt.yticks(fontsize=14)
+    plt.legend(fontsize=14, title_fontsize=16)
+    plt.ylim(0, 1.1)
     plt.grid(True)
     plt.tight_layout()
     plt.savefig(f"{prefix}_neural_network_nested_cv_f1_auc.png", dpi=300)
@@ -463,10 +487,11 @@ def neural_network_nested_cv(inp, prefix, feature_selection_method):
             n_components = trial.suggest_int('n_components', 2, max_umap_components)
             n_neighbors = trial.suggest_int('n_neighbors', 5, min(50, X.shape[0]-1))
             min_dist = trial.suggest_uniform('min_dist', 0.0, 0.99)
-            steps.append(('feature_selection', umap.UMAP(n_components=n_components, n_neighbors=n_neighbors, min_dist=min_dist, random_state=1234)))
+            steps.append(('feature_selection', safe_umap(n_components=n_components, n_neighbors=n_neighbors, min_dist=min_dist, X=X)))
         elif feature_selection_method == 'pls':
-            max_pls_components = min(X.shape[1], X.shape[0]-1)
-            n_components = trial.suggest_int('n_components', 2, max_pls_components)
+            max_pls_components = min(X.shape[0] - 1, X.shape[1])
+            max_pls_components = max(1, max_pls_components)
+            n_components = trial.suggest_int('n_components', 1, max_pls_components)
             steps.append(('feature_selection', PLSFeatureSelector(n_components=n_components)))
         elif feature_selection_method == 'tsne':
             n_components = trial.suggest_int('n_components', 2, 3)
@@ -539,7 +564,12 @@ def neural_network_nested_cv(inp, prefix, feature_selection_method):
         best_n_components_full = best_params_full['n_components']
         best_n_neighbors_full = best_params_full['n_neighbors']
         best_min_dist_full = best_params_full['min_dist']
-        steps.append(('feature_selection', umap.UMAP(n_components=best_n_components_full, n_neighbors=best_n_neighbors_full, min_dist=best_min_dist_full, random_state=1234)))
+        steps.append(('feature_selection', safe_umap(
+            n_components=best_n_components_full,
+            n_neighbors=best_n_neighbors_full,
+            min_dist=best_min_dist_full,
+            X=X
+        )))
     elif feature_selection_method == 'pls':
         best_n_components_full = best_params_full['n_components']
         steps.append(('feature_selection', PLSFeatureSelector(n_components=best_n_components_full)))
@@ -696,7 +726,7 @@ def neural_network_nested_cv(inp, prefix, feature_selection_method):
     # Confusion matrix
     disp = ConfusionMatrixDisplay(confusion_matrix=cm, display_labels=le.classes_)
     disp.plot(cmap=plt.cm.Blues)
-    plt.title('Confusion Matrix for Neural Network')
+    plt.title('Confusion Matrix for Neural Network',fontsize=12,fontweight='bold')
     plt.savefig(f"{prefix}_neural_network_confusion_matrix.png", dpi=300)
     plt.close()
 
@@ -745,13 +775,17 @@ def neural_network_nested_cv(inp, prefix, feature_selection_method):
                 plt.plot(fpr[i], tpr[i], label=f'{le.inverse_transform([i])[0]} (AUC = {roc_auc[i]:.2f})')
         if roc_auc.get("micro", 0.0) > 0.0:
             plt.plot(fpr["micro"], tpr["micro"], label=f'Overall (AUC = {roc_auc["micro"]:.2f})', linestyle='--')
+    
     plt.plot([0, 1], [0, 1], 'k--')
     plt.xlim([0.0, 1.0])
     plt.ylim([0.0, 1.05])
-    plt.xlabel('False Positive Rate')
-    plt.ylabel('True Positive Rate')
-    plt.title('ROC Curves for Neural Network')
-    plt.legend(loc="lower right")
+    plt.xlabel('False Positive Rate (1 - Specificity)', fontsize=18, labelpad=10)
+    plt.ylabel('True Positive Rate (Sensitivity)', fontsize=18, labelpad=10)
+    plt.title('ROC Curves for Neural Network', fontsize=22, fontweight='bold', pad=15)
+    plt.legend(loc="lower right", fontsize=14, title_fontsize=16)
+    plt.xticks(fontsize=14)
+    plt.yticks(fontsize=14)
+    plt.tight_layout()
     plt.savefig(f"{prefix}_neural_network_roc_curve.png", dpi=300)
     plt.close()
 
@@ -759,11 +793,11 @@ def neural_network_nested_cv(inp, prefix, feature_selection_method):
     metrics = {'Accuracy': acc, 'F1 Score': f1, 'Sensitivity': sensitivity, 'Specificity': specificity}
     metrics_df = pd.DataFrame(list(metrics.items()), columns=['Metric', 'Value'])
     ax = metrics_df.plot(kind='bar', x='Metric', y='Value', legend=False)
-    plt.title('Performance Metrics for Neural Network')
+    plt.title('Performance Metrics for Neural Network',fontsize=14,fontweight='bold')
     plt.ylabel('Value')
-    plt.ylim(0, 1)
+    plt.ylim(0, 1.1)
     for container in ax.containers:
-        ax.bar_label(container, fmt='%.2f')
+        ax.bar_label(container, fmt='%.2f', padding=5)
     plt.xticks(rotation=45, ha='right')
     plt.tight_layout()
     plt.savefig(f"{prefix}_neural_network_metrics.png", dpi=300)

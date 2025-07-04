@@ -32,30 +32,26 @@ warnings.filterwarnings("ignore")
 
 # Custom transformer for PLS
 class PLSFeatureSelector(BaseEstimator, TransformerMixin):
-    """
-    Modified PLSFeatureSelector to return a DataFrame with columns named
-    'PLS_Component_1', 'PLS_Component_2', etc. This ensures SHAP can correctly
-    handle the transformed data in a pipeline.
-    """
-    def __init__(self, n_components=2):
+    def __init__(self, n_components=2, max_iter=1000, tol=1e-6):
         self.n_components = n_components
+        self.max_iter = max_iter
+        self.tol = tol
         self.pls = None
-        self.feature_names_ = None
 
     def fit(self, X, y):
-        # Store feature names if X is a DataFrame
-        if hasattr(X, "columns"):
-            self.feature_names_ = X.columns.tolist()
-        else:
-            self.feature_names_ = [f"Feature_{i}" for i in range(X.shape[1])]
-        self.pls = PLSRegression(n_components=self.n_components)
+        self.index_ = X.index if isinstance(X, pd.DataFrame) else None
+        self.pls = PLSRegression(n_components=self.n_components, max_iter=self.max_iter, tol=self.tol)
         self.pls.fit(X, y)
         return self
 
     def transform(self, X):
-        X_pls = self.pls.transform(X)
-        columns = [f"PLS_Component_{i+1}" for i in range(X_pls.shape[1])]
-        return pd.DataFrame(X_pls, index=range(X_pls.shape[0]), columns=columns)
+        X_new = self.pls.transform(X)
+        return pd.DataFrame(
+            X_new,
+            index=self.index_,
+            columns=[f"PLS_Component_{i+1}" for i in range(self.n_components)]
+        )
+
 
 # Custom transformer for t-SNE
 class TSNETransformer(BaseEstimator, TransformerMixin):
@@ -465,27 +461,40 @@ def plot_shap_bar(model, shap_df, num_features, prefix, class_names):
     x = np.arange(len(labels))  # the label locations
     width = 0.8 / len(value_columns)  # the width of the bars
 
-    fig, ax = plt.subplots(figsize=(10, 8))
+    fig, ax = plt.subplots(figsize=(12, 8))  
     for idx, class_name in enumerate(value_columns):
         vals = shap_df_top[class_name].values
         ax.bar(x + idx * width, vals, width, label=class_name)
-
+    
     ax.set_xticks(x + width * (len(value_columns) - 1) / 2)
-    ax.set_xticklabels(labels, rotation=45, ha="right")
-    ax.set_ylabel("Mean SHAP Value")
-    ax.set_title(f"SHAP Values Bar Chart for {model}")
+    ax.set_xticklabels(labels, rotation=45, ha="right", fontsize=14)
+    
+    ax.set_xlabel("Top Features", fontsize=18, labelpad=10)
+    ax.set_ylabel("Mean SHAP Value", fontsize=18, labelpad=10)
+    
+    ax.set_title(f"SHAP Values Bar Chart for {model}", fontsize=22, fontweight='bold', pad=15)
+    
     ax.legend(
-        loc="upper center",
-        bbox_to_anchor=(0.5, -0.15),
-        ncol=min(len(class_names), 5),
+        loc="upper left",
+        bbox_to_anchor=(1.02, 1.0),
+        borderaxespad=0,
+        fontsize=14,
+        title="Class" if len(value_columns) > 1 else None,
+        title_fontsize=16,
     )
-    plt.tight_layout()
+    
+    ax.tick_params(axis='y', labelsize=14)
+    ax.tick_params(axis='x', labelsize=14)
+    
+    plt.tight_layout(rect=[0, 0, 0.85, 1])  
     plt.savefig(
         f"{prefix}_{model}_shap_bar.png",
         dpi=300,
         bbox_inches="tight",
     )
     plt.close()
+
+
 
 def get_model_type(model_name):
     """
@@ -523,206 +532,261 @@ def determine_feature_prefix(transformer):
         # For any other or no feature selection, default to "Feature"
         return "Feature"
 
+# ---------------------------------------------------------------------- #
+# helper – figure out the feature names after the transformer pipeline   #
+# ---------------------------------------------------------------------- #
+def _derive_feature_names_after_transform(
+    transformer: Pipeline | None,
+    original_names: list[str],
+) -> list[str]:
+    """
+    Return the column names *after* the fitted preprocessing / feature-
+    selection pipeline has been applied.
+
+    ── What it handles ───────────────────────────────────────────────────
+      • SelectFromModel / ElasticNet selector  → keeps real names
+      • PCA / KernelPCA / UMAP / TSNE          → Component_#
+      • PLSFeatureSelector                     → PLS_Component_#
+      • scalers                                → no change
+
+    If you add new transformers later, extend the `elif` chain.
+    """
+    names = original_names[:]                 # start with raw names
+    if transformer is None or len(transformer) == 0:
+        return names                          # nothing to change
+
+    for step_name, step_obj in transformer.steps:
+
+        # ------------------------------------------------------------------
+        # 1) dimensionality-reducing steps (checked *first* – order matters)
+        # ------------------------------------------------------------------
+        if isinstance(step_obj, PCA):
+            names = [f"PCA_Component_{i+1}"   for i in range(step_obj.n_components_)]
+            continue
+
+        if isinstance(step_obj, KernelPCA):
+            names = [f"KPCA_Component_{i+1}"  for i in range(step_obj.n_components)]
+            continue
+
+        if isinstance(step_obj, umap.UMAP):
+            names = [f"UMAP_Component_{i+1}"  for i in range(step_obj.n_components)]
+            continue
+
+        if isinstance(step_obj, TSNE):
+            names = [f"TSNE_Component_{i+1}"  for i in range(step_obj.n_components)]
+            continue
+
+        # your custom PLS selector
+        if hasattr(step_obj, "pls"):
+            n_comp = step_obj.n_components
+            names  = [f"PLS_Component_{i+1}"  for i in range(n_comp)]
+            continue
+
+        # ------------------------------------------------------------------
+        # 2) feature *selection* steps (keep subset of original names)
+        # ------------------------------------------------------------------
+        if isinstance(step_obj, SelectFromModel):
+            support = step_obj.get_support()
+            names   = [n for n, keep in zip(names, support) if keep]
+            continue
+
+        if hasattr(step_obj, "selector") and isinstance(step_obj.selector, ElasticNet):
+            support = step_obj.selector.get_support()
+            names   = [n for n, keep in zip(names, support) if keep]
+            continue
+
+        # ------------------------------------------------------------------
+        # 3) scalers or anything else – do NOTHING to the name list
+        # ------------------------------------------------------------------
+
+    return names
+# ---------------------------------------------------------------------- #
+
 def process_model(model_name, prefix, num_features, n_jobs_explainer):
     """
-    Process a single model to calculate and plot SHAP values.
+    Process one model end-to-end: load it, apply any scaler+feature-selection,
+    build the post-FS feature matrix with real names, compute SHAP on that,
+    save CSV + radar/bar plots.
     """
     try:
-        if model_name in ["vae", "vaemlp"]:
-            # Directly read VAE or VAE-MLP SHAP CSV file
+        print(f"Processing {model_name}...")
+
+        # 1) VAE / VAE-MLP: just read precomputed CSV if present
+        if model_name in ("vae", "vaemlp"):
             shap_file = f"{prefix}_{model_name}_shap_values.csv"
             if os.path.exists(shap_file):
                 shap_df = pd.read_csv(shap_file)
-                print(f"{model_name.upper()} SHAP values read from {shap_file}")
                 feature_names = shap_df["Feature"].tolist()
-                value_columns = [col for col in shap_df.columns if col != "Feature"]
-                if len(value_columns) == 1:
-                    class_names = [""]
-                else:
-                    class_names = value_columns
-            else:
-                print(
-                    f"{model_name.upper()} SHAP values file {shap_file} does not exist. Skipping {model_name.upper()}."
-                )
+                value_cols    = [c for c in shap_df.columns if c != "Feature"]
+                class_names   = value_cols if len(value_cols)>1 else [""]
+                print(f"  - loaded SHAP CSV for {model_name}")
+
+                # ADD THIS BLOCK: Call plot functions explicitly!
+                plot_shap_radar(model_name, shap_df, num_features, prefix, class_names)
+                if len(class_names) > 1:
+                    plot_shap_bar(model_name, shap_df, num_features, prefix, class_names)
+                print(f"  - finished processing {model_name} (from CSV)")    
                 return
+
+            else:
+                print(f"  SKIPPING {model_name}: no precomputed SHAP")
+                return
+
         else:
-            print(f"Processing {model_name}...")
-            best_model, X, y_encoded, num_classes, feature_names, class_names = load_model_and_data(
-                model_name, prefix
-            )
+            # 2) Load model pipeline + data
+            best_model, X_raw, y_enc, n_classes, orig_names, class_names = \
+                load_model_and_data(model_name, prefix)
+            Xdf = pd.DataFrame(X_raw, columns=orig_names)
 
-            # Check if the pipeline includes any feature selection or scaler transformers
-            if hasattr(best_model, "named_steps"):
+            # 3) Pull out scaler & feature_selection steps if they exist
+            scaler = None
+            fs     = None
+            if isinstance(best_model, Pipeline):
                 steps = best_model.named_steps
-                # Identify feature selection transformers
-                feature_selection_steps = [
-                    step_name
-                    for step_name, step_transformer in steps.items()
-                    if isinstance(step_transformer, feature_selection_transformers)
-                ]
-                # Identify scalers
-                scaler_steps = [
-                    step_name
-                    for step_name, step_transformer in steps.items()
-                    if isinstance(step_transformer, scaler_transformers)
-                ]
+                scaler = steps.get("scaler", None)
+                fs     = steps.get("feature_selection", None)
 
-                # Determine if the model is neural_network with ElasticNetFeatureSelector
-                is_nn_with_elasticnet = False
-                for step_name in feature_selection_steps:
-                    transformer = steps[step_name]
-                    if (
-                        isinstance(transformer, ElasticNetFeatureSelector)
-                        or (isinstance(transformer, SelectFromModel) and isinstance(transformer.estimator, ElasticNet))
-                    ) and model_name == "neural_network":
-                        is_nn_with_elasticnet = True
-                        break
+            # 4) Build X_shap = raw → scaler → feature_selection
+            if fs is not None:
+                # 4a) scaling
+                X_scaled = scaler.transform(Xdf) if scaler is not None else Xdf.values
 
-                # Decide which transformers to remove
-                if is_nn_with_elasticnet:
-                    transformers_to_remove = feature_selection_steps  # Do not remove scalers
+                # 4b) feature‐selection transform
+                try:
+                    X_fs = fs.transform(X_scaled)
+                except NotImplementedError:
+                    # TSNETransformer: fallback to the embedding computed at fit()
+                    X_fs = fs.X_transformed_
+
+                # 4c) derive real feature‐names
+                transformer_class = fs.__class__.__name__
+
+                # ---- ElasticNet / SelectFromModel ----
+                if hasattr(fs, "get_support"):
+                    # e.g. if fs is a bare SelectFromModel
+                    mask = fs.get_support()
+                    feat_names = [orig_names[i] for i,m in enumerate(mask) if m]
+                elif hasattr(fs, "selector") and hasattr(fs.selector, "get_support"):
+                    # our ElasticNetFeatureSelector
+                    mask = fs.selector.get_support()
+                    feat_names = [orig_names[i] for i,m in enumerate(mask) if m]
+
+                # ---- PCA / KPCA / UMAP / PLS / TSNE ----
+                elif transformer_class == "PCA":
+                    feat_names = [f"PCA_Component_{i+1}" for i in range(X_fs.shape[1])]
+                elif transformer_class == "KernelPCA":
+                    feat_names = [f"KPCA_Component_{i+1}" for i in range(X_fs.shape[1])]
+                elif "UMAP" in transformer_class:
+                    feat_names = [f"UMAP_Component_{i+1}" for i in range(X_fs.shape[1])]
+                elif transformer_class == "PLSFeatureSelector":
+                    feat_names = [f"PLS_Component_{i+1}" for i in range(X_fs.shape[1])]
+                elif transformer_class == "TSNETransformer":
+                    feat_names = [f"TSNE_Component_{i+1}" for i in range(X_fs.shape[1])]
+
+                # ---- fallback ----
                 else:
-                    transformers_to_remove = feature_selection_steps + scaler_steps
+                    feat_names = [f"Feature_{i+1}" for i in range(X_fs.shape[1])]
 
-                selected_transformer = None
-                for step_name in feature_selection_steps:
-                    transformer = steps[step_name]
-                    selected_transformer = transformer
-                    break  # Assuming only one feature selection transformer is used
+                print(f"  - applied {transformer_class}, now {X_fs.shape[1]} features")
+                X_shap = np.asarray(X_fs)
+                feature_names = feat_names
 
-                if transformers_to_remove:
-                    print(
-                        f"Removing transformers {transformers_to_remove} from the pipeline for SHAP explanations."
-                    )
-                    # Create a new pipeline without the feature selection transformers and scalers
-                    new_steps = [
-                        (name, transformer)
-                        for name, transformer in best_model.named_steps.items()
-                        if name not in transformers_to_remove
-                    ]
-                    if not new_steps:
-                        raise ValueError(
-                            "All transformers were removed from the pipeline. Cannot perform SHAP explanations."
-                        )
-                    modified_model = Pipeline(new_steps)
-                else:
-                    modified_model = best_model
-                    selected_transformer = None
-
-                # Load transformed data only if a feature selection transformer was removed
-                if feature_selection_steps:
-                    transformed_csv = f"{prefix}_{model_name}_transformed_X.csv"
-                    if os.path.exists(transformed_csv):
-                        transformed_data = pd.read_csv(transformed_csv)
-                        # Drop 'SampleID' and 'Label' columns if they exist
-                        for col_to_drop in ["SampleID", "Label"]:
-                            if col_to_drop in transformed_data.columns:
-                                transformed_data.drop(columns=[col_to_drop], inplace=True)
-                        X_transformed = transformed_data.values
-                        print(
-                            f"Loaded transformed data from {transformed_csv} for SHAP explanations."
-                        )
-
-                        # Special handling for TSNE + GaussianNB
-                        if isinstance(modified_model.steps[-1][1], GaussianNB) and isinstance(selected_transformer, TSNETransformer):
-                            print("Warning: TSNE with GaussianNB is not supported for SHAP. Using original data instead.")
-                            X_transformed = X
-                            feature_names_transformed = feature_names
-                        else:
-                            if isinstance(selected_transformer, ElasticNetFeatureSelector) or (
-                                isinstance(selected_transformer, SelectFromModel)
-                                and isinstance(selected_transformer.estimator, ElasticNet)
-                            ):
-                                # Use actual feature names from the transformed CSV
-                                feature_names_transformed = transformed_data.columns.tolist()
-                            else:
-                                prefix_for_features = determine_feature_prefix(selected_transformer)
-                                if prefix_for_features:
-                                    num_transformed_features = X_transformed.shape[1]
-                                    feature_names_transformed = [
-                                        f"{prefix_for_features}_{i+1}"
-                                        for i in range(num_transformed_features)
-                                    ]
-                                else:
-                                    feature_names_transformed = transformed_data.columns.tolist()
-                    else:
-                        raise FileNotFoundError(
-                            f"Transformed data file {transformed_csv} does not exist."
-                        )
-                else:
-                    # No feature selection transformer was used; use original data
-                    X_transformed = X
-                    feature_names_transformed = feature_names
             else:
-                # If the model is not a Pipeline
-                modified_model = best_model
-                selected_transformer = None
-                X_transformed = X
-                feature_names_transformed = feature_names
+                # no feature selection
+                print("  - no feature-selection")
+                if scaler is not None:
+                    X_shap = scaler.transform(Xdf)
+                    print("  - applied scaler only")
+                else:
+                    X_shap = X_raw
+                feature_names = orig_names
 
-            # Extract the final estimator from the modified pipeline if it's a Pipeline
-            if isinstance(modified_model, Pipeline):
-                final_estimator = modified_model.steps[-1][1]
-            else:
-                final_estimator = modified_model
+            # 5) strip off scaler/fs, keep just the final estimator
+            final_est = best_model.steps[-1][1] if isinstance(best_model, Pipeline) else best_model
 
+            # 6) ONLY for true tree models, if n_features_in_ mismatches, revert to raw X
             model_type = get_model_type(model_name)
-            shap_values_mean = calculate_shap_values(
-                final_estimator, X_transformed, num_classes, model_type, n_jobs_explainer
+            if model_type == "tree" and hasattr(final_est, "n_features_in_"):
+                expected = final_est.n_features_in_
+                if expected != X_shap.shape[1]:
+                    print(f"  - TREE expects {expected} but we have {X_shap.shape[1]}; reverting to raw")
+                    X_shap = X_raw
+                    feature_names = orig_names
+
+            # 7) compute SHAP means
+            print(f"  - using SHAP explainer '{model_type}' on {X_shap.shape[1]} features")
+            shap_mean = calculate_shap_values(
+                final_est, X_shap, n_classes, model_type, n_jobs_explainer
             )
 
-            # Build final SHAP dataframe
-            if shap_values_mean.ndim == 1:
-                # Binary classification
-                if len(feature_names_transformed) != len(shap_values_mean):
-                    print(
-                        f"Error: feature_names length ({len(feature_names_transformed)}) does not match shap_values_mean length ({len(shap_values_mean)})."
-                    )
-                    return
-                shap_df = pd.DataFrame(
-                    {
-                        "Feature": feature_names_transformed,
-                        f"Mean SHAP Value for {class_names[1]}": shap_values_mean,
-                    }
-                )
-            elif shap_values_mean.ndim == 2:
-                # Multi-class classification
-                num_shap_classes, num_feats_shap = shap_values_mean.shape
-                if num_feats_shap != len(feature_names_transformed):
-                    print(
-                        f"Error: feature_names length ({len(feature_names_transformed)}) does not match number of features in shap_values_mean ({num_feats_shap})."
-                    )
-                    return
-                shap_df = pd.DataFrame({"Feature": feature_names_transformed})
-                for idx, class_name in enumerate(class_names):
-                    shap_df[f"Mean SHAP Value for {class_name}"] = shap_values_mean[
-                        idx, :
-                    ]
+            # ────────────────────────────────────────────────────────────────
+            #  (NEW PATCH) For GaussianNB + TSNETransformer only
+            # ────────────────────────────────────────────────────────────────
+            fs_classname = fs.__class__.__name__.lower() if fs is not None else ""
+            if model_name == "gaussiannb" and "tsne" in fs_classname:
+                print(f"  - [PATCH] Detected TSNE for GNB, truncating SHAP values")
+                if shap_mean.ndim == 1:
+                    shap_mean = shap_mean[:2]
+                else:
+                    shap_mean = shap_mean[:, :2]
+                feature_names = feature_names[:2]
+
+            # 8) build DataFrame of feature vs mean SHAP
+            if shap_mean.ndim == 1:
+                col = f"Mean SHAP Value for {class_names[1] if len(class_names)>1 else ''}"
+                shap_df = pd.DataFrame({
+                    "Feature": feature_names,
+                    col: shap_mean
+                })
             else:
-                print(
-                    f"Unexpected shap_values_mean dimensions: {shap_values_mean.ndim}"
-                )
-                return
+                shap_df = pd.DataFrame({"Feature": feature_names})
+                for idx, cname in enumerate(class_names):
+                    shap_df[f"Mean SHAP Value for {cname}"] = shap_mean[idx, :]
 
-            shap_df.to_csv(f"{prefix}_{model_name}_shap_values.csv", index=False)
-            print(
-                f"SHAP values saved to {prefix}_{model_name}_shap_values.csv"
-            )
+            # 9) save CSV + plots
+            out_csv = f"{prefix}_{model_name}_shap_values.csv"
+            shap_df.to_csv(out_csv, index=False)
+            print(f"  - saved SHAP values to {out_csv}")
 
-        # Create plots
-        plot_shap_radar(model_name, shap_df, num_features, prefix, class_names)
-        print(
-            f"SHAP radar plot saved to {prefix}_{model_name}_shap_radar.png"
-        )
-
-        if len(class_names) > 1:
-            plot_shap_bar(model_name, shap_df, num_features, prefix, class_names)
-            print(
-                f"SHAP bar chart saved to {prefix}_{model_name}_shap_bar.png"
-            )
+            plot_shap_radar(model_name, shap_df, num_features, prefix, class_names)
+            if len(class_names) > 1:
+                plot_shap_bar(model_name, shap_df, num_features, prefix, class_names)
 
     except Exception as e:
         print(f"Error processing model {model_name}: {e}")
+        
+def _aggregate_shap(shap_vals, n_features, num_classes):
+    """
+    Given shap_values output by an explainer, reduce to
+    mean absolute shap per feature:
+      - binary: pick the positive class array or collapse appropriately
+      - multiclass: mean per class per feature
+    """
+    # identical logic to your calculate_shap_values but only for aggregation
+    if num_classes == 2:
+        # shap_vals may be list or array
+        if isinstance(shap_vals, list):
+            arr = np.array(shap_vals[-1])
+        else:
+            arr = np.array(shap_vals)
+            if arr.ndim == 3:
+                # shape (n_samples, n_features, 2)
+                arr = arr[:, :, 1]
+        return np.mean(arr, axis=0)
+    else:
+        if isinstance(shap_vals, list):
+            mats = [np.array(m).reshape(-1, n_features) for m in shap_vals]
+            out = np.vstack([m.mean(axis=0) for m in mats])
+        else:
+            arr = np.array(shap_vals)
+            if arr.ndim == 3:
+                # could be (n_s, n_feat, n_classes) or (n_s, n_classes, n_feat)
+                if arr.shape[1] == n_features:
+                    arr = np.transpose(arr, (0, 2, 1))
+                out = arr.mean(axis=0)
+            else:
+                raise ValueError("Unexpected shap_vals shape")
+        return out
 
 
 def main():
