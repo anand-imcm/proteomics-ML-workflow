@@ -1,0 +1,21 @@
+name: base
+channels:
+  - bioconda
+  - conda-forge
+  - defaults
+dependencies:
+  - r-base
+  - r-optparse
+  - r-tidyverse
+  - r-magrittr
+  - r-igraph
+  - r-fields
+  - r-ggplot2
+  - r-writexl
+  - r-pdftools
+  - r-biocmanager
+  - bioconductor-stringdb
+  - bioconductor-org.hs.eg.db
+  - bioconductor-annotationdbi
+  - bioconductor-ensembldb
+  - bioconductor-ensdb.hsapiens.v75
