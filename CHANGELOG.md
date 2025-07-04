@@ -2,12 +2,17 @@
 
 All notable changes to this project will be documented in this file.
 
-## [1.0.2] - 2025-06-11
+## [1.0.2] - 2025-07-04
 
 ### Added
 
 - New Protein-Protein Interaction (PPI) module.
 - Additional docker image to handle the dependencies related to PPI module.
+
+### Fixed
+
+- Edge cases to handle protein IDs in the PPI module.
+- Conditional flow of execution for the PPI module based on `ELASTICNET` and `NONE`.
 
 ### Updated
 
