@@ -335,7 +335,10 @@ pdf_fileName <- "Network.pdf"
 pdf(pdf_fileName)
 
 ### Read in protein expression profile 
-proExpF <- read.csv(proteinExpFile, check.names=FALSE)[,c(-1,-2)] %>% dplyr::select(where(~ any(. != 0))) ### filter out proteins with all-zero values
+proExpF <- read.csv(proteinExpFile, check.names = FALSE) %>%
+  dplyr::select(-SampleID, -Label) %>%                           # only maintain protein columns
+  mutate(across(everything(), as.numeric)) %>%                   # guarantee all protein levels to be numeric
+  filter(if_any(everything(), ~ . != 0))                         # Only Keep proteins with non-zero expression level
 
 for(colCt in colnames(Full_SHAP_F_AllScaled)[!grepl("CombinedShap", colnames(Full_SHAP_F_AllScaled))]){
   print(paste0("Proteins with the highest importance scores based on ", colCt, " are selected for PPI analysis."))
