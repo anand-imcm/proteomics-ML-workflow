@@ -39,12 +39,13 @@ jobs:
             type=semver,pattern={{version}}
 
       - name: Build and push Docker image
-        uses: docker/build-push-action@v5
+        uses: docker/build-push-action@v6
         with:
           context: .
           file: ./container/general/Dockerfile
           push: true
           platforms: linux/amd64,linux/arm64
+          provenance: false
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
 
