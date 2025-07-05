@@ -37,9 +37,9 @@ option_list <- list(
               help = "The number of top important proteins used for network analysis.", metavar = "ShapThresh"),
   make_option(c("-n", "--patternChosen"), type = "character", default = "shap_values.csv", 
               help = "File name pattern defining which SHAP files to be included for analysis.", metavar = "FilePattern"),
-  make_option(c("-v", "--converProId"), type = "logical", default = TRUE, 
+  make_option(c("-v", "--converProId"), type = "logical", default = FALSE, 
               help = "Whether to perform protein name mapping from UniProt IDs to Entrez Gene Symbols.", metavar = "converProId"),
-  make_option(c("-x","--proteinExpFile"), type = "character", default = "Case1-1.csv", 
+  make_option(c("-x","--proteinExpFile"), type = "character", default = "Nulisa1.csv", 
               help = "Name of the input file containing the protein expression profile.", metavar = "EXPRESSION"),
   make_option(c("-m","--CorMethod"), type = "character", default = "spearman", 
               help = "Correlation method used to define strongly co-expressed proteins; choose from Spearman, Pearson, or Kendall.", metavar = "CorMethod"),
@@ -297,7 +297,7 @@ names(ProImportance) <- ModelName
 
 for(fCt in 1:length(proteinImportanceFile_list)){
   ProImportance_temp <- read.csv(paste0(proteinImportanceFile_list[fCt]), row.names=1)
-  ProImportance_temp %<>% mutate(SHAP = rowMeans(across(everything(), abs))) %<>% arrange(desc(SHAP)) %<>% dplyr::select("SHAP") 
+  ProImportance_temp %<>% mutate(SHAP = rowMeans(across(everything(), abs))) %<>% arrange(desc(SHAP)) %<>% dplyr::select("SHAP") ### take negative SHAP into consideration
   ProImportance[[fCt]] <- ProImportance_temp
 }
 
@@ -330,7 +330,10 @@ Full_SHAP_Ori <- rownames(Full_SHAP_F)
 Full_SHAP_F_AllScaled <- cbind(NewSHAP_scaled,CombinedShap) %>% arrange(desc(CombinedShap))
 
 ### Read in protein expression profile 
-proExpF <- read.csv(proteinExpFile, check.names=FALSE)[,c(-1,-2)] %>% dplyr::select(where(~ any(. != 0))) ### filter out proteins with all-zero expression level
+proExpF <- read.csv(proteinExpFile, check.names = FALSE) %>%
+  dplyr::select(-SampleID, -Label) %>%                               # only maintain protein columns
+  mutate(across(everything(), ~ as.numeric(as.character(.)))) %>%    # guarantee all protein levels to be numeric
+  filter(if_any(everything(), ~ . != 0))                             # Only Keep proteins with non-zero expression level
 
 for(colCt in colnames(Full_SHAP_F_AllScaled)[!grepl("CombinedShap", colnames(Full_SHAP_F_AllScaled))]){
   print(paste0("Proteins with the highest importance scores based on ", colCt, " are selected for PPI analysis."))
@@ -408,7 +411,7 @@ for(colCt in colnames(Full_SHAP_F_AllScaled)[!grepl("CombinedShap", colnames(Ful
       write_xlsx(Hub_Proteins_STRING_WithExpansion, path = paste0(colCt, "_Hub_Proteins_STRING_WithExpansion.xlsx"))
     }
       error = function(e) {
-        message(paste0("For ", colCt, ", The PPI network plot could not be generated. Please ensure that (1) protein names are uniquely provided as either Entrez Gene Symbols or UniProt IDs, and (2) the number of top important proteins is properly selected with sufficient number of non-NA SHAP values present."))
+        message(paste0("For ", colCt, ", The PPI network plot could not be generated. Please ensure that (1) Protein names are uniquely provided as either Entrez Gene Symbols or UniProt IDs; (2) The protein expression profile contains columns named exactly 'SampleID' and 'Label', in addition to columns representing protein names; (3) The number of top important proteins is properly selected with sufficient number of non-NA SHAP values present."))
       }
     }
   )
