@@ -22,7 +22,6 @@ library(ggplot2)
 library(org.Hs.eg.db)
 library(AnnotationDbi)
 library(writexl)
-library(pdftools)
 
 set.seed(42)
 suppressWarnings(library(AnnotationDbi))
@@ -330,15 +329,16 @@ Full_SHAP_F <- cbind(NewSHAP,CombinedShap) %>% arrange(desc(CombinedShap))
 Full_SHAP_Ori <- rownames(Full_SHAP_F)
 Full_SHAP_F_AllScaled <- cbind(NewSHAP_scaled,CombinedShap) %>% arrange(desc(CombinedShap))
 
-### Output network plots and hub protein tables
-pdf_fileName <- "Network.pdf"
-pdf(pdf_fileName)
-
 ### Read in protein expression profile 
-proExpF <- read.csv(proteinExpFile, check.names=FALSE)[,c(-1,-2)] %>% dplyr::select(where(~ any(. != 0))) ### filter out proteins with all-zero values
+proExpF <- read.csv(proteinExpFile, check.names=FALSE)[,c(-1,-2)] %>% dplyr::select(where(~ any(. != 0))) ### filter out proteins with all-zero expression level
 
 for(colCt in colnames(Full_SHAP_F_AllScaled)[!grepl("CombinedShap", colnames(Full_SHAP_F_AllScaled))]){
   print(paste0("Proteins with the highest importance scores based on ", colCt, " are selected for PPI analysis."))
+  
+  ### Output network plots and hub protein tables
+  png(paste0(colCt,"_Network.png"),  width = 2000, height = 3000, res = 300)
+  ### Set the arguments to arrange plots in png
+  par(mfrow = c(2, 1), oma = c(1, 1, 1, 1), mar = c(4, 2, 4, 2))
   
   tryCatch(
     {if(all(Full_SHAP_F_AllScaled[,colCt] == 0)){message(paste0("For ", colCt, " All proteins have identical importance scores, so the most important ones cannot be distinguished."))
@@ -412,16 +412,8 @@ for(colCt in colnames(Full_SHAP_F_AllScaled)[!grepl("CombinedShap", colnames(Ful
       }
     }
   )
-}
 
-dev.off()
-
-### Generate png for the convenience to combine into the final pdf
-num_pages <- pdf_info(pdf_fileName)$pages
-for (i in 1:num_pages) {
-  pdf_subset(pdf_fileName, pages = i, output = paste0("Network_", i, ".pdf"))
-  
-  pdf_convert(paste0("Network_", i, ".pdf"), format = "png", filenames = paste0("Network_", i, ".png"), dpi = 300)
+  dev.off()
 }
 
 print(paste0("PPI network and Hub Protein analysis finished at ", format(Sys.time(), "%H:%M:%S"), " on ", Sys.Date(),"."))
