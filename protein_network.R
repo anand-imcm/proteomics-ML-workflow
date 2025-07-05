@@ -332,7 +332,7 @@ Full_SHAP_F_AllScaled <- cbind(NewSHAP_scaled,CombinedShap) %>% arrange(desc(Com
 ### Read in protein expression profile 
 proExpF <- read.csv(proteinExpFile, check.names = FALSE) %>%
   dplyr::select(-SampleID, -Label) %>%                               # only maintain protein columns
-  mutate(across(everything(), ~ as.numeric(as.character(.)))) %>%    # guarantee all protein levels to be numeric
+  mutate(across(everything(), as.numeric)) %>%                       # guarantee all protein levels to be numeric
   filter(if_any(everything(), ~ . != 0))                             # Only Keep proteins with non-zero expression level
 
 for(colCt in colnames(Full_SHAP_F_AllScaled)[!grepl("CombinedShap", colnames(Full_SHAP_F_AllScaled))]){
