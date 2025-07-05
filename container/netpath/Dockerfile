@@ -12,7 +12,7 @@ USER $MAMBA_USER
 
 COPY --chown=$MAMBA_USER:$MAMBA_USER ./container/netpath/environment.yml /tmp/
 
-COPY --chown=$MAMBA_USER:$MAMBA_USER ./scripts /scripts
+COPY --chown=$MAMBA_USER:$MAMBA_USER ./scripts/NetPath /scripts
 
 RUN micromamba install -y -n base -f /tmp/environment.yml && \
     micromamba clean --all --yes
