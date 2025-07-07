@@ -13,8 +13,7 @@ All notable changes to this project will be documented in this file.
 
 - Edge cases to handle protein IDs in the PPI module.
 - Conditional flow of execution for the PPI module based on `ELASTICNET` and `NONE`.
-- Multi-arch image for `biomarkerml-gen`.
-- The `biomarkerml-net` image is only supported on `linux/amd64` because the R package `pdftools` depends on the `poppler` library, which is currently not available for `linux/arm64` builds on conda-forge or from the R community.
+- Multi-arch image for `biomarkerml-gen` and `biomarkerml-net`.
 
 ### Updated
 
