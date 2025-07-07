@@ -30,9 +30,9 @@ suppressMessages(library(AnnotationDbi))
 ### Define the list of options
 option_list <- list(
   make_option(c("-s", "--score_thresholdHere"), type = "integer", default = 400, 
-              help = "Confidence score threshold for loading STRING database.", metavar = "SCORE"),
+              help = "Confidence score threshold for loading STRING database. Range 0 to 1000.", metavar = "SCORE"),
   make_option(c("-c", "--combined_score_thresholdHere"), type = "integer", default = 800, 
-              help = "Confidence score threshold for selecting nodes to plot in the network.", metavar = "SCORE"),
+              help = "Confidence score threshold for selecting nodes to plot in the network. Range 0 to 1000.", metavar = "SCORE"),
   make_option(c("-a", "--SHAPthresh"), type = "integer", default = 100, 
               help = "The number of top important proteins used for network analysis.", metavar = "ShapThresh"),
   make_option(c("-n", "--patternChosen"), type = "character", default = "shap_values.csv", 
