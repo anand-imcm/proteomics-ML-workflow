@@ -207,7 +207,6 @@ The workflow is implemented in Python, R and Workflow Description Language (WDL)
 | [igraph](https://r.igraph.org/) | GPL (>= 2) |
 | [magrittr](https://magrittr.tidyverse.org/) | MIT |
 | [optparse](https://cran.r-project.org/web/packages/optparse/index.html) | GPL (>= 2) |
-| [pdftools](https://cran.r-project.org/web/packages/pdftools/index.html) | MIT |
 | [STRINGdb](https://bioconductor.org/packages/release/bioc/html/STRINGdb.html) | GPL (>= 2) |
 | [tidyverse](https://www.tidyverse.org/) | GPL-3 |
 | [writexl](https://cloud.r-project.org/web/packages/writexl/index.html) | BSD-2-clause |

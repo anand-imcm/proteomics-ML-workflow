@@ -22,7 +22,6 @@ library(ggplot2)
 library(org.Hs.eg.db)
 library(AnnotationDbi)
 library(writexl)
-library(pdftools)
 
 set.seed(42)
 suppressWarnings(library(AnnotationDbi))
@@ -31,16 +30,16 @@ suppressMessages(library(AnnotationDbi))
 ### Define the list of options
 option_list <- list(
   make_option(c("-s", "--score_thresholdHere"), type = "integer", default = 400, 
-              help = "Confidence score threshold for loading STRING database.", metavar = "SCORE"),
+              help = "Confidence score threshold for loading STRING database. Range 0 to 1000.", metavar = "SCORE"),
   make_option(c("-c", "--combined_score_thresholdHere"), type = "integer", default = 800, 
-              help = "Confidence score threshold for selecting nodes to plot in the network.", metavar = "SCORE"),
+              help = "Confidence score threshold for selecting nodes to plot in the network. Range 0 to 1000.", metavar = "SCORE"),
   make_option(c("-a", "--SHAPthresh"), type = "integer", default = 100, 
               help = "The number of top important proteins used for network analysis.", metavar = "ShapThresh"),
   make_option(c("-n", "--patternChosen"), type = "character", default = "shap_values.csv", 
               help = "File name pattern defining which SHAP files to be included for analysis.", metavar = "FilePattern"),
   make_option(c("-v", "--converProId"), type = "logical", default = TRUE, 
               help = "Whether to perform protein name mapping from UniProt IDs to Entrez Gene Symbols.", metavar = "converProId"),
-  make_option(c("-x","--proteinExpFile"), type = "character", default = "Case1-1.csv", 
+  make_option(c("-x","--proteinExpFile"), type = "character", default = "Case1.csv", 
               help = "Name of the input file containing the protein expression profile.", metavar = "EXPRESSION"),
   make_option(c("-m","--CorMethod"), type = "character", default = "spearman", 
               help = "Correlation method used to define strongly co-expressed proteins; choose from Spearman, Pearson, or Kendall.", metavar = "CorMethod"),
@@ -79,10 +78,15 @@ ConvertUniprot2Symbol <- function(UniProList){
     keytype = "UNIPROT",
     columns = c("UNIPROT", "SYMBOL")
   ) %>%
-    dplyr::group_by(UNIPROT) %>%
-    dplyr::summarize(SYMBOL = paste(na.omit(unique(SYMBOL)), collapse = ";"), .groups = "drop") %>% ### UniProt IDs with duplicated or multiple associated gene symbols
-    dplyr::filter(!is.na(SYMBOL) & SYMBOL != "" & SYMBOL != "NA" & SYMBOL != " ") %>% as.data.frame() %>% ### Possible entries with no mapped gene symbol for the given UniProt ID in the database 
-    distinct(SYMBOL, .keep_all = TRUE) ### Multiple UniProt IDs mapping to the same Entrez symbol: Only the first occurrence is retained in the final dataset.
+    
+    ### When multiple UniProt IDs map to the same Entrez symbol (such as protein isoforms, fusion Proteins), only the first occurrence — corresponding to the protein with the highest SHAP value for that symbol — is retained in the final dataset
+    distinct(SYMBOL, .keep_all = TRUE) %>% 
+    
+    ### UniProt IDs associated with multiple Entrez symbols (such as protein complexes composed of subunits encoded by different genes) — are concatenated using a semicolon (';') and are later deconcatenated during network plot mapping to STRINGdb
+    dplyr::group_by(UNIPROT) %>% dplyr::summarize(SYMBOL = paste(na.omit(unique(SYMBOL)), collapse = ";"), .groups = "drop") %>%
+    
+    ### Entries with no mapped gene symbol for the given UniProt ID in the database — excluded from the final dataset
+    dplyr::filter(!is.na(SYMBOL) & SYMBOL != "" & SYMBOL != "NA" & SYMBOL != " ") %>% as.data.frame() 
   
   return(DataF_EntrezSym)
 }
@@ -298,7 +302,7 @@ names(ProImportance) <- ModelName
 
 for(fCt in 1:length(proteinImportanceFile_list)){
   ProImportance_temp <- read.csv(paste0(proteinImportanceFile_list[fCt]), row.names=1)
-  ProImportance_temp %<>% mutate(SHAP = rowMeans(across(everything(), abs))) %<>% arrange(desc(SHAP)) %<>% dplyr::select("SHAP") 
+  ProImportance_temp %<>% mutate(SHAP = rowMeans(across(everything(), abs))) %<>% arrange(desc(SHAP)) %<>% dplyr::select("SHAP") ### take negative SHAP into consideration
   ProImportance[[fCt]] <- ProImportance_temp
 }
 
@@ -330,15 +334,19 @@ Full_SHAP_F <- cbind(NewSHAP,CombinedShap) %>% arrange(desc(CombinedShap))
 Full_SHAP_Ori <- rownames(Full_SHAP_F)
 Full_SHAP_F_AllScaled <- cbind(NewSHAP_scaled,CombinedShap) %>% arrange(desc(CombinedShap))
 
-### Output network plots and hub protein tables
-pdf_fileName <- "Network.pdf"
-pdf(pdf_fileName)
-
 ### Read in protein expression profile 
-proExpF <- read.csv(proteinExpFile, check.names=FALSE)[,c(-1,-2)] %>% dplyr::select(where(~ any(. != 0))) ### filter out proteins with all-zero values
+proExpF <- read.csv(proteinExpFile, check.names = FALSE) %>%
+  dplyr::select(-SampleID, -Label) %>%                               # only maintain protein columns
+  mutate(across(everything(), as.numeric)) %>%                       # guarantee all protein levels to be numeric
+  filter(if_any(everything(), ~ . != 0))                             # Only Keep proteins with non-zero expression level
 
 for(colCt in colnames(Full_SHAP_F_AllScaled)[!grepl("CombinedShap", colnames(Full_SHAP_F_AllScaled))]){
   print(paste0("Proteins with the highest importance scores based on ", colCt, " are selected for PPI analysis."))
+  
+  ### Output network plots and hub protein tables
+  png(paste0(colCt,"_Network.png"),  width = 2000, height = 3000, res = 300)
+  ### Set the arguments to arrange plots in png
+  par(mfrow = c(2, 1), oma = c(1, 1, 1, 1), mar = c(4, 2, 4, 2))
   
   tryCatch(
     {if(all(Full_SHAP_F_AllScaled[,colCt] == 0)){message(paste0("For ", colCt, " All proteins have identical importance scores, so the most important ones cannot be distinguished."))
@@ -387,11 +395,13 @@ for(colCt in colnames(Full_SHAP_F_AllScaled)[!grepl("CombinedShap", colnames(Ful
       colnames(Pro_Plot_F) <- colnames(Full_SHAP_F_Plot) <- c("proName", "SHAP")
       rownames(Pro_Plot_F) <- Pro_Plot_F$proName
       
-      ### Tackle with the same UniProtID corresponding to different Entrez Symbols and remove the NA SHAP values.
-      Full_SHAP_F_Plot %<>% filter(!(is.na(SHAP)))%<>% group_by(proName) %<>% summarise(SHAP = max(SHAP, na.rm = TRUE), .groups = "drop") %<>% as.data.frame()
+      ### Handle cases with NA SHAP values. For network plot split entries with multiple Entrez symbols (separated by ‘;’) into separate rows, each retaining the same SHAP value.
+      Full_SHAP_F_Plot %<>% filter(!(is.na(SHAP)))%<>% group_by(proName) %<>% summarise(SHAP = max(SHAP, na.rm = TRUE), .groups = "drop") %<>% separate_rows(proName, sep = ";") %<>% arrange(desc(SHAP)) %<>% as.data.frame()
       rownames(Full_SHAP_F_Plot) <- Full_SHAP_F_Plot$proName
+      Pro_Plot_F %<>% separate_rows(proName, sep = ";") %<>% as.data.frame()
+      rownames(Pro_Plot_F) <- Pro_Plot_F$proName
       
-      ### Pro_Plot_F is the SHAP-ordered frame only for the top important proteins; Full_SHAP_F_Plot is NOT SHAP-ordered though for all the proteins.
+      ### Pro_Plot_F is the SHAP-ordered frame only for the top important proteins; Full_SHAP_F_Plot is SHAP-ordered for all the proteins.
       
       ###############
       # OUTPUT FILES
@@ -408,20 +418,12 @@ for(colCt in colnames(Full_SHAP_F_AllScaled)[!grepl("CombinedShap", colnames(Ful
       write_xlsx(Hub_Proteins_STRING_WithExpansion, path = paste0(colCt, "_Hub_Proteins_STRING_WithExpansion.xlsx"))
     }
       error = function(e) {
-        message(paste0("For ", colCt, ", The PPI network plot could not be generated. Please ensure that (1) protein names are uniquely provided as either Entrez Gene Symbols or UniProt IDs, and (2) the number of top important proteins is properly selected with sufficient number of non-NA SHAP values present."))
+        message(paste0("For ", colCt, ", The PPI network plot could not be generated. Please ensure that (1) Protein names are uniquely provided as either Entrez Gene Symbols or UniProt IDs; (2) The protein expression profile contains columns named exactly 'SampleID' and 'Label', in addition to columns representing protein names; (3) The number of top important proteins is properly selected with sufficient number of non-NA SHAP values present."))
       }
     }
   )
-}
 
-dev.off()
-
-### Generate png for the convenience to combine into the final pdf
-num_pages <- pdf_info(pdf_fileName)$pages
-for (i in 1:num_pages) {
-  pdf_subset(pdf_fileName, pages = i, output = paste0("Network_", i, ".pdf"))
-  
-  pdf_convert(paste0("Network_", i, ".pdf"), format = "png", filenames = paste0("Network_", i, ".png"), dpi = 300)
+  dev.off()
 }
 
 print(paste0("PPI network and Hub Protein analysis finished at ", format(Sys.time(), "%H:%M:%S"), " on ", Sys.Date(),"."))
