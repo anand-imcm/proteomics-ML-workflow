@@ -37,9 +37,9 @@ option_list <- list(
               help = "The number of top important proteins used for network analysis.", metavar = "ShapThresh"),
   make_option(c("-n", "--patternChosen"), type = "character", default = "shap_values.csv", 
               help = "File name pattern defining which SHAP files to be included for analysis.", metavar = "FilePattern"),
-  make_option(c("-v", "--converProId"), type = "logical", default = FALSE, 
+  make_option(c("-v", "--converProId"), type = "logical", default = TRUE, 
               help = "Whether to perform protein name mapping from UniProt IDs to Entrez Gene Symbols.", metavar = "converProId"),
-  make_option(c("-x","--proteinExpFile"), type = "character", default = "Nulisa1.csv", 
+  make_option(c("-x","--proteinExpFile"), type = "character", default = "Case1.csv", 
               help = "Name of the input file containing the protein expression profile.", metavar = "EXPRESSION"),
   make_option(c("-m","--CorMethod"), type = "character", default = "spearman", 
               help = "Correlation method used to define strongly co-expressed proteins; choose from Spearman, Pearson, or Kendall.", metavar = "CorMethod"),
@@ -78,10 +78,15 @@ ConvertUniprot2Symbol <- function(UniProList){
     keytype = "UNIPROT",
     columns = c("UNIPROT", "SYMBOL")
   ) %>%
-    dplyr::group_by(UNIPROT) %>%
-    dplyr::summarize(SYMBOL = paste(na.omit(unique(SYMBOL)), collapse = ";"), .groups = "drop") %>% ### UniProt IDs with duplicated or multiple associated gene symbols
-    dplyr::filter(!is.na(SYMBOL) & SYMBOL != "" & SYMBOL != "NA" & SYMBOL != " ") %>% as.data.frame() %>% ### Possible entries with no mapped gene symbol for the given UniProt ID in the database 
-    distinct(SYMBOL, .keep_all = TRUE) ### Multiple UniProt IDs mapping to the same Entrez symbol: Only the first occurrence is retained in the final dataset.
+    
+    ### When multiple UniProt IDs map to the same Entrez symbol (such as protein isoforms, fusion Proteins), only the first occurrence — corresponding to the protein with the highest SHAP value for that symbol — is retained in the final dataset
+    distinct(SYMBOL, .keep_all = TRUE) %>% 
+    
+    ### UniProt IDs associated with multiple Entrez symbols (such as protein complexes composed of subunits encoded by different genes) — are concatenated using a semicolon (';') and are later deconcatenated during network plot mapping to STRINGdb
+    dplyr::group_by(UNIPROT) %>% dplyr::summarize(SYMBOL = paste(na.omit(unique(SYMBOL)), collapse = ";"), .groups = "drop") %>%
+    
+    ### Entries with no mapped gene symbol for the given UniProt ID in the database — excluded from the final dataset
+    dplyr::filter(!is.na(SYMBOL) & SYMBOL != "" & SYMBOL != "NA" & SYMBOL != " ") %>% as.data.frame() 
   
   return(DataF_EntrezSym)
 }
@@ -390,11 +395,13 @@ for(colCt in colnames(Full_SHAP_F_AllScaled)[!grepl("CombinedShap", colnames(Ful
       colnames(Pro_Plot_F) <- colnames(Full_SHAP_F_Plot) <- c("proName", "SHAP")
       rownames(Pro_Plot_F) <- Pro_Plot_F$proName
       
-      ### Tackle with the same UniProtID corresponding to different Entrez Symbols and remove the NA SHAP values.
-      Full_SHAP_F_Plot %<>% filter(!(is.na(SHAP)))%<>% group_by(proName) %<>% summarise(SHAP = max(SHAP, na.rm = TRUE), .groups = "drop") %<>% as.data.frame()
+      ### Handle cases with NA SHAP values. For network plot split entries with multiple Entrez symbols (separated by ‘;’) into separate rows, each retaining the same SHAP value.
+      Full_SHAP_F_Plot %<>% filter(!(is.na(SHAP)))%<>% group_by(proName) %<>% summarise(SHAP = max(SHAP, na.rm = TRUE), .groups = "drop") %<>% separate_rows(proName, sep = ";") %<>% arrange(desc(SHAP)) %<>% as.data.frame()
       rownames(Full_SHAP_F_Plot) <- Full_SHAP_F_Plot$proName
+      Pro_Plot_F %<>% separate_rows(proName, sep = ";") %<>% as.data.frame()
+      rownames(Pro_Plot_F) <- Pro_Plot_F$proName
       
-      ### Pro_Plot_F is the SHAP-ordered frame only for the top important proteins; Full_SHAP_F_Plot is NOT SHAP-ordered though for all the proteins.
+      ### Pro_Plot_F is the SHAP-ordered frame only for the top important proteins; Full_SHAP_F_Plot is SHAP-ordered for all the proteins.
       
       ###############
       # OUTPUT FILES
