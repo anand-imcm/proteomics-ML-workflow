@@ -1,4 +1,4 @@
-# Keep this as a record only. 
+# Keep as self record. 
 # This script is a module for performing protein-protein interaction (PPI) network analysis on proteins selected based on protein importance derived from classification or regression machine learning models.
 
 # Example Command line for case: 
@@ -299,7 +299,7 @@ names(ProImportance) <- ModelName
 
 for(fCt in 1:length(proteinImportanceFile_list)){
   ProImportance_temp <- read.csv(paste0(proteinImportanceFile_list[fCt]), row.names=1)
-  ProImportance_temp %<>% mutate(SHAP = rowMeans(across(everything(), abs))) %<>% arrange(desc(SHAP)) %<>% dplyr::select("SHAP") ### Take negative SHAP into consideration
+  ProImportance_temp %<>% mutate(SHAP = rowMeans(across(everything(), abs))) %<>% arrange(desc(SHAP)) %<>% dplyr::select("SHAP") 
   ProImportance[[fCt]] <- ProImportance_temp
 }
 
