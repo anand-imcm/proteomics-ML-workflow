@@ -25,8 +25,9 @@ task ppi_analysis {
             rm *.tar.gz
         fi
         patternChosen="shap_values.csv"
+        protein_name_mapping=~{protein_name_mapping}
         converProId=""
-        if ~{protein_name_mapping}; then
+        if [[ "${protein_name_mapping,,}" == "true" ]]; then
             converProId="TRUE"
         else
             converProId="FALSE"
