@@ -13,7 +13,9 @@ All notable changes to this project will be documented in this file.
 
 - Edge cases to handle protein IDs in the PPI module.
 - Conditional flow of execution for the PPI module based on `ELASTICNET` and `NONE`.
-- Multi-arch image for `biomarkerml-gen` and `biomarkerml-net`.
+- Multi-arch image for `biomarkerml-gen`.
+- The `biomarkerml-net` image is only supported on `linux/amd64` because the `bioconductor-org.hs.eg.db` package is currently not available for `linux/arm64` builds on Bioconda or from the R community.
+
 
 ### Updated
 
