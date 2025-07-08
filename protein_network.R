@@ -1,16 +1,29 @@
 # This script is a module for performing protein-protein interaction (PPI) network analysis on proteins selected based on protein importance derived from classification or regression machine learning models.
 
 # Example Command line for case: 
+# 4 platform comparison
+# Rscript protein_network.R \
+#     --score_thresholdHere 200 \
+#     --combined_score_thresholdHere 400 \
+#     --SHAPthresh 100 \
+#     --patternChosen "shap_values.csv" \
+#     --converProId FALSE \
+#     --proteinExpFile "Olink1.csv" \
+#     --CorMethod "spearman" \
+#     --CorThreshold 0.8 \
+#     > "/home/rstudio/YD/ML_workflow_DY/output/Network_WT.log" 2>&1 
+
+# All the other cases
 # Rscript protein_network.R \
 #     --score_thresholdHere 400 \
 #     --combined_score_thresholdHere 800 \
 #     --SHAPthresh 100 \
 #     --patternChosen "shap_values.csv" \
 #     --converProId TRUE \
-#     --proteinExpFile "Case1-1.csv" \
+#     --proteinExpFile "Case1.csv" \
 #     --CorMethod "spearman" \
 #     --CorThreshold 0.8 \
-#     > "/home/rstudio/YD/ML_workflow_DY/output/Network_WT.log" 2>&1 
+#     > "/home/rstudio/YD/ML_workflow_DY/output/Network_WT.log" 2>&1
 
 library(optparse)
 library(tidyverse)
@@ -123,7 +136,7 @@ getHubProTable <- function(LinkTable){
 # patternChosen: message to included in the title of network plot;
 # Output -- Plots of networks composed of top important proteins identified by SHAP values;
 #           list(Hub_Proteins_STRING, Hub_Proteins_STRING_expanded), protein centrality score for non expanded and expanded protein network.
-map2String <- function(string_db, Pro_Plot_F, Full_SHAP_F_Plot, score_thresholdHere, combined_score_thresholdHere, CoPro_EntrezSym, patternChosen){
+map2String <- function(string_db, Pro_Plot_F, Full_SHAP_F_Plot, score_thresholdHere, combined_score_thresholdHere, CoPro_EntrezSym, patternChosen, png_cont){
   set.seed(42)
   
   mapAll <- string_db$get_aliases()
@@ -143,144 +156,160 @@ map2String <- function(string_db, Pro_Plot_F, Full_SHAP_F_Plot, score_thresholdH
     dplyr::filter(combined_score > combined_score_thresholdHere) %>%
     dplyr::distinct(from, to)
   
-  ### Construct igraph object
-  g <- graph_from_data_frame(edges, directed = FALSE)
-  
-  ### Retrieve node names as protein symbols
-  nodeName <- V(g)$name
-  nodeName2 <- mapAll$alias[unlist(sapply(nodeName, function(x) {
-    which(mapAll$STRING_id == x)[1]
-  }))]
-  
-  ### Set node color based on SHAP values
-  ### Color palette and node coloring
-  myPalette <- colorRampPalette(c("darkgreen", "lightgreen", "white", "pink", "darkred"))
-  nodeValue <- as.numeric(Pro_Plot_F[nodeName2,"SHAP"])
-  nodeColor <- myPalette(1000)[
-    as.numeric(cut(nodeValue, breaks = 1000))
-  ]
-  
-  ### Plot the network
-  layout_pos <- layout_with_fr(g)
-  
-  plot(g, 
-       layout = layout_pos,
-       vertex.label = nodeName2, 
-       vertex.size = 3, 
-       vertex.label.cex = 0.5, 
-       vertex.color = nodeColor, 
-       edge.color = "grey", 
-       vertex.label.color = "black",
-       vertex.label.family = "sans", 
-       vertex.label.dist = 0.8, 
-       cex.main = 0.03, 
-       main = paste0("Protein-Protein Interaction Network\n", patternChosen), 
-       rescale = TRUE)
-  
-  ### Add a color legend
-  image.plot(legend.only = TRUE, 
-             #zlim = range(as.numeric(nodeValue[which(!is.na(nodeValue))])), 
-             zlim = c(0,1),
-             col = myPalette(1000),
-             horizontal = TRUE, 
-             legend.width = 0.3, 
-             legend.shrink = 0.3, 
-             legend.mar = 3,
-             legend.args = list(text = "Feature Importance Score", side = 1, font = 2, line = 1, cex = 0.8),
-             axis.args = list(cex.axis = 0.8, mgp = c(3, 0.3, 0)))
-  
-  ### Generate table of centrality score to display hub proteins
-  HubProteins <- getHubProTable(edges)
-  Hub_Proteins_STRING <- merge(HubProteins, stDB_mapped, by.x = "Protein", by.y = "STRING_id")
-  Hub_Proteins_STRING %<>% mutate("Protein" = prot) %<>% dplyr::select(Protein,Betweenness,Closeness,Degree)
-  
-  ### Further make network plot including more nodes restored in STRINGdb with 1 degree connection with the selected top proteins with highest SHAP values
-  ### Identify all the interactions between proteins in our full protein list
-  all_mapped <- string_db$map(data.frame("prot" = Full_SHAP_F_Plot$proName), "prot", removeUnmappedRows = TRUE)
-  
-  ### Retrieve interactions involving all proteins
-  all_interaction_network <- string_db$get_interactions(all_mapped$STRING_id) %>%
-    distinct(from, to, .keep_all = TRUE)
-  
-  ### Identify 1st-degree seed nodes (top important proteins)
-  one_degree_nodes <- unique(c(interaction_network$from, interaction_network$to))
-  
-  ### Identify highly coexpressed proteins with the seed nodes
-  CoPro_mapped <- string_db$map(data.frame("prot" = CoPro_EntrezSym), "prot", removeUnmappedRows = TRUE)
-  CoPro_ENSEMBL <- CoPro_mapped$STRING_id
-  
-  ### Within the all_interaction_network, identify which interactions include the seed node or 1st degree connection between seed node and strongly coexpressed proteins 
-  keepID <- which(
-    (all_interaction_network$from %in% one_degree_nodes & 
-       all_interaction_network$to %in% CoPro_ENSEMBL) |
-      
-      (all_interaction_network$from %in% CoPro_ENSEMBL & 
-         all_interaction_network$to %in% one_degree_nodes) |
-      
+  if (is.null(edges) || nrow(edges) == 0) {
+    return(NULL) ### No mapped connections
+    
+  }else{
+    ### Construct igraph object
+    g <- graph_from_data_frame(edges, directed = FALSE)
+    
+    ### Retrieve node names as protein symbols
+    nodeName <- V(g)$name
+    nodeName2 <- mapAll$alias[unlist(sapply(nodeName, function(x) {
+      which(mapAll$STRING_id == x)[1]
+    }))]
+    
+    ### Set node color based on SHAP values
+    ### Color palette and node coloring
+    myPalette <- colorRampPalette(c("darkgreen", "lightgreen", "white", "pink", "darkred"))
+    nodeValue <- as.numeric(Pro_Plot_F[nodeName2,"SHAP"])
+    nodeColor <- myPalette(1000)[
+      as.numeric(cut(nodeValue, breaks = 1000))
+    ]
+    
+    
+    ### Output network plots
+    par(mfrow = c(1, 1))
+    png(paste0("Network_", (2*png_cont-1), ".png"), width = 1700, height = 1600, res = 300)
+    
+    ### Plot the network
+    layout_pos <- layout_with_fr(g)
+    
+    plot(g, 
+         layout = layout_pos,
+         vertex.label = nodeName2, 
+         vertex.size = 3, 
+         vertex.label.cex = 0.5, 
+         vertex.color = nodeColor, 
+         edge.color = "grey", 
+         vertex.label.color = "black",
+         vertex.label.family = "sans", 
+         vertex.label.dist = 0.8, 
+         cex.main = 0.03, 
+         main = paste0("Protein-Protein Interaction Network\n", patternChosen), 
+         rescale = TRUE)
+    
+    ### Add a color legend
+    image.plot(legend.only = TRUE, 
+               #zlim = range(as.numeric(nodeValue[which(!is.na(nodeValue))])), 
+               zlim = c(0,1),
+               col = myPalette(1000),
+               horizontal = TRUE, 
+               legend.width = 0.3, 
+               legend.shrink = 0.3, 
+               legend.mar = 3,
+               legend.args = list(text = "Feature Importance Score", side = 1, font = 2, line = 1, cex = 0.8),
+               axis.args = list(cex.axis = 0.8, mgp = c(3, 0.3, 0)))
+    
+    dev.off()
+    
+    ### Generate table of centrality score to display hub proteins
+    HubProteins <- getHubProTable(edges)
+    Hub_Proteins_STRING <- merge(HubProteins, stDB_mapped, by.x = "Protein", by.y = "STRING_id")
+    Hub_Proteins_STRING %<>% mutate("Protein" = prot) %<>% dplyr::select(Protein,Betweenness,Closeness,Degree)
+    
+    ### Further make network plot including more nodes restored in STRINGdb with 1 degree connection with the selected top proteins with highest SHAP values
+    ### Identify all the interactions between proteins in our full protein list
+    all_mapped <- string_db$map(data.frame("prot" = Full_SHAP_F_Plot$proName), "prot", removeUnmappedRows = TRUE)
+    
+    ### Retrieve interactions involving all proteins
+    all_interaction_network <- string_db$get_interactions(all_mapped$STRING_id) %>%
+      distinct(from, to, .keep_all = TRUE)
+    
+    ### Identify 1st-degree seed nodes (top important proteins)
+    one_degree_nodes <- unique(c(interaction_network$from, interaction_network$to))
+    
+    ### Identify highly coexpressed proteins with the seed nodes
+    CoPro_mapped <- string_db$map(data.frame("prot" = CoPro_EntrezSym), "prot", removeUnmappedRows = TRUE)
+    CoPro_ENSEMBL <- CoPro_mapped$STRING_id
+    
+    ### Within the all_interaction_network, identify which interactions include the seed node or 1st degree connection between seed node and strongly coexpressed proteins 
+    keepID <- which(
       (all_interaction_network$from %in% one_degree_nodes & 
-         all_interaction_network$to %in% one_degree_nodes)
-  )
-  
-  ### Include the original network only composed of the top important proteins based on SHAP
-  expanded_interaction_network <- rbind(all_interaction_network[keepID, ],interaction_network) %>%
-    distinct(from, to, .keep_all = TRUE)
-  
-  ### Filter interactions for high-confidence edges
-  edges_expanded <- expanded_interaction_network %>%
-    dplyr::filter(combined_score > combined_score_thresholdHere) %>%
-    dplyr::distinct(from, to, .keep_all = TRUE)
-  
-  ### Construct igraph object
-  g_expanded <- graph_from_data_frame(edges_expanded, directed = FALSE)
-  
-  ### Retrieve node names as protein symbols
-  nodeName_expanded <- V(g_expanded)$name
-  nodeName2_expanded <- mapAll$alias[unlist(sapply(nodeName_expanded, function(x) {
-    which(mapAll$STRING_id == x)[1]
-  }))]
-  
-  nodeValue_expanded <- as.numeric(Full_SHAP_F_Plot[nodeName2_expanded, "SHAP"])
-  
-  ### Color palette and node coloring
-  nodeColor_expanded <- myPalette(1000)[
-    as.numeric(cut(nodeValue_expanded, breaks = 1000))
-  ]
-  
-  ### Plot the network
-  layout_pos_expanded <- layout_with_fr(g_expanded)
-  
-  plot(g_expanded, 
-       layout = layout_pos_expanded, 
-       vertex.label = nodeName2_expanded, 
-       vertex.size = 3, 
-       vertex.label.cex = 0.5, 
-       vertex.color = nodeColor_expanded, 
-       edge.color = "grey", 
-       vertex.label.color = "black",
-       vertex.label.family = "sans", 
-       vertex.label.dist = 0.8, 
-       cex.main = 0.03, 
-       main = paste0("Protein-Protein Expanded Interaction Network\n", patternChosen), 
-       rescale = TRUE)
-  
-  ### Add a color legend
-  image.plot(legend.only = TRUE, 
-             #zlim = range(as.numeric(nodeValue_expanded[which(!is.na(nodeValue_expanded))])), 
-             zlim = c(0,1),
-             col = myPalette(1000),
-             horizontal = TRUE, 
-             legend.width = 0.3, 
-             legend.shrink = 0.3, 
-             legend.mar = 3,
-             legend.args = list(text = "Feature Importance Score", side = 1, font = 2, line = 1, cex = 0.8),
-             axis.args = list(cex.axis = 0.8, mgp = c(3, 0.3, 0)))
-  
-  ### Generate table of centrality score to display hub proteins
-  HubProteins_expanded <- getHubProTable(edges_expanded)
-  Hub_Proteins_STRING_expanded <- merge(HubProteins_expanded, all_mapped, by.x = "Protein", by.y = "STRING_id")
-  Hub_Proteins_STRING_expanded %<>% mutate("Protein" = prot) %<>% dplyr::select(Protein,Betweenness,Closeness,Degree)
-  
-  return(list(Hub_Proteins_STRING, Hub_Proteins_STRING_expanded))
+         all_interaction_network$to %in% CoPro_ENSEMBL) |
+        
+        (all_interaction_network$from %in% CoPro_ENSEMBL & 
+           all_interaction_network$to %in% one_degree_nodes) |
+        
+        (all_interaction_network$from %in% one_degree_nodes & 
+           all_interaction_network$to %in% one_degree_nodes)
+    )
+    
+    ### Include the original network only composed of the top important proteins based on SHAP
+    expanded_interaction_network <- rbind(all_interaction_network[keepID, ],interaction_network) %>%
+      distinct(from, to, .keep_all = TRUE)
+    
+    ### Filter interactions for high-confidence edges
+    edges_expanded <- expanded_interaction_network %>%
+      dplyr::filter(combined_score > combined_score_thresholdHere) %>%
+      dplyr::distinct(from, to, .keep_all = TRUE)
+    
+    ### Construct igraph object
+    g_expanded <- graph_from_data_frame(edges_expanded, directed = FALSE)
+    
+    ### Retrieve node names as protein symbols
+    nodeName_expanded <- V(g_expanded)$name
+    nodeName2_expanded <- mapAll$alias[unlist(sapply(nodeName_expanded, function(x) {
+      which(mapAll$STRING_id == x)[1]
+    }))]
+    
+    nodeValue_expanded <- as.numeric(Full_SHAP_F_Plot[nodeName2_expanded, "SHAP"])
+    
+    ### Color palette and node coloring
+    nodeColor_expanded <- myPalette(1000)[
+      as.numeric(cut(nodeValue_expanded, breaks = 1000))
+    ]
+    
+    png(paste0("Network_", (2*png_cont), ".png"), width = 1700, height = 1600, res = 300)
+    
+    ### Plot the network
+    layout_pos_expanded <- layout_with_fr(g_expanded)
+    
+    plot(g_expanded, 
+         layout = layout_pos_expanded, 
+         vertex.label = nodeName2_expanded, 
+         vertex.size = 3, 
+         vertex.label.cex = 0.5, 
+         vertex.color = nodeColor_expanded, 
+         edge.color = "grey", 
+         vertex.label.color = "black",
+         vertex.label.family = "sans", 
+         vertex.label.dist = 0.8, 
+         cex.main = 0.03, 
+         main = paste0("Protein-Protein Expanded Interaction Network\n", patternChosen), 
+         rescale = TRUE)
+    
+    ### Add a color legend
+    image.plot(legend.only = TRUE, 
+               #zlim = range(as.numeric(nodeValue_expanded[which(!is.na(nodeValue_expanded))])), 
+               zlim = c(0,1),
+               col = myPalette(1000),
+               horizontal = TRUE, 
+               legend.width = 0.3, 
+               legend.shrink = 0.3, 
+               legend.mar = 3,
+               legend.args = list(text = "Feature Importance Score", side = 1, font = 2, line = 1, cex = 0.8),
+               axis.args = list(cex.axis = 0.8, mgp = c(3, 0.3, 0)))
+    
+    dev.off()
+    
+    ### Generate table of centrality score to display hub proteins
+    HubProteins_expanded <- getHubProTable(edges_expanded)
+    Hub_Proteins_STRING_expanded <- merge(HubProteins_expanded, all_mapped, by.x = "Protein", by.y = "STRING_id")
+    Hub_Proteins_STRING_expanded %<>% mutate("Protein" = prot) %<>% dplyr::select(Protein,Betweenness,Closeness,Degree)
+    
+    return(list(Hub_Proteins_STRING, Hub_Proteins_STRING_expanded))
+  }
 }
 
 #--------
@@ -337,17 +366,12 @@ Full_SHAP_F_AllScaled <- cbind(NewSHAP_scaled,CombinedShap) %>% arrange(desc(Com
 ### Read in protein expression profile 
 proExpF <- read.csv(proteinExpFile, check.names = FALSE) %>%
   dplyr::select(-SampleID, -Label) %>%                               # only maintain protein columns
-  mutate(across(everything(), as.numeric)) %>%                       # guarantee all protein levels to be numeric
-  filter(if_any(everything(), ~ . != 0))                             # Only Keep proteins with non-zero expression level
+  mutate(across(everything(), as.numeric)) %>%                       # ensure all protein levels are numeric
+  filter(rowSums(. != 0, na.rm = TRUE) > 0)                          # keep rows with at least one non-zero expression value                                     # Only Keep proteins with non-zero expression level
 
 png_cont <- 1
 for(colCt in colnames(Full_SHAP_F_AllScaled)[!grepl("CombinedShap", colnames(Full_SHAP_F_AllScaled))]){
   print(paste0("Proteins with the highest importance scores based on ", colCt, " are selected for PPI analysis."))
-  
-  ### Output network plots and hub protein tables
-  png(paste0("Network_", png_cont, ".png"),  width = 2000, height = 3000, res = 300)
-  ### Set the arguments to arrange plots in png
-  par(mfrow = c(2, 1), oma = c(1, 1, 1, 1), mar = c(4, 2, 4, 2))
   
   tryCatch(
     {if(all(Full_SHAP_F_AllScaled[,colCt] == 0)){message(paste0("For ", colCt, " All proteins have identical importance scores, so the most important ones cannot be distinguished."))
@@ -358,10 +382,12 @@ for(colCt in colnames(Full_SHAP_F_AllScaled)[!grepl("CombinedShap", colnames(Ful
       if (SHAPthresh > nrow(SHAP_PlotF)) {
         message(paste0("For ", colCt, " Not enough proteins with non-zero SHAP values for the requested threshold of ", SHAPthresh, ". Using all available proteins with non-zero SHAP values for PPI analysis instead."
         ))
-        SHAPthresh <- nrow(SHAP_PlotF)
+        SHAPthresh_temp <- nrow(SHAP_PlotF)
+      }else{
+        SHAPthresh_temp <- SHAPthresh
       }
       
-      SHAP_PlotF %<>% slice_head(n = SHAPthresh) 
+      SHAP_PlotF %<>% slice_head(n = SHAPthresh_temp) 
       
       ### Prepare data frame of top proteins with highest importance
       Pro_Plot_Ori <- intersect(rownames(SHAP_PlotF), colnames(proExpF))
@@ -411,15 +437,20 @@ for(colCt in colnames(Full_SHAP_F_AllScaled)[!grepl("CombinedShap", colnames(Ful
       string_db <- STRINGdb$new(version = "12", species = 9606, score_threshold = score_thresholdHere, 
                                 network_type = "full", input_directory = "/scripts", protocol = "http")
       
-      Hub_Proteins_STRING_List <- map2String(string_db, Pro_Plot_F, Full_SHAP_F_Plot, score_thresholdHere, combined_score_thresholdHere, CoPro_EntrezSym, colCt)
-      Hub_Proteins_STRING <- Hub_Proteins_STRING_List[[1]] %>% arrange(desc(Degree))
-      Hub_Proteins_STRING_WithExpansion <- Hub_Proteins_STRING_List[[2]] %>% arrange(desc(Degree))
+      Hub_Proteins_STRING_List <- map2String(string_db, Pro_Plot_F, Full_SHAP_F_Plot, score_thresholdHere, combined_score_thresholdHere, CoPro_EntrezSym, colCt, png_cont)
       
-      write_xlsx(Hub_Proteins_STRING, path = paste0(colCt, "_Hub_Proteins_STRING.xlsx"))
-      write_xlsx(Hub_Proteins_STRING_WithExpansion, path = paste0(colCt, "_Hub_Proteins_STRING_WithExpansion.xlsx"))
+      if(is.null(Hub_Proteins_STRING_List)){
+        message(" No mapped connections in STRINGdb were found between the selected proteins. Try lowering the confidence threshold to explore possible network connections.")
+      }else{
+        Hub_Proteins_STRING <- Hub_Proteins_STRING_List[[1]] %>% arrange(desc(Degree))
+        Hub_Proteins_STRING_WithExpansion <- Hub_Proteins_STRING_List[[2]] %>% arrange(desc(Degree))
+        
+        write_xlsx(Hub_Proteins_STRING, path = paste0(colCt, "_Hub_Proteins_STRING.xlsx"))
+        write_xlsx(Hub_Proteins_STRING_WithExpansion, path = paste0(colCt, "_Hub_Proteins_STRING_WithExpansion.xlsx"))
+      }
     }
       error = function(e) {
-        message(paste0("For ", colCt, ", The PPI network plot could not be generated. Please ensure that (1) Protein names are uniquely provided as either Entrez Gene Symbols or UniProt IDs; (2) The protein expression profile contains columns named exactly 'SampleID' and 'Label', in addition to columns representing protein names; (3) The number of top important proteins is properly selected with sufficient number of non-NA SHAP values present."))
+        message(paste0("For ", colCt, ", The PPI network plot could not be generated. Please ensure that (1) Protein names are uniquely provided as either Entrez Gene Symbols or UniProt IDs; (2) The protein expression profile contains columns named exactly 'SampleID' and 'Label', in addition to columns representing protein names; (3) The number of top important proteins is properly selected with sufficient number of non-NA SHAP values present; (4) An appropriate confidence threshold is set to map connections between proteins using STRINGdb."))
       }
     }
   )
