@@ -169,16 +169,17 @@ The workflow is implemented in Python, R and Workflow Description Language (WDL)
 
 <span style="color:#999999; font-style:italic;">&#9432; Note:</span> We recommend that users adopt *unique Entrez Symbols* as the protein naming convention for our network analysis, although we provide an approach using the R/Bioconductor annotation package **`org.Hs.eg.db`** to map UniProt IDs to Entrez Symbols.
 
-The mapping process handles edge cases as follows:
+The protein name mapping process handles edge cases as follows:
 
 - **UniProt IDs mapped to multiple Entrez symbols**:  
-  All matched Entrez symbols are concatenated using a semicolon (`;`) and assigned to the corresponding UniProt ID.
+  All matched Entrez symbols corresponding to the same UniProt ID are concatenated using a semicolon (`;`) and later deconcatenated during network plot mapping to STRINGdb. This may occur in cases where protein complexes are composed of    subunits encoded by different genes and etc.
+
+- **Multiple UniProt IDs mapping to the same Entrez symbol**:  
+  Only the first occurrence — corresponding to the protein with the highest SHAP value for that symbol — is retained in the final dataset. This may happen in cases involving protein isoforms, fusion proteins and etc.
 
 - **UniProt IDs with no associated Entrez symbol**:  
   These entries are removed from the dataset.
 
-- **Multiple UniProt IDs mapping to the same Entrez symbol**:  
-  Only the first occurrence is retained in the final dataset.
 
 ## Outputs
 
