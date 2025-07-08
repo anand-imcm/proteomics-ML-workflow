@@ -62,6 +62,10 @@ The workflow is implemented in Python, R and Workflow Description Language (WDL)
 > **This workflow is primarily designed for cloud-based platforms (e.g., Terra.bio, DNANexus, Verily) that support WDL workflows.**
 >
 > However, you can also run it locally using the Cromwell workflow management system.
+>
+> This workflow has also been tested locally on `Ubuntu 22.04` with `Docker v28.3.1` and `Cromwell v40`, running on a 12th Gen Intel Core i7-1270P with 32 GB RAM.
+>
+> ARM64 (`linux/arm64`) architecture is currently not supported.
 
 ### Requirements
 
@@ -71,6 +75,8 @@ The workflow is implemented in Python, R and Workflow Description Language (WDL)
 - **Mamba package manager**
   - Please checkout the [mamba or micromamba](https://mamba.readthedocs.io/en/latest/installation/micromamba-installation.html) official installation guide.
   - We prefer `mamba` over [`conda`](https://docs.conda.io/en/latest/) since it is faster and uses `libsolv` to effectively resolve the dependencies.
+
+> [!WARNING]
 
 ### Steps
 
