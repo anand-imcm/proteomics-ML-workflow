@@ -76,8 +76,6 @@ The workflow is implemented in Python, R and Workflow Description Language (WDL)
   - Please checkout the [mamba or micromamba](https://mamba.readthedocs.io/en/latest/installation/micromamba-installation.html) official installation guide.
   - We prefer `mamba` over [`conda`](https://docs.conda.io/en/latest/) since it is faster and uses `libsolv` to effectively resolve the dependencies.
 
-> [!WARNING]
-
 ### Steps
 
 1. **Create a new environment with Cromwell**
