@@ -30,7 +30,7 @@ suppressMessages(library(AnnotationDbi))
 ### Define the list of options
 option_list <- list(
   make_option(c("-s", "--score_thresholdHere"), type = "integer", default = 400, 
-              help = "Confidence score threshold for loading STRING database. Range 0 to 1000.", metavar = "SCORE"),
+              help = "Confidence score threshold for loading STRING database. Range 0 to 1000. ", metavar = "SCORE"),
   make_option(c("-c", "--combined_score_thresholdHere"), type = "integer", default = 800, 
               help = "Confidence score threshold for selecting nodes to plot in the network. Range 0 to 1000.", metavar = "SCORE"),
   make_option(c("-a", "--SHAPthresh"), type = "integer", default = 100, 
@@ -340,11 +340,12 @@ proExpF <- read.csv(proteinExpFile, check.names = FALSE) %>%
   mutate(across(everything(), as.numeric)) %>%                       # guarantee all protein levels to be numeric
   filter(if_any(everything(), ~ . != 0))                             # Only Keep proteins with non-zero expression level
 
+png_cont <- 1
 for(colCt in colnames(Full_SHAP_F_AllScaled)[!grepl("CombinedShap", colnames(Full_SHAP_F_AllScaled))]){
   print(paste0("Proteins with the highest importance scores based on ", colCt, " are selected for PPI analysis."))
   
   ### Output network plots and hub protein tables
-  png(paste0(colCt,"_Network.png"),  width = 2000, height = 3000, res = 300)
+  png(paste0("Network_", png_cont, ".png"),  width = 2000, height = 3000, res = 300)
   ### Set the arguments to arrange plots in png
   par(mfrow = c(2, 1), oma = c(1, 1, 1, 1), mar = c(4, 2, 4, 2))
   
@@ -422,8 +423,10 @@ for(colCt in colnames(Full_SHAP_F_AllScaled)[!grepl("CombinedShap", colnames(Ful
       }
     }
   )
-
+  
   dev.off()
+  
+  png_cont <- png_cont +1
 }
 
 print(paste0("PPI network and Hub Protein analysis finished at ", format(Sys.time(), "%H:%M:%S"), " on ", Sys.Date(),"."))
