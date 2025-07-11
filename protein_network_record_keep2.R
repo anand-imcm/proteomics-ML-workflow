@@ -1,4 +1,4 @@
-# Keep as self record before combining into one pdf output from the workflow.
+# Keep as self record. 
 # This script is a module for performing protein-protein interaction (PPI) network analysis on proteins selected based on protein importance derived from classification or regression machine learning models.
 
 # Example Command line for case: 
@@ -80,15 +80,10 @@ ConvertUniprot2Symbol <- function(UniProList){
     keytype = "UNIPROT",
     columns = c("UNIPROT", "SYMBOL")
   ) %>%
-    
-    ### When multiple UniProt IDs map to the same Entrez symbol (such as protein isoforms, fusion Proteins), only the first occurrence — corresponding to the protein with the highest SHAP value for that symbol — is retained in the final dataset
-    distinct(SYMBOL, .keep_all = TRUE) %>% 
-    
-    ### UniProt IDs associated with multiple Entrez symbols (such as protein complexes composed of subunits encoded by different genes) — are concatenated using a semicolon (';') and are later deconcatenated during network plot mapping to STRINGdb
-    dplyr::group_by(UNIPROT) %>% dplyr::summarize(SYMBOL = paste(na.omit(unique(SYMBOL)), collapse = ";"), .groups = "drop") %>%
-    
-    ### Entries with no mapped gene symbol for the given UniProt ID in the database — excluded from the final dataset
-    dplyr::filter(!is.na(SYMBOL) & SYMBOL != "" & SYMBOL != "NA" & SYMBOL != " ") %>% as.data.frame() 
+    dplyr::group_by(UNIPROT) %>%
+    dplyr::summarize(SYMBOL = paste(na.omit(unique(SYMBOL)), collapse = ";"), .groups = "drop") %>% ### UniProt IDs with duplicated or multiple associated gene symbols
+    dplyr::filter(!is.na(SYMBOL) & SYMBOL != "" & SYMBOL != "NA" & SYMBOL != " ") %>% as.data.frame() %>% ### Possible entries with no mapped gene symbol for the given UniProt ID in the database 
+    distinct(SYMBOL, .keep_all = TRUE) ### Multiple UniProt IDs mapping to the same Entrez symbol: Only the first occurrence is retained in the final dataset.
   
   return(DataF_EntrezSym)
 }
@@ -386,6 +381,23 @@ for(colCt in colnames(Full_SHAP_F_AllScaled)[!grepl("CombinedShap", colnames(Ful
         ### Map strongly coexpressed proteins between UniProt Id and Entrez Symbol
         CoPro_EntrezSym <- Full_SHAP_F_Plot[intersect(CoPro_UniPro, rownames(Full_SHAP_F_Plot)), "SYMBOL"]
         
+        ########################################################
+        # Record of using BiomRt to perform protein name mapping  
+        # if (file.exists("/scripts/ensembl.RDS")) {
+        #   ensembl <- readRDS("/scripts/ensembl.RDS")
+        # } else {
+        #   ensembl <- useMart("ensembl", dataset = "hsapiens_gene_ensembl")
+        # }
+        # Pro_Plot <- getBM(
+        #   attributes = c("uniprotswissprot", "hgnc_symbol"),
+        #   filters = "uniprotswissprot",
+        #   values = Pro_Plot_Ori,
+        #   mart = ensembl
+        # )
+        # SHAP <- unlist(sapply(Pro_Plot$uniprotswissprot, function(x) {SHAP_PlotF[which(rownames(SHAP_PlotF)==x)[1], colCt]}))
+        # Pro_Plot_F <- Pro_Plot %>% dplyr::select(hgnc_symbol) %>% mutate(SHAP = SHAP) %>% arrange(desc(SHAP))
+        ########################################################
+        
       }else{
         Pro_Plot_F <- cbind(rownames(SHAP_PlotF), SHAP_PlotF[,colCt]) %>% as.data.frame()
         Full_SHAP_F_Plot <- cbind(rownames(Full_SHAP_F),Full_SHAP_F[,colCt]) %>% as.data.frame()
@@ -396,13 +408,11 @@ for(colCt in colnames(Full_SHAP_F_AllScaled)[!grepl("CombinedShap", colnames(Ful
       colnames(Pro_Plot_F) <- colnames(Full_SHAP_F_Plot) <- c("proName", "SHAP")
       rownames(Pro_Plot_F) <- Pro_Plot_F$proName
       
-      ### Handle cases with NA SHAP values. For network plot split entries with multiple Entrez symbols (separated by ‘;’) into separate rows, each retaining the same SHAP value.
-      Full_SHAP_F_Plot %<>% filter(!(is.na(SHAP)))%<>% group_by(proName) %<>% summarise(SHAP = max(SHAP, na.rm = TRUE), .groups = "drop") %<>% separate_rows(proName, sep = ";") %<>% arrange(desc(SHAP)) %<>% as.data.frame()
+      ### Tackle with the same UniProtID corresponding to different Entrez Symbols and remove the NA SHAP values.
+      Full_SHAP_F_Plot %<>% filter(!(is.na(SHAP)))%<>% group_by(proName) %<>% summarise(SHAP = max(SHAP, na.rm = TRUE), .groups = "drop") %<>% as.data.frame()
       rownames(Full_SHAP_F_Plot) <- Full_SHAP_F_Plot$proName
-      Pro_Plot_F %<>% separate_rows(proName, sep = ";") %<>% as.data.frame()
-      rownames(Pro_Plot_F) <- Pro_Plot_F$proName
       
-      ### Pro_Plot_F is the SHAP-ordered frame only for the top important proteins; Full_SHAP_F_Plot is SHAP-ordered for all the proteins.
+      ### Pro_Plot_F is the SHAP-ordered frame only for the top important proteins; Full_SHAP_F_Plot is NOT SHAP-ordered though for all the proteins.
       
       ###############
       # OUTPUT FILES
