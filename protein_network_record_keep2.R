@@ -88,7 +88,7 @@ ConvertUniprot2Symbol <- function(UniProList){
   return(DataF_EntrezSym)
 }
 
-# Function to generate hub protein table based on centrality score
+# Function to generate hub protein table based on centrality score of the network composed of nodes of imporant proteins with links mapped in STRINGdb
 # Input -- LinkTable: object of links between nodes
 # Output -- centrality_df: data frame displaying centrality score for displayed nodes
 getHubProTable <- function(LinkTable){
