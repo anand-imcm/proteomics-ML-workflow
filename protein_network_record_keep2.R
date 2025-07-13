@@ -1,4 +1,4 @@
-# Keep as self record. 
+# Keep as self record before offline mapping adopted
 # This script is a module for performing protein-protein interaction (PPI) network analysis on proteins selected based on protein importance derived from classification or regression machine learning models.
 
 # Example Command line for case: 
