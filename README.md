@@ -1,4 +1,4 @@
-# proteomics-ML-workflow
+# BiomarkerML
 
 [![Open](https://img.shields.io/badge/Open-Dockstore-blue)](https://dockstore.org/workflows/github.com/anand-imcm/proteomics-ML-workflow)&nbsp;&nbsp;
 [![publish](https://img.shields.io/github/actions/workflow/status/anand-imcm/proteomics-ML-workflow/publish_gen.yml)](https://github.com/anand-imcm/proteomics-ML-workflow/releases)&nbsp;&nbsp;
@@ -15,6 +15,8 @@ High-throughput affinity and mass-spectrometry-based proteomic studies of large 
 The workflow: takes proteomic data and sample labels as input, imputing missing values where necessary; pre-processes the data for ML models and optionally performs dimensionality reduction; makes available as standard a catalogue of machine learning and deep learning classification and regression models, including both well established and cutting-edge methods; calculates accuracy, sensitivity and specificity of models, enabling the evaluation and comparison of models based on these metrics; and carries out feature selection in models using SHapley Additive exPlanations (SHAP) values. In addition to these ML capabilities, the workflow also provides downstream modules for functional enrichment and protein-protein interaction (PPI) network analyses of feature-selected proteins.
 
 The workflow is implemented in Python, R and Workflow Description Language (WDL), and can be executed on a cloud-based platform for biomedical data analysis. Deployment in this manner provides a standardized, user-friendly interface, and ensures the reproducibility and reliability of analytical outputs. Furthermore, such deployment renders the workflow scalable and streamlines the analysis of large, complex proteomic data. This ML workflow thus represents a significant advancement, empowering researchers to efficiently explore proteomic landscapes and identify biomarkers critical for early detection and treatment of diseases.
+
+<img src="proteomics-ml-WDL_white.png" width="900" height="800">
 
 ## Workflow Steps
 
@@ -62,6 +64,10 @@ The workflow is implemented in Python, R and Workflow Description Language (WDL)
 > **This workflow is primarily designed for cloud-based platforms (e.g., Terra.bio, DNANexus, Verily) that support WDL workflows.**
 >
 > However, you can also run it locally using the Cromwell workflow management system.
+>
+> This workflow has also been tested locally on `Ubuntu 22.04` with `Docker v28.3.1` and `Cromwell v40`, running on a 12th Gen Intel Core i7-1270P with 32 GB RAM.
+>
+> ARM64 (`linux/arm64`) architecture is currently not supported.
 
 ### Requirements
 
@@ -167,19 +173,18 @@ The workflow is implemented in Python, R and Workflow Description Language (WDL)
 
 - **`main.*.cpu`** : [Int] Number of CPUs needed to execute the specific task. Default value: `16`
 
-<span style="color:#999999; font-style:italic;">&#9432; Note:</span> We recommend that users adopt *unique Entrez Symbols* as the protein naming convention for our network analysis, although we provide an approach using the R/Bioconductor annotation package **`org.Hs.eg.db`** to map UniProt IDs to Entrez Symbols.
-
-The protein name mapping process handles edge cases as follows:
-
-- **UniProt IDs mapped to multiple Entrez symbols**:  
-  All matched Entrez symbols corresponding to the same UniProt ID are concatenated using a semicolon (`;`) and later deconcatenated during network plot mapping to STRINGdb. This may occur in cases where protein complexes are composed of    subunits encoded by different genes and etc.
-
-- **Multiple UniProt IDs mapping to the same Entrez symbol**:  
-  Only the first occurrence — corresponding to the protein with the highest SHAP value for that symbol — is retained in the final dataset. This may happen in cases involving protein isoforms, fusion proteins and etc.
-
-- **UniProt IDs with no associated Entrez symbol**:  
-  These entries are removed from the dataset.
-
+> [!NOTE]
+> We recommend that users adopt *unique Entrez Symbols* as the protein naming convention for our network analysis, although we provide an approach using the R/Bioconductor annotation package **`org.Hs.eg.db`** to map UniProt IDs to Entrez Symbols.
+>
+> The protein name mapping process handles edge cases as follows:
+>
+> - **UniProt IDs mapped to multiple Entrez symbols**: All matched Entrez symbols corresponding to the same UniProt ID are concatenated using a semicolon (`;`) and later deconcatenated during network plot mapping to STRINGdb. This may occur in cases where protein complexes are composed of    subunits encoded by different genes and etc.
+>
+> - **Multiple UniProt IDs mapping to the same Entrez symbol**: Only the first occurrence — corresponding to the protein with the highest SHAP value for that symbol — is retained in the final dataset. This may happen in cases involving protein isoforms, fusion proteins and etc.
+>
+> - **UniProt IDs with no associated Entrez symbol**: These entries are removed from the dataset.
+>
+> If the static network plot is too noise to visualize clearly, an interactive version is also provided. By running the command Rscript InteractiveNetwork.R, an HTML file named "PPI_interactive.html" will be generated, allowing users to explore the network more flexibly and intuitively.
 
 ## Outputs
 
@@ -212,7 +217,6 @@ The protein name mapping process handles edge cases as follows:
 | [igraph](https://r.igraph.org/) | GPL (>= 2) |
 | [magrittr](https://magrittr.tidyverse.org/) | MIT |
 | [optparse](https://cran.r-project.org/web/packages/optparse/index.html) | GPL (>= 2) |
-| [pdftools](https://cran.r-project.org/web/packages/pdftools/index.html) | MIT |
 | [STRINGdb](https://bioconductor.org/packages/release/bioc/html/STRINGdb.html) | GPL (>= 2) |
 | [tidyverse](https://www.tidyverse.org/) | GPL-3 |
 | [writexl](https://cloud.r-project.org/web/packages/writexl/index.html) | BSD-2-clause |
