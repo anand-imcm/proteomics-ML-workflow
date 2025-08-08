@@ -2,9 +2,39 @@
 # To run the script, use the command line: Rscript DraggableNetwork.R. Need to load previously stored R object after running the main workflow.
 # This will produce an HTML file named "Interactive_PPI.html" that users can open in a web browser to explore the network through an interactive interface.
 
-library(igraph)
-library(visNetwork)
-library(htmltools)
+#-------------------------------------------------
+# Install required packages and versions
+required_packages <- list(
+  igraph      = "2.1.4",
+  fields      = "16.3.1",
+  visNetwork  = "2.1.2",
+  htmltools   = "0.5.8.1"
+)
+
+# Ensure devtools is installed (for install_version)
+if (!requireNamespace("devtools", quietly = TRUE)) {
+  install.packages("devtools")
+}
+library(devtools)
+
+# Check and install each package if not installed or wrong version
+for (pkg in names(required_packages)) {
+  required_version <- required_packages[[pkg]]
+  
+  if (!requireNamespace(pkg, quietly = TRUE) ||
+      as.character(packageVersion(pkg)) != required_version) {
+    
+    message(sprintf("Installing %s (version %s)...", pkg, required_version))
+    install_version(pkg, version = required_version, repos = "https://cran.r-project.org")
+  } else {
+    message(sprintf("Package %s (version %s) is already installed.", pkg, required_version))
+  }
+}
+
+library(igraph) 
+library(fields) 
+library(visNetwork) 
+library(htmltools) 
 
 #-------------------------------------------------
 # Function to generate an interactive network plot
@@ -56,7 +86,7 @@ plotDraggable <- function(g, nodeName, nodeColor, nodeShape, nodeValue, myTitle)
   )
   
   # Create edge data frame
-  edges <- as_data_frame(g, what = "edges")
+  edges <- igraph::as_data_frame(g, what = "edges")
   edges <- data.frame(
     from = edges$from,
     to = edges$to,
@@ -89,8 +119,7 @@ plotDraggable <- function(g, nodeName, nodeColor, nodeShape, nodeValue, myTitle)
     )
   )
   
-  saveWidget(combined_output, file = "Interactive_PPI.html", selfcontained = TRUE)
-  
+  save_html(combined_output, file = "Interactive_PPI.html")
 }
 
 
@@ -101,5 +130,5 @@ plotDraggable <- function(g, nodeName, nodeColor, nodeShape, nodeValue, myTitle)
 load("Object4InteractivePlot.rdat")
 
 ### Call the function plotDraggable
-plotDraggable(g, nodeName2, nodeColor, "circle", nodeValue, myTitle)
+#plotDraggable(g, nodeName2, nodeColor, "circle", nodeValue, myTitle)
 plotDraggable(g_expanded, nodeName2_expanded, nodeColor_expanded, nodeShape, nodeValue_expanded, myTitle_expanded)
