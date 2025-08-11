@@ -107,7 +107,7 @@ plotDraggable <- function(g, nodeName, nodeColor, nodeShape, nodeValue, myTitle)
   # Use in HTML
   legend_add <- HTML(sprintf('
   <div style="text-align: center; margin-top: 0px;">
-    <img src="%s" style="width: 50%%; margin-bottom: 0px;" />
+    <img src="%s" style="width: 20%%; margin-bottom: 0px;" />
   </div>
 ', img_base64))
   
@@ -120,6 +120,7 @@ plotDraggable <- function(g, nodeName, nodeColor, nodeShape, nodeValue, myTitle)
   )
   
   save_html(combined_output, file = "Interactive_PPI.html")
+  save(combined_output, file = "Interactive_PPI.Rdat")
 }
 
 
