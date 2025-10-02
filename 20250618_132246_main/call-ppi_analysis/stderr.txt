@@ -1,0 +1,6 @@
+Error: package or namespace load failed for ‘tidyverse’ in dyn.load(file, DLLpath = DLLpath, ...):
+ unable to load shared object '/usr/local/lib/R/site-library/magrittr/libs/magrittr.so':
+  /usr/local/lib/R/site-library/magrittr/libs/magrittr.so: cannot open shared object file: No such file or directory
+Execution halted
+tar: Network*: Warning: Cannot stat: No such file or directory
+tar: *.xlsx: Warning: Cannot stat: No such file or directory

@@ -1,0 +1,8 @@
+set -euo pipefail
+python /scripts/Classification/classification.py \
+    -i /mnt/miniwdl_task_container/work/_miniwdl_inputs/0/Nulisa1.csv \
+    -p example \
+    -m SVM \
+    -f elasticnet
+tar -czvf example_SVM_results.tar.gz --ignore-failed-read *.{png,pkl,npy,csv}
+   

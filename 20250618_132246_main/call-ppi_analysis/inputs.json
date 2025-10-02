@@ -1,0 +1,14 @@
+{
+  "score_threshold": 400,
+  "combined_score_threshold": 800,
+  "SHAP_threshold": 100,
+  "protein_name_mapping": true,
+  "correlation_method": "spearman",
+  "correlation_threshold": 0.8,
+  "cpu": 16,
+  "memory_gb": 24,
+  "docker": "ghcr.io/anand-imcm/proteomics-ml-workflow-net:1.0.2",
+  "output_prefix": "example",
+  "proteinExpFile": "/Users/yuhan/Downloads/Nulisa1.csv",
+  "summary_set": "/Users/yuhan/Desktop/PD data/git IMCM/ML_workflow/Final_WF/Last Version/proteomics-ML-workflow/20250618_132246_main/call-summary/out/results/example_results.tar.gz"
+}

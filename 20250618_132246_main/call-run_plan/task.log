@@ -1,0 +1,24 @@
+2025-06-18 13:22:46.545 wdl.w:main.t:call-run_plan NOTICE task start :: name: "run_plan", source: "./tasks/run_plan.wdl", line: 3, column: 1, dir: "/Users/yuhan/Desktop/PD data/git IMCM/ML_workflow/Final_WF/Last Version/proteomics-ML-workflow/20250618_132246_main/call-run_plan", thread: 6130118656
+2025-06-18 13:22:46.602 wdl.w:main.t:call-run_plan NOTICE docker swarm resources :: workers: 1, max_cpus: 14, max_mem_bytes: 8217473024, total_cpus: 14, total_mem_bytes: 8217473024
+2025-06-18 13:22:46.603 wdl.w:main.t:call-run_plan INFO input :: name: "ppi", value: true
+2025-06-18 13:22:46.603 wdl.w:main.t:call-run_plan INFO input :: name: "shap", value: true
+2025-06-18 13:22:46.604 wdl.w:main.t:call-run_plan INFO input :: name: "mode", value: "classification"
+2025-06-18 13:22:46.604 wdl.w:main.t:call-run_plan INFO input :: name: "regression_choices", value: "RF_reg"
+2025-06-18 13:22:46.604 wdl.w:main.t:call-run_plan INFO input :: name: "dimensionality_reduction_choices", value: "ELASTICNET"
+2025-06-18 13:22:46.604 wdl.w:main.t:call-run_plan INFO input :: name: "model_choices", value: "SVM"
+2025-06-18 13:22:46.604 wdl.w:main.t:call-run_plan INFO effective runtime :: docker: "python:3.12-slim", cpu: 2, memory_reservation: 2000000000
+2025-06-18 13:22:46.604 wdl.w:main.t:call-run_plan WARNING ignored runtime settings :: keys: ["disks"]
+2025-06-18 13:22:46.633 wdl.w:main.t:call-run_plan NOTICE docker image :: tag: "python:3.12-slim", id: "sha256:e55523f127124e5edc03ba201e3dbbc85172a2ec40d8651ac752364b23dfd733", RepoDigest: "python@sha256:e55523f127124e5edc03ba201e3dbbc85172a2ec40d8651ac752364b23dfd733"
+2025-06-18 13:22:48.391 wdl.w:main.t:call-run_plan INFO docker task complete :: service: "i51oc8mhfo8m", task: "qru6u5m0nw", node: "npwwvuk1gz", desired: "shutdown", message: "finished"
+2025-06-18 13:22:48.391 wdl.w:main.t:call-run_plan NOTICE docker task exit :: state: "complete", exit_code: 0
+2025-06-18 13:22:48.672 wdl.w:main.t:call-run_plan INFO output :: name: "use_dim", value: false
+2025-06-18 13:22:48.688 wdl.w:main.t:call-run_plan INFO output :: name: "dim_opt", value: ["elasticnet"]
+2025-06-18 13:22:48.691 wdl.w:main.t:call-run_plan INFO output :: name: "use_gen", value: true
+2025-06-18 13:22:48.693 wdl.w:main.t:call-run_plan INFO output :: name: "gen_opt", value: ["SVM"]
+2025-06-18 13:22:48.695 wdl.w:main.t:call-run_plan INFO output :: name: "use_vae", value: false
+2025-06-18 13:22:48.696 wdl.w:main.t:call-run_plan INFO output :: name: "vae_opt", value: []
+2025-06-18 13:22:48.697 wdl.w:main.t:call-run_plan INFO output :: name: "use_reg", value: false
+2025-06-18 13:22:48.698 wdl.w:main.t:call-run_plan INFO output :: name: "reg_opt", value: []
+2025-06-18 13:22:48.700 wdl.w:main.t:call-run_plan INFO output :: name: "use_shap", value: true
+2025-06-18 13:22:48.701 wdl.w:main.t:call-run_plan INFO output :: name: "use_ppi", value: true
+2025-06-18 13:22:48.711 wdl.w:main.t:call-run_plan NOTICE done

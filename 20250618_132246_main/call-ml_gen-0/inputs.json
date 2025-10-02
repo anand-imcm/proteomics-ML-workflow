@@ -1,0 +1,9 @@
+{
+  "cpu": 16,
+  "memory_gb": 24,
+  "docker": "ghcr.io/anand-imcm/proteomics-ml-workflow-gen:1.0.2",
+  "dim_opt": "elasticnet",
+  "output_prefix": "example",
+  "input_csv": "/Users/yuhan/Downloads/Nulisa1.csv",
+  "model": "SVM"
+}

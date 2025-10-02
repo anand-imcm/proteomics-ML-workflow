@@ -1,0 +1,114 @@
+python3 <<EOF
+import re
+import logging
+logging.basicConfig(filename='warnings.log', filemode='a', level=logging.WARNING, format='%(asctime)s - %(levelname)s - %(message)s')
+usr_models = "SVM"
+usr_dim = "ELASTICNET"
+usr_reg = "RF_reg"
+run_mode = "classification"
+usr_shap = "true"
+usr_ppi = "true"
+dim_options = re.split(r'\s+|,', usr_dim)
+ml_options = re.split(r'\s+|,', usr_models)
+reg_options = re.split(r'\s+|,', usr_reg)
+vae_choices = [opt for opt in ml_options if "VAE" in opt]
+gen_choices = [opt for opt in ml_options if "VAE" not in opt]
+ppi_compatibility = False
+with open("use_gen.txt", "w") as gen_opt, open("use_reg.txt", "w") as reg_opt, open("use_vae.txt", "w") as vae_opt, open("use_shap.txt", "w") as shap_opt,  open("use_dim.txt", "w") as dim_opt, open("use_ppi.txt", "w") as ppi_opt, open("dim_options.txt", "w") as dim_plan, open("cl_options.txt", "w") as cl_plan, open("vae_options.txt", "w") as vae_plan, open("reg_options.txt", "w") as reg_plan:
+    dim_opt.write("false")
+    gen_opt.write("false")
+    reg_opt.write("false")
+    vae_opt.write("false")
+    shap_opt.write("false")
+    ppi_opt.write("false")
+    if run_mode.lower() == "regression":
+        if any(dim_options) and len(dim_options) > 1:
+            dim_opt.seek(0)
+            dim_opt.truncate()
+            dim_opt.write("true")
+            for dim in dim_options:
+                dim_plan.write(dim.replace("-", "").lower() + "\n")
+            logging.warning("Multiple dimentionality reduction option selected. Skipping any regression model(s) if chosen.")
+        else:
+            if any(dim_options):
+                dim_plan.write(dim_options[0].replace("-", "").lower())
+                if dim_options[0].replace("-", "").lower() == "elasticnet" or dim_options[0].replace("-", "").lower() == "none":
+                    ppi_compatibility = True
+            else:
+                ppi_compatibility = True
+                dim_plan.write("none")
+            if any(reg_options):
+                reg_opt.seek(0)
+                reg_opt.truncate()
+                reg_opt.write("true")
+                for reg in reg_options:
+                    reg_plan.write(reg + "\n")
+            if usr_shap.lower() == "true":
+                shap_opt.seek(0)
+                shap_opt.truncate()
+                shap_opt.write("true")
+            if usr_ppi.lower() == "true" and ppi_compatibility and usr_shap.lower() == "true":
+                shap_opt.seek(0)
+                shap_opt.truncate()
+                shap_opt.write("true")
+                ppi_opt.seek(0)
+                ppi_opt.truncate()
+                ppi_opt.write("true")
+            if usr_ppi.lower() == "true" and ppi_compatibility and usr_shap.lower() == "false":
+                logging.warning("The Protein-Protein Interaction analysis module is supported only when 'calculate_shap' is set to 'true', and 'dimensionality_reduction_choices' is set to 'ELASTICNET' or 'NONE'." )
+            if usr_ppi.lower() == "true" and (not ppi_compatibility):
+                logging.warning("The Protein-Protein Interaction analysis module is supported only when 'dimensionality_reduction_choices' is set to 'ELASTICNET' or 'NONE', and 'calculate_shap' is set to 'true'." )
+    elif run_mode.lower() == "classification":
+        if any(dim_options) and len(dim_options) > 1:
+            dim_opt.seek(0)
+            dim_opt.truncate()
+            dim_opt.write("true")
+            for dim in dim_options:
+                dim_plan.write(dim.replace("-", "").lower() + "\n")
+            logging.warning("Multiple dimentionality reduction option selected. Skipping any classification model(s) if chosen.")
+        else:
+            if any(dim_options):
+                dim_plan.write(dim_options[0].replace("-", "").lower())
+                if dim_options[0].replace("-", "").lower() == "elasticnet" or dim_options[0].replace("-", "").lower() == "none":
+                    ppi_compatibility = True
+            else:
+                dim_plan.write("none")
+                ppi_compatibility = True
+            if any(gen_choices):
+                gen_opt.seek(0)
+                gen_opt.truncate()
+                gen_opt.write("true")
+                for ml in gen_choices:
+                    cl_plan.write(ml + "\n")
+            if any(vae_choices):
+                vae_opt.seek(0)
+                vae_opt.truncate()
+                vae_opt.write("true")
+                for ml in vae_choices:
+                    vae_plan.write(ml + "\n")
+            if usr_shap.lower() == "true":
+                shap_opt.seek(0)
+                shap_opt.truncate()
+                shap_opt.write("true")
+            if usr_ppi.lower() == "true" and ppi_compatibility and usr_shap.lower() == "true":
+                shap_opt.seek(0)
+                shap_opt.truncate()
+                shap_opt.write("true")
+                ppi_opt.seek(0)
+                ppi_opt.truncate()
+                ppi_opt.write("true")
+            if usr_ppi.lower() == "true" and ppi_compatibility and usr_shap.lower() == "false":
+                logging.warning("The Protein-Protein Interaction analysis module is supported only when 'calculate_shap' is set to 'true', and 'dimensionality_reduction_choices' is set to 'ELASTICNET' or 'NONE'." )
+            if usr_ppi.lower() == "true" and (not ppi_compatibility):
+                logging.warning("The Protein-Protein Interaction analysis module is supported only when 'dimensionality_reduction_choices' is set to 'ELASTICNET' or 'NONE', and 'calculate_shap' is set to 'true'." )
+    else:
+        run_mode = "summary"
+        if any(dim_options):
+            dim_opt.seek(0)
+            dim_opt.truncate()
+            dim_opt.write("true")
+            for dim in dim_options:
+                dim_plan.write(dim.replace("-", "").lower() + "\n")
+EOF
+[ ! -s warnings.log ] && rm warnings.log || cat warnings.log
+   

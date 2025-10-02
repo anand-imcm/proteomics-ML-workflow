@@ -1,0 +1,36 @@
+example_svm_confusion_matrix.png
+example_svm_metrics.png
+example_svm_nested_cv_f1_auc.png
+example_svm_roc_curve.png
+example_svm_data.pkl
+example_svm_model.pkl
+example_svm_roc_data.npy
+example_svm_predictions.csv
+example_svm_transformed_X.csv
+example_svm_variance.csv
+Loading ROC data from: example_svm_roc_data.npy
+Total CPU cores: 14
+Max models in parallel: 4
+Each model will use 3 threads for SHAP
+Processing svm...
+  - applied SelectFromModel, now 31 features
+  - using SHAP explainer 'permutation' on 31 features
+Type of shap_values: <class 'numpy.ndarray'>
+Shape of shap_values array: (34, 31, 2)
+SHAP input X shape: (34, 31)
+Computed SHAP values mean shape: (31,)
+  - saved SHAP values to example_svm_shap_values.csv
+example_overall_roc_curves.png
+example_svm_confusion_matrix.png
+example_svm_metrics.png
+example_svm_nested_cv_f1_auc.png
+example_svm_roc_curve.png
+example_svm_shap_bar.png
+example_svm_shap_radar.png
+example_svm_data.pkl
+example_svm_model.pkl
+example_svm_roc_data.npy
+example_svm_predictions.csv
+example_svm_shap_values.csv
+example_svm_transformed_X.csv
+example_svm_variance.csv

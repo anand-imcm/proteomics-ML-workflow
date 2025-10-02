@@ -1,0 +1,28 @@
+2025-06-18 13:23:25.620 wdl.w:main.t:call-ppi_analysis NOTICE task start :: name: "ppi_analysis", source: "./tasks/protein_network.wdl", line: 3, column: 1, dir: "/Users/yuhan/Desktop/PD data/git IMCM/ML_workflow/Final_WF/Last Version/proteomics-ML-workflow/20250618_132246_main/call-ppi_analysis", thread: 6130118656
+2025-06-18 13:23:25.640 wdl.w:main.t:call-ppi_analysis INFO input :: name: "score_threshold", value: 400
+2025-06-18 13:23:25.640 wdl.w:main.t:call-ppi_analysis INFO input :: name: "combined_score_threshold", value: 800
+2025-06-18 13:23:25.640 wdl.w:main.t:call-ppi_analysis INFO input :: name: "SHAP_threshold", value: 100
+2025-06-18 13:23:25.640 wdl.w:main.t:call-ppi_analysis INFO input :: name: "protein_name_mapping", value: true
+2025-06-18 13:23:25.640 wdl.w:main.t:call-ppi_analysis INFO input :: name: "correlation_method", value: "spearman"
+2025-06-18 13:23:25.640 wdl.w:main.t:call-ppi_analysis INFO input :: name: "correlation_threshold", value: 0.8
+2025-06-18 13:23:25.640 wdl.w:main.t:call-ppi_analysis INFO input :: name: "cpu", value: 16
+2025-06-18 13:23:25.640 wdl.w:main.t:call-ppi_analysis INFO input :: name: "memory_gb", value: 24
+2025-06-18 13:23:25.640 wdl.w:main.t:call-ppi_analysis INFO input :: name: "docker", value: "ghcr.io/anand-imcm/proteomics-ml-workflow-net:1.0.2"
+2025-06-18 13:23:25.640 wdl.w:main.t:call-ppi_analysis INFO input :: name: "output_prefix", value: "example"
+2025-06-18 13:23:25.641 wdl.w:main.t:call-ppi_analysis INFO input :: name: "proteinExpFile", value: "/mnt/miniwdl_task_container/work/_miniwdl_inputs/0/Nulisa1.csv"
+2025-06-18 13:23:25.641 wdl.w:main.t:call-ppi_analysis INFO input :: name: "summary_set", value: "/mnt/miniwdl_task_container/work/_miniwdl_inputs/0/example_results.tar.gz"
+2025-06-18 13:23:25.641 wdl.w:main.t:call-ppi_analysis WARNING runtime.cpu adjusted to host limit :: original: 16, adjusted: 14
+2025-06-18 13:23:25.641 wdl.w:main.t:call-ppi_analysis WARNING runtime.memory adjusted to host limit :: original: 24000000000, adjusted: 8217473024
+2025-06-18 13:23:25.642 wdl.w:main.t:call-ppi_analysis INFO effective runtime :: docker: "ghcr.io/anand-imcm/proteomics-ml-workflow-net:1.0.2", cpu: 14, memory_reservation: 8217473024
+2025-06-18 13:23:25.642 wdl.w:main.t:call-ppi_analysis WARNING ignored runtime settings :: keys: ["disks", "continueOnReturnCode"]
+2025-06-18 13:23:25.666 wdl.w:main.t:call-ppi_analysis NOTICE docker image :: tag: "ghcr.io/anand-imcm/proteomics-ml-workflow-net:1.0.2", id: "sha256:b01c3c40dced452fafefb9713f51b5fe1f000a69e96a0d301bdbfc41451874a2", RepoDigest: "ghcr.io/anand-imcm/proteomics-ml-workflow-net@sha256:b01c3c40dced452fafefb9713f51b5fe1f000a69e96a0d301bdbfc41451874a2"
+2025-06-18 13:23:27.286 wdl.w:main.t:call-ppi_analysis INFO docker task complete :: service: "obpfhosmtj31", task: "x91cyksde1", node: "npwwvuk1gz", desired: "shutdown", message: "finished"
+2025-06-18 13:23:27.286 wdl.w:main.t:call-ppi_analysis NOTICE docker task exit :: state: "complete", exit_code: 0
+2025-06-18 13:23:27.303 wdl.w:main.t:call-ppi_analysis.stderr VERBOSE Error: package or namespace load failed for ‘tidyverse’ in dyn.load(file, DLLpath = DLLpath, ...):
+2025-06-18 13:23:27.303 wdl.w:main.t:call-ppi_analysis.stderr VERBOSE  unable to load shared object '/usr/local/lib/R/site-library/magrittr/libs/magrittr.so':
+2025-06-18 13:23:27.303 wdl.w:main.t:call-ppi_analysis.stderr VERBOSE   /usr/local/lib/R/site-library/magrittr/libs/magrittr.so: cannot open shared object file: No such file or directory
+2025-06-18 13:23:27.303 wdl.w:main.t:call-ppi_analysis.stderr VERBOSE Execution halted
+2025-06-18 13:23:27.303 wdl.w:main.t:call-ppi_analysis.stderr VERBOSE tar: Network*: Warning: Cannot stat: No such file or directory
+2025-06-18 13:23:27.304 wdl.w:main.t:call-ppi_analysis.stderr VERBOSE tar: *.xlsx: Warning: Cannot stat: No such file or directory
+2025-06-18 13:23:27.562 wdl.w:main.t:call-ppi_analysis INFO output :: name: "results", value: "example_pro_net_results.tar.gz"
+2025-06-18 13:23:27.572 wdl.w:main.t:call-ppi_analysis NOTICE done

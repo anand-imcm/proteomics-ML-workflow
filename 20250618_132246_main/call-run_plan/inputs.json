@@ -1,0 +1,8 @@
+{
+  "ppi": true,
+  "shap": true,
+  "mode": "classification",
+  "regression_choices": "RF_reg",
+  "dimensionality_reduction_choices": "ELASTICNET",
+  "model_choices": "SVM"
+}

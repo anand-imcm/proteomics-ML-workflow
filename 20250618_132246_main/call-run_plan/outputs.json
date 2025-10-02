@@ -1,0 +1,16 @@
+{
+  "run_plan.use_ppi": true,
+  "run_plan.use_shap": true,
+  "run_plan.reg_opt": [],
+  "run_plan.use_reg": false,
+  "run_plan.vae_opt": [],
+  "run_plan.use_vae": false,
+  "run_plan.gen_opt": [
+    "SVM"
+  ],
+  "run_plan.use_gen": true,
+  "run_plan.dim_opt": [
+    "elasticnet"
+  ],
+  "run_plan.use_dim": false
+}

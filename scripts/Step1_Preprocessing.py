@@ -70,7 +70,7 @@ def plot_pairplot(data, plot_prefix, labels, method, dims, label_type):
     - dims: int, number of dimensions.
     - label_type: str, 'categorical' or 'continuous'.
     """
-    sns.set(style="white", palette="muted", context="talk")
+    sns.set(style="white", palette="muted", context="talk", font_scale=2)
     # Define dimension column names
     dim_columns = [f"{method}{i+1}" for i in range(dims)]
     
@@ -113,8 +113,8 @@ def plot_pairplot(data, plot_prefix, labels, method, dims, label_type):
     # Adjust the figure size to prevent overlapping labels
     g.fig.set_size_inches(12, 12)
     plt.subplots_adjust(top=0.95, wspace=0.3, hspace=0.3)
-    g.fig.suptitle(f"Dimensions' view from {method}", fontsize=26, fontweight='bold')
- 
+    g.fig.suptitle(f"Dimensions' view from {method.upper()}", fontsize=30, fontweight='bold')
+
     # Adjust axis tick labels for KPCA plots with large numbers
     if method == 'kpca':
         for ax in g.axes.flatten():

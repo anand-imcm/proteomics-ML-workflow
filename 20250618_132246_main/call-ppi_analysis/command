@@ -1,0 +1,27 @@
+set -euo pipefail
+cp /mnt/miniwdl_task_container/work/_miniwdl_inputs/0/example_results.tar.gz $(basename /mnt/miniwdl_task_container/work/_miniwdl_inputs/0/example_results.tar.gz)
+if ls *.tar.gz 1> /dev/null 2>&1; then
+    for archive in *.tar.gz; do
+        tar -xzvf "$archive"
+    done
+    rm *.tar.gz
+fi
+patternChosen="shap_values.csv"
+converProId=""
+if true; then
+    converProId="TRUE"
+else
+    converProId="FALSE"
+fi
+Rscript /scripts/protein_network.R \
+    --score_thresholdHere 400 \
+    --combined_score_thresholdHere 800 \
+    --SHAPthresh 100 \
+    --patternChosen ${patternChosen} \
+    --converProId ${converProId} \
+    --proteinExpFile /mnt/miniwdl_task_container/work/_miniwdl_inputs/0/Nulisa1.csv \
+    --CorMethod spearman \
+    --CorThreshold 0.8 || true
+tar -czvf example_pro_net_results.tar.gz --ignore-failed-read Network* *.xlsx
+exit 0
+   

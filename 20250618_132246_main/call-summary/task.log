@@ -1,0 +1,22 @@
+2025-06-18 13:23:11.848 wdl.w:main.t:call-summary NOTICE task start :: name: "summary", source: "./tasks/summary.wdl", line: 3, column: 1, dir: "/Users/yuhan/Desktop/PD data/git IMCM/ML_workflow/Final_WF/Last Version/proteomics-ML-workflow/20250618_132246_main/call-summary", thread: 6130118656
+2025-06-18 13:23:11.884 wdl.w:main.t:call-summary INFO input :: name: "cpu", value: 16
+2025-06-18 13:23:11.885 wdl.w:main.t:call-summary INFO input :: name: "memory_gb", value: 24
+2025-06-18 13:23:11.885 wdl.w:main.t:call-summary INFO input :: name: "docker", value: "ghcr.io/anand-imcm/proteomics-ml-workflow-gen:1.0.2"
+2025-06-18 13:23:11.885 wdl.w:main.t:call-summary INFO input :: name: "shap_num_feat", value: 10
+2025-06-18 13:23:11.885 wdl.w:main.t:call-summary INFO input :: name: "use_reg", value: false
+2025-06-18 13:23:11.885 wdl.w:main.t:call-summary INFO input :: name: "use_shap", value: true
+2025-06-18 13:23:11.885 wdl.w:main.t:call-summary INFO input :: name: "output_prefix", value: "example"
+2025-06-18 13:23:11.886 wdl.w:main.t:call-summary INFO input :: name: "model", value: ["SVM"]
+2025-06-18 13:23:11.886 wdl.w:main.t:call-summary INFO input :: name: "dataset", value: ["/mnt/miniwdl_task_container/work/_miniwdl_inputs/0/example_SVM_results.tar.gz"]
+2025-06-18 13:23:11.886 wdl.w:main.t:call-summary INFO eval :: name: "all_data", value: ["/mnt/miniwdl_task_container/work/_miniwdl_inputs/0/example_SVM_results.tar.gz"]
+2025-06-18 13:23:11.887 wdl.w:main.t:call-summary INFO eval :: name: "disk_size_gb", value: 3
+2025-06-18 13:23:11.887 wdl.w:main.t:call-summary WARNING runtime.cpu adjusted to host limit :: original: 16, adjusted: 14
+2025-06-18 13:23:11.888 wdl.w:main.t:call-summary WARNING runtime.memory adjusted to host limit :: original: 24000000000, adjusted: 8217473024
+2025-06-18 13:23:11.888 wdl.w:main.t:call-summary INFO effective runtime :: docker: "ghcr.io/anand-imcm/proteomics-ml-workflow-gen:1.0.2", cpu: 14, memory_reservation: 8217473024
+2025-06-18 13:23:11.888 wdl.w:main.t:call-summary WARNING ignored runtime settings :: keys: ["disks"]
+2025-06-18 13:23:11.916 wdl.w:main.t:call-summary NOTICE docker image :: tag: "ghcr.io/anand-imcm/proteomics-ml-workflow-gen:1.0.2", id: "sha256:cfb7f7b0dbf6f8d1e30f58568da07108a394345dda5dc55802333b1b0478e52e", RepoDigest: "ghcr.io/anand-imcm/proteomics-ml-workflow-gen@sha256:cfb7f7b0dbf6f8d1e30f58568da07108a394345dda5dc55802333b1b0478e52e"
+2025-06-18 13:23:13.196 wdl.w:main.t:call-summary NOTICE docker task running :: service: "4pndg9814rf1", task: "ldqjze600j", node: "npwwvuk1gz", message: "started"
+2025-06-18 13:23:25.375 wdl.w:main.t:call-summary INFO docker task complete :: service: "4pndg9814rf1", task: "ldqjze600j", node: "npwwvuk1gz", desired: "shutdown", message: "finished"
+2025-06-18 13:23:25.376 wdl.w:main.t:call-summary NOTICE docker task exit :: state: "complete", exit_code: 0
+2025-06-18 13:23:25.603 wdl.w:main.t:call-summary INFO output :: name: "results", value: "example_results.tar.gz"
+2025-06-18 13:23:25.616 wdl.w:main.t:call-summary NOTICE done

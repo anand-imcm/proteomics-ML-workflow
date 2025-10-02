@@ -1,0 +1,1 @@
+pushd '/Users/yuhan/Desktop/PD data/git IMCM/ML_workflow/Final_WF/Last Version/proteomics-ML-workflow' && miniwdl run workflows/main.wdl -i example/inputs.json --verbose; popd

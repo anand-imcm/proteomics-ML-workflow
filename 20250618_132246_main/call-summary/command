@@ -1,0 +1,29 @@
+set -euo pipefail
+for file_name in /mnt/miniwdl_task_container/work/_miniwdl_inputs/0/example_SVM_results.tar.gz; do
+    cp $file_name $(basename $file_name)
+done
+if ls *.tar.gz 1> /dev/null 2>&1; then
+    for archive in *.tar.gz; do
+        tar -xzvf "$archive"
+    done
+fi
+if [ "false" = "false" ]; then
+    python /scripts/Classification/Step3_OverallROC.py \
+        -m SVM \
+        -p example
+fi
+if [ "true" = "true" ]; then
+    if [ "false" = "true" ]; then
+        python /scripts/Regression/Step3_Regression_SHAP.py \
+            --p example \
+            --m SVM \
+            --f 10
+    else
+        python /scripts/Classification/Step4_Classification_SHAP.py \
+            -p example \
+            -m SVM \
+            -f 10
+    fi
+fi
+tar -czvf example_results.tar.gz --ignore-failed-read *.{png,pkl,npy,csv}
+   

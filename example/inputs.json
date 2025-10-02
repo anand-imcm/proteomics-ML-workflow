@@ -1,20 +1,20 @@
 {
-  "main.input_csv": "/full/path/to/the/input/data.csv",
+  "main.input_csv": "/Users/yuhan/Downloads/Nulisa1.csv",
   "main.output_prefix": "example",
   
-  "main.mode": "Summary",
+  "main.mode": "classification",
   
-  "main.dimensionality_reduction_choices": "PCA",
+  "main.dimensionality_reduction_choices": "ELASTICNET",
   "main.number_of_dimensions": 3,
   
-  "main.classification_model_choices": "RF",
+  "main.classification_model_choices": "SVM",
   
   "main.regression_model_choices": "RF_reg",
   
-  "main.calculate_shap": false,
+  "main.calculate_shap": true,
   "main.shap_features": 10,
   
-  "main.run_ppi": false,
+  "main.run_ppi": true,
 
   "main.ppi_analysis.score_threshold": 400,
   "main.ppi_analysis.combined_score_threshold": 800,

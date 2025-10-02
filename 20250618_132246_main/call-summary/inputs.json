@@ -1,0 +1,15 @@
+{
+  "cpu": 16,
+  "memory_gb": 24,
+  "docker": "ghcr.io/anand-imcm/proteomics-ml-workflow-gen:1.0.2",
+  "shap_num_feat": 10,
+  "use_reg": false,
+  "use_shap": true,
+  "output_prefix": "example",
+  "model": [
+    "SVM"
+  ],
+  "dataset": [
+    "/Users/yuhan/Desktop/PD data/git IMCM/ML_workflow/Final_WF/Last Version/proteomics-ML-workflow/20250618_132246_main/call-ml_gen-0/out/data/example_SVM_results.tar.gz"
+  ]
+}
