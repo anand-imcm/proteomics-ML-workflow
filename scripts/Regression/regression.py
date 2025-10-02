@@ -25,6 +25,7 @@ import sys
 from joblib import Parallel, delayed
 import os
 from PIL import Image
+import shlex
 
 script_dir = os.path.dirname(os.path.abspath(__file__))
 
@@ -69,7 +70,6 @@ def main():
     args = parse_arguments()
 
     # Map simplified model names to their actual names in Step2_Regression_workflow.py
-    # (for the models that support feature selection)
     workflow_model_map = {
         "NN_reg": "Neural_Network_reg",
         "RF_reg": "Random_Forest_reg",
@@ -81,88 +81,65 @@ def main():
     }
 
     # Models handled by Step2_VAE_MLP_reg.py
-    # (do not support the -f feature_selection parameter)
     vae_mlp_model_map = {
         "VAE_reg": "VAE_MLP_reg",
     }
 
     # Models handled by Step2_MLP_in_VAE_reg.py
-    # (do not support the -f feature_selection parameter)
     mlp_in_vae_model_map = {
         "MLPVAE_reg": "MLP_in_VAE_reg",
     }
 
-    # Validate requested models
+    # Validate requested models (case-insensitive normalization)
     valid_models = set(list(workflow_model_map.keys()) +
                        list(vae_mlp_model_map.keys()) +
                        list(mlp_in_vae_model_map.keys()))
 
-    user_choices = args.models
-    # Check for invalid models
+    user_choices = args.models[:]
     for i, m in enumerate(user_choices):
         for choice in valid_models:
             if m.casefold() == choice.casefold():
                 user_choices[i] = choice
-
+                break
 
     # Separate models based on the script they should be handled by
     workflow_models = [workflow_model_map[m] for m in user_choices if m in workflow_model_map]
     vae_mlp_models = [vae_mlp_model_map[m] for m in user_choices if m in vae_mlp_model_map]
     mlp_in_vae_models = [mlp_in_vae_model_map[m] for m in user_choices if m in mlp_in_vae_model_map]
 
-    # Prepare parallel jobs
+    # Prepare parallel jobs as argument lists (not strings)
     jobs = []
 
     if workflow_models:
-        # Step2_Regression_workflow.py call with all workflow_models
-        Regression_workflow = f"{script_dir}/Step2_Regression_workflow.py"
-        cmd = [
-            "python", Regression_workflow,
-            "-i", args.csv,
-            "-p", args.prefix,
-            "-m"
-        ] + workflow_models
+        regression_workflow = os.path.join(script_dir, "Step2_Regression_workflow.py")
+        cmd = ["python", regression_workflow, "-i", args.csv, "-p", args.prefix, "-m"] + workflow_models
         if args.feature_selection != "none":
             cmd += ["-f", args.feature_selection]
-        job_str = " ".join(cmd)
-        jobs.append(job_str)
+        jobs.append(cmd)
 
-    for model in vae_mlp_models:
-        # Step2_VAE_MLP_reg.py call
-        VAE_MLP_reg = f"{script_dir}/Step2_VAE_MLP_reg.py"
-        cmd = [
-            "python", VAE_MLP_reg,
-            "-i", args.csv,
-            "-p", args.prefix
-        ]
-        job_str = " ".join(cmd)
-        jobs.append(job_str)
+    for _ in vae_mlp_models:
+        vae_mlp_reg = os.path.join(script_dir, "Step2_VAE_MLP_reg.py")
+        cmd = ["python", vae_mlp_reg, "-i", args.csv, "-p", args.prefix]
+        jobs.append(cmd)
 
-    for model in mlp_in_vae_models:
-        # Step2_MLP_in_VAE_reg.py call
-        MLP_in_VAE_reg = f"{script_dir}/Step2_MLP_in_VAE_reg.py"
-        cmd = [
-            "python", MLP_in_VAE_reg,
-            "-i", args.csv,
-            "-p", args.prefix
-        ]
-        job_str = " ".join(cmd)
-        jobs.append(job_str)
+    for _ in mlp_in_vae_models:
+        mlp_in_vae_reg = os.path.join(script_dir, "Step2_MLP_in_VAE_reg.py")
+        cmd = ["python", mlp_in_vae_reg, "-i", args.csv, "-p", args.prefix]
+        jobs.append(cmd)
 
-    # Run in parallel
     if not jobs:
         print("No valid jobs to run.")
         sys.exit(0)
 
     print("Running jobs in parallel:")
     for j in jobs:
-        print(f"  {j}")
+        # Pretty-print with proper quoting for paths containing spaces
+        print(f"  {shlex.join(j)}")
 
-    # Use joblib's Parallel to run them
-    # Each job is run via subprocess.run with shell=True
     try:
+        # Pass argument lists; do not use shell=True
         Parallel(n_jobs=-1)(
-            delayed(subprocess.run)(job, shell=True, check=True) for job in jobs
+            delayed(subprocess.run)(job, check=True) for job in jobs
         )
     except subprocess.CalledProcessError as e:
         print(f"An error occurred while running jobs: {e}")
@@ -178,12 +155,13 @@ def main():
             f"{args.prefix}_vae_reg_average_metrics.png",
         ]
 
-        # Verify that all images exist
         missing_images = [img for img in image_names if not os.path.exists(img)]
         if missing_images:
-            print(f"Warning: The following images were not found and will not be included in the combined summary: {', '.join(missing_images)}")
-        
-        # Proceed only with existing images
+            print(
+                "Warning: The following images were not found and will not be included in the combined summary: "
+                + ", ".join(missing_images)
+            )
+
         existing_images = [img for img in image_names if os.path.exists(img)]
         if not existing_images:
             print("No images available to combine.")
@@ -191,7 +169,6 @@ def main():
 
         images = [Image.open(img) for img in existing_images]
 
-        # Determine the size for the combined image (side by side)
         widths, heights = zip(*(img.size for img in images))
         total_width = sum(widths)
         max_height = max(heights)

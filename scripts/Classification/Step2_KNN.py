@@ -1,10 +1,10 @@
 import argparse
 import pandas as pd
 import numpy as np
-from sklearn.preprocessing import LabelEncoder, StandardScaler
+from sklearn.preprocessing import LabelEncoder, StandardScaler, LabelBinarizer
 from sklearn.model_selection import StratifiedKFold, cross_val_predict
 from sklearn.neighbors import KNeighborsClassifier
-from sklearn.linear_model import ElasticNet
+from sklearn.linear_model import ElasticNet, LogisticRegression
 from sklearn.feature_selection import SelectFromModel
 from sklearn.decomposition import PCA, KernelPCA
 from sklearn.manifold import TSNE
@@ -35,6 +35,25 @@ warnings.filterwarnings('ignore', category=UserWarning)
 warnings.filterwarnings('ignore', category=DeprecationWarning)
 warnings.filterwarnings('ignore', category=ConvergenceWarning)
 
+def enlarge_fonts(ax, label=22, ticks=18, title=24, legend=20, legend_title=22):
+    # axis labels and title
+    ax.xaxis.label.set_size(label)
+    ax.yaxis.label.set_size(label)
+    if hasattr(ax, "title"):
+        ax.title.set_size(title)
+
+    # tick labels
+    for t in ax.get_xticklabels() + ax.get_yticklabels():
+        t.set_fontsize(ticks)
+
+    # legend text and legend title
+    leg = ax.get_legend()
+    if leg is not None:
+        for txt in leg.get_texts():
+            txt.set_fontsize(legend)
+        if leg.get_title() is not None:
+            leg.get_title().set_fontsize(legend_title)
+
 class SuppressOutput(contextlib.AbstractContextManager):
     def __enter__(self):
         self._stdout = sys.stdout
@@ -51,10 +70,13 @@ class PLSFeatureSelector(BaseEstimator, TransformerMixin):
     def __init__(self, n_components=2):
         self.n_components = n_components
         self.pls = None
+        self._lb = LabelBinarizer()
 
     def fit(self, X, y):
-        self.pls = PLSRegression(n_components=self.n_components)
-        self.pls.fit(X, y)
+        Y = self._lb.fit_transform(y)
+        n_comp = max(1, min(self.n_components, X.shape[1], X.shape[0] - 1))
+        self.pls = PLSRegression(n_components=n_comp)
+        self.pls.fit(X, Y)
         return self
 
     def transform(self, X):
@@ -92,6 +114,7 @@ class TSNETransformer(BaseEstimator, TransformerMixin):
             return self.X_transformed_
         else:
             raise NotImplementedError("TSNETransformer does not support transforming new data.")
+
 def safe_umap(n_components, n_neighbors, min_dist, X, random_state=1234):
     n_samples = X.shape[0]
     n_components = min(n_components, max(1, n_samples - 1))
@@ -104,6 +127,18 @@ def safe_umap(n_components, n_neighbors, min_dist, X, random_state=1234):
         init='random'
     )
 
+def multiclass_specificity(cm):
+    cm = cm.astype(float)
+    K = cm.shape[0]
+    specs = []
+    for i in range(K):
+        tp = cm[i, i]
+        fn = cm[i, :].sum() - tp
+        fp = cm[:, i].sum() - tp
+        tn = cm.sum() - (tp + fn + fp)
+        specs.append(tn / (tn + fp) if (tn + fp) > 0 else 0.0)
+    return np.mean(specs) if len(specs) > 0 else 0.0
+
 def knn_nested_cv(inp, prefix, feature_selection_method):
     data = pd.read_csv(inp)
 
@@ -115,8 +150,6 @@ def knn_nested_cv(inp, prefix, feature_selection_method):
     y = data['Label']
 
     scaler = StandardScaler()
-    # X_scaled = scaler.fit_transform(X)
-    # X = pd.DataFrame(X_scaled, columns=X.columns)
 
     le = LabelEncoder()
     y_encoded = le.fit_transform(y)
@@ -124,7 +157,6 @@ def knn_nested_cv(inp, prefix, feature_selection_method):
     num_classes = len(np.unique(y_encoded))
 
     if feature_selection_method == 'pca':
-        # Dynamically cap n_components
         max_pca_components = min(X.shape[0], X.shape[1]) - 1
         if max_pca_components < 1:
             max_pca_components = 1
@@ -145,9 +177,10 @@ def knn_nested_cv(inp, prefix, feature_selection_method):
         max_pls_components = min(X.shape[0] - 1, X.shape[1])
         max_pls_components = max(1, max_pls_components)
         pls = PLSRegression(n_components=max_pls_components)
-
         with SuppressOutput():
-            X_pls_full = pls.fit_transform(X, y_encoded)[0]
+            lb_tmp = LabelBinarizer()
+            Y_full = lb_tmp.fit_transform(y_encoded)
+            X_pls_full = pls.fit_transform(X, Y_full)[0]
         explained_variance = np.var(X_pls_full, axis=0) / np.var(X, axis=0).sum()
         explained_variance_df = pd.DataFrame({
             'Component': range(1, len(explained_variance) + 1),
@@ -189,7 +222,6 @@ def knn_nested_cv(inp, prefix, feature_selection_method):
             min_dist=0.1,
             X=X
         )
-
         with SuppressOutput():
             X_umap_full = umap_full.fit_transform(X)
         X_umap_full_df = pd.DataFrame(
@@ -234,16 +266,17 @@ def knn_nested_cv(inp, prefix, feature_selection_method):
             steps_inner = [('scaler', StandardScaler())]
 
             if feature_selection_method == 'elasticnet':
-                elasticnet_alpha = trial.suggest_loguniform('elasticnet_alpha', 1e-4, 1e1)
-                l1_ratio = trial.suggest_uniform('elasticnet_l1_ratio', 0.0, 1.0)
+                lr_C = trial.suggest_loguniform('lr_C', 1e-3, 1e3)
+                lr_l1_ratio = trial.suggest_uniform('lr_l1_ratio', 0.0, 1.0)
                 steps_inner.append((
                     'feature_selection',
                     SelectFromModel(
-                        ElasticNet(
-                            alpha=elasticnet_alpha,
-                            l1_ratio=l1_ratio,
+                        LogisticRegression(
+                            penalty='elasticnet',
+                            solver='saga',
+                            l1_ratio=lr_l1_ratio,
+                            C=lr_C,
                             max_iter=10000,
-                            tol=1e-4,
                             random_state=1234
                         )
                     )
@@ -330,7 +363,7 @@ def knn_nested_cv(inp, prefix, feature_selection_method):
                 1,
                 min(30, len(X_train_outer) - 1)
             )
-            steps_inner.append(('knn', KNeighborsClassifier(n_neighbors=knn_n_neighbors,n_jobs=-1)))
+            steps_inner.append(('knn', KNeighborsClassifier(n_neighbors=knn_n_neighbors, n_jobs=-1)))
 
             pipeline_inner = Pipeline(steps_inner)
 
@@ -361,16 +394,17 @@ def knn_nested_cv(inp, prefix, feature_selection_method):
         steps_outer = [('scaler', StandardScaler())]
 
         if feature_selection_method == 'elasticnet':
-            best_elasticnet_alpha = best_params_inner['elasticnet_alpha']
-            best_elasticnet_l1_ratio = best_params_inner['elasticnet_l1_ratio']
+            best_lr_C = best_params_inner['lr_C']
+            best_lr_l1_ratio = best_params_inner['lr_l1_ratio']
             steps_outer.append((
                 'feature_selection',
                 SelectFromModel(
-                    ElasticNet(
-                        alpha=best_elasticnet_alpha,
-                        l1_ratio=best_elasticnet_l1_ratio,
+                    LogisticRegression(
+                        penalty='elasticnet',
+                        solver='saga',
+                        l1_ratio=best_lr_l1_ratio,
+                        C=best_lr_C,
                         max_iter=10000,
-                        tol=1e-4,
                         random_state=1234
                     )
                 )
@@ -432,7 +466,7 @@ def knn_nested_cv(inp, prefix, feature_selection_method):
             ))
 
         best_knn_n_neighbors = best_params_inner['knn_n_neighbors']
-        steps_outer.append(('knn', KNeighborsClassifier(n_neighbors=best_knn_n_neighbors)))
+        steps_outer.append(('knn', KNeighborsClassifier(n_neighbors=best_knn_n_neighbors, n_jobs=-1)))
 
         best_model_inner = Pipeline(steps_outer)
         y_pred_prob_outer = None
@@ -482,9 +516,10 @@ def knn_nested_cv(inp, prefix, feature_selection_method):
     plt.ylim(0, 1)
     plt.grid(True)
     plt.tight_layout()
-    plt.savefig(f"{prefix}_knn_nested_cv_f1_auc.png", dpi=300)
+    ax_cv = plt.gca()             
+    enlarge_fonts(ax_cv)     
+    plt.savefig(f"{prefix}_knn_nested_cv_f1_auc.png", dpi=300, bbox_inches="tight")
     plt.close()
-
 
     print("Nested cross-validation completed.")
     print(f"Average F1 Score: {np.mean(outer_f1_scores):.4f} ± {np.std(outer_f1_scores):.4f}")
@@ -496,16 +531,17 @@ def knn_nested_cv(inp, prefix, feature_selection_method):
         steps_full = [('scaler', StandardScaler())]
 
         if feature_selection_method == 'elasticnet':
-            elasticnet_alpha = trial.suggest_loguniform('elasticnet_alpha', 1e-4, 1e1)
-            l1_ratio = trial.suggest_uniform('elasticnet_l1_ratio', 0.0, 1.0)
+            lr_C_all = trial.suggest_loguniform('lr_C', 1e-3, 1e3)
+            lr_l1_ratio_all = trial.suggest_uniform('lr_l1_ratio', 0.0, 1.0)
             steps_full.append((
                 'feature_selection',
                 SelectFromModel(
-                    ElasticNet(
-                        alpha=elasticnet_alpha,
-                        l1_ratio=l1_ratio,
+                    LogisticRegression(
+                        penalty='elasticnet',
+                        solver='saga',
+                        l1_ratio=lr_l1_ratio_all,
+                        C=lr_C_all,
                         max_iter=10000,
-                        tol=1e-4,
                         random_state=1234
                     )
                 )
@@ -556,7 +592,7 @@ def knn_nested_cv(inp, prefix, feature_selection_method):
                     n_components=n_components_all,
                     n_neighbors=umap_n_neighbors_all,
                     min_dist=min_dist_all,
-                    X=X  
+                    X=X
                 )
             ))
         elif feature_selection_method == 'pls':
@@ -583,7 +619,7 @@ def knn_nested_cv(inp, prefix, feature_selection_method):
             pass
 
         knn_n_neighbors_all = trial.suggest_int('knn_n_neighbors', 1, min(30, len(X) - 1))
-        steps_full.append(('knn', KNeighborsClassifier(n_neighbors=knn_n_neighbors_all)))
+        steps_full.append(('knn', KNeighborsClassifier(n_neighbors=knn_n_neighbors_all, n_jobs=-1)))
 
         pipeline_full = Pipeline(steps_full)
 
@@ -611,16 +647,17 @@ def knn_nested_cv(inp, prefix, feature_selection_method):
     steps_final = [('scaler', StandardScaler())]
 
     if feature_selection_method == 'elasticnet':
-        alpha_elasticnet_full = best_params_full['elasticnet_alpha']
-        l1_ratio_elasticnet_full = best_params_full['elasticnet_l1_ratio']
+        lr_C_best = best_params_full['lr_C']
+        lr_l1_ratio_best = best_params_full['lr_l1_ratio']
         steps_final.append((
             'feature_selection',
             SelectFromModel(
-                ElasticNet(
-                    alpha=alpha_elasticnet_full,
-                    l1_ratio=l1_ratio_elasticnet_full,
+                LogisticRegression(
+                    penalty='elasticnet',
+                    solver='saga',
+                    l1_ratio=lr_l1_ratio_best,
+                    C=lr_C_best,
                     max_iter=10000,
-                    tol=1e-4,
                     random_state=1234
                 )
             )
@@ -684,7 +721,7 @@ def knn_nested_cv(inp, prefix, feature_selection_method):
         pass
 
     best_knn_n_neighbors_full = best_params_full['knn_n_neighbors']
-    steps_final.append(('knn', KNeighborsClassifier(n_neighbors=best_knn_n_neighbors_full,n_jobs=-1)))
+    steps_final.append(('knn', KNeighborsClassifier(n_neighbors=best_knn_n_neighbors_full, n_jobs=-1)))
 
     best_model = Pipeline(steps_final)
     with SuppressOutput():
@@ -692,7 +729,7 @@ def knn_nested_cv(inp, prefix, feature_selection_method):
             best_model.fit(X, y_encoded)
         except (NotImplementedError, ArpackError, ValueError):
             print("Feature selection method failed on the entire dataset. Skipping feature selection.")
-            steps_final = [('scaler', StandardScaler()), ('knn', KNeighborsClassifier(n_neighbors=best_knn_n_neighbors_full))]
+            steps_final = [('scaler', StandardScaler()), ('knn', KNeighborsClassifier(n_neighbors=best_knn_n_neighbors_full, n_jobs=-1))]
             best_model = Pipeline(steps_final)
             best_model.fit(X, y_encoded)
 
@@ -732,8 +769,13 @@ def knn_nested_cv(inp, prefix, feature_selection_method):
                     columns=transformed_columns
                 )
             elif feature_selection_method == 'elasticnet':
-                selected_mask = best_model.named_steps['feature_selection'].get_support()
-                selected_features = X.columns[selected_mask]
+                selected_mask = best_model.named_steps['feature_selection'].estimator_.coef_
+                if selected_mask.ndim == 2:
+                    importance = np.abs(selected_mask).mean(axis=0)
+                else:
+                    importance = np.abs(selected_mask)
+                threshold = np.median(importance)
+                selected_features = X.columns[importance >= threshold]
                 X_transformed_df = X[selected_features].copy()
             else:
                 X_transformed_df = pd.DataFrame(X_transformed_final)
@@ -769,8 +811,8 @@ def knn_nested_cv(inp, prefix, feature_selection_method):
                 print(f"No variance information available for t-SNE. File created at {variance_csv_path}")
             elif feature_selection_method == 'elasticnet':
                 with open(variance_csv_path, 'w') as f:
-                    f.write("ElasticNet does not provide variance information.\n")
-                print(f"No variance information available for ElasticNet. File created at {variance_csv_path}")
+                    f.write("ElasticNet-penalized LogisticRegression does not provide variance information.\n")
+                print(f"No variance information available for ElasticNet-penalized LogisticRegression. File created at {variance_csv_path}")
             else:
                 with open(variance_csv_path, 'w') as f:
                     f.write(f"{feature_selection_method.upper()} does not provide variance information.\n")
@@ -818,19 +860,13 @@ def knn_nested_cv(inp, prefix, feature_selection_method):
                     where=np.sum(cm_final, axis=1) != 0
                 )
             )
-            specificity_final = np.mean(
-                np.divide(
-                    np.diag(cm_final),
-                    np.sum(cm_final, axis=0),
-                    out=np.zeros_like(np.diag(cm_final), dtype=float),
-                    where=np.sum(cm_final, axis=0) != 0
-                )
-            )
+        specificity_final = multiclass_specificity(cm_final)
 
     disp_final = ConfusionMatrixDisplay(confusion_matrix=cm_final, display_labels=le.classes_)
     disp_final.plot(cmap=plt.cm.Blues)
-    plt.title('Confusion Matrix for KNN',fontsize=12,fontweight='bold')
-    plt.savefig(f"{prefix}_knn_confusion_matrix.png", dpi=300)
+    plt.title('Confusion Matrix for KNN', fontsize=12, fontweight='bold')
+    enlarge_fonts(disp_final.ax_)
+    plt.savefig(f"{prefix}_knn_confusion_matrix.png", dpi=300, bbox_inches="tight")
     plt.close()
 
     fpr_final = {}
@@ -864,12 +900,34 @@ def knn_nested_cv(inp, prefix, feature_selection_method):
             tpr_final["micro"] = np.array([0, 1])
             roc_auc_final["micro"] = 0.0
 
+        try:
+            all_fpr = np.unique(np.concatenate([fpr_final[i] for i in range(y_binarized.shape[1]) if isinstance(i, int) or isinstance(i, np.integer)]))
+            mean_tpr = np.zeros_like(all_fpr)
+            valid_classes = 0
+            for i in range(y_binarized.shape[1]):
+                if i in fpr_final and i in tpr_final and len(fpr_final[i]) > 1 and len(tpr_final[i]) > 1:
+                    mean_tpr += np.interp(all_fpr, fpr_final[i], tpr_final[i])
+                    valid_classes += 1
+            if valid_classes > 0:
+                mean_tpr /= valid_classes
+                fpr_final["macro"] = all_fpr
+                tpr_final["macro"] = mean_tpr
+                roc_auc_final["macro"] = auc(all_fpr, mean_tpr)
+            else:
+                fpr_final["macro"] = np.array([0, 1])
+                tpr_final["macro"] = np.array([0, 1])
+                roc_auc_final["macro"] = 0.0
+        except Exception:
+            fpr_final["macro"] = np.array([0, 1])
+            tpr_final["macro"] = np.array([0, 1])
+            roc_auc_final["macro"] = 0.0
+
     roc_data_final = {
         'fpr': fpr_final,
         'tpr': tpr_final,
         'roc_auc': roc_auc_final
     }
-    np.save(f"{prefix}_knn_roc_data.npy", roc_data_final)
+    np.save(f"{prefix}_knn_roc_data.npy", roc_data_final, allow_pickle=True)
 
     plt.figure(figsize=(10, 8))
     if num_classes == 2 and y_pred_prob_final.shape[1] == 2:
@@ -879,12 +937,19 @@ def knn_nested_cv(inp, prefix, feature_selection_method):
             if roc_auc_final.get(i, 0.0) > 0.0:
                 class_label = le.inverse_transform([i])[0]
                 plt.plot(fpr_final[i], tpr_final[i], label=f'{class_label} (AUC = {roc_auc_final[i]:.2f})')
-        if roc_auc_final.get("micro", 0.0) > 0.0:
+        if "micro" in fpr_final and "micro" in tpr_final and "micro" in roc_auc_final:
             plt.plot(
                 fpr_final["micro"],
                 tpr_final["micro"],
-                label=f'Overall (AUC = {roc_auc_final["micro"]:.2f})',
+                label=f'Micro-average (AUC = {roc_auc_final["micro"]:.2f})',
                 linestyle='--'
+            )
+        if "macro" in fpr_final and "macro" in tpr_final and "macro" in roc_auc_final:
+            plt.plot(
+                fpr_final["macro"],
+                tpr_final["macro"],
+                label=f'Macro-average (AUC = {roc_auc_final["macro"]:.2f})',
+                linestyle=':'
             )
 
     plt.plot([0, 1], [0, 1], 'k--')
@@ -897,7 +962,9 @@ def knn_nested_cv(inp, prefix, feature_selection_method):
     plt.xticks(fontsize=14)
     plt.yticks(fontsize=14)
     plt.tight_layout()
-    plt.savefig(f"{prefix}_knn_roc_curve.png", dpi=300)
+    ax_roc = plt.gca()            
+    enlarge_fonts(ax_roc)         
+    plt.savefig(f"{prefix}_knn_roc_curve.png", dpi=300, bbox_inches="tight")
     plt.close()
 
     metrics_dict_final = {
@@ -908,14 +975,15 @@ def knn_nested_cv(inp, prefix, feature_selection_method):
     }
     metrics_df_final = pd.DataFrame(list(metrics_dict_final.items()), columns=['Metric', 'Value'])
     ax_final = metrics_df_final.plot(kind='bar', x='Metric', y='Value', legend=False)
-    plt.title('Performance Metrics for KNN',fontsize=14,fontweight='bold')
+    plt.title('Performance Metrics for KNN', fontsize=14, fontweight='bold')
     plt.ylabel('Value')
     plt.ylim(0, 1.1)
     for container in ax_final.containers:
         ax_final.bar_label(container, fmt='%.2f', label_type='edge', padding=5)
     plt.xticks(rotation=45, ha='right')
     plt.tight_layout()
-    plt.savefig(f"{prefix}_knn_metrics.png", dpi=300)
+    enlarge_fonts(ax_final)
+    plt.savefig(f"{prefix}_knn_metrics.png", dpi=300, bbox_inches="tight")
     plt.close()
 
     predictions_df_final = pd.DataFrame({

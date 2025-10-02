@@ -21,37 +21,49 @@ from sklearn.neighbors import KNeighborsRegressor
 from lightgbm import LGBMRegressor
 from sklearn.metrics import mean_squared_error, mean_absolute_error, r2_score
 from sklearn.preprocessing import StandardScaler
-from sklearn.feature_selection import SelectFromModel
-from sklearn.linear_model import ElasticNet
 from sklearn.decomposition import PCA, KernelPCA
 from sklearn.manifold import TSNE
 import umap
 from sklearn.pipeline import Pipeline
 from sklearn.exceptions import ConvergenceWarning
 from sklearn.base import BaseEstimator, TransformerMixin
+import random
+import matplotlib as mpl
+
+# ----- Reproducibility & larger fonts (safe, no overlap) -----
+def _set_global_seed(seed: int = 1234):
+    os.environ["PYTHONHASHSEED"] = str(seed)
+    np.random.seed(seed)
+    random.seed(seed)
+
+_set_global_seed(1234)
+
+mpl.rcParams['font.size'] = 16
+mpl.rcParams['axes.titlesize'] = 20
+mpl.rcParams['axes.labelsize'] = 18
+mpl.rcParams['xtick.labelsize'] = 14
+mpl.rcParams['ytick.labelsize'] = 14
+mpl.rcParams['legend.fontsize'] = 14
+# -------------------------------------------------------------
 
 # Import custom feature selectors
 from feature_selectors import PLSFeatureSelector, ElasticNetFeatureSelector
 # Import custom wrappers from a separate module
 from wrappers import UMAPPipelineWrapper, TSNEPipelineWrapper
 
-# Suppress all warnings except ConvergenceWarning
+# Suppress warnings
 warnings.filterwarnings('ignore', category=FutureWarning)
 warnings.filterwarnings('ignore', category=UserWarning)
 warnings.filterwarnings('ignore', category=DeprecationWarning)
 warnings.filterwarnings('ignore', category=ConvergenceWarning)
 
 class SuppressOutput(contextlib.AbstractContextManager):
-    """
-    Utility context manager to suppress stdout and stderr.
-    """
     def __enter__(self):
         self._stdout = sys.stdout
         self._stderr = sys.stderr
         sys.stdout = open(os.devnull, 'w')
         sys.stderr = open(os.devnull, 'w')
         return self
-
     def __exit__(self, exc_type, exc_value, traceback):
         sys.stdout.close()
         sys.stderr.close()
@@ -172,7 +184,7 @@ def get_param_distributions(name, num_features):
     elif name == 'LightGBM_reg':
         return {
             'n_estimators': optuna.distributions.IntDistribution(low=50, high=500),
-            'max_depth': optuna.distributions.IntDistribution(low=-1, high=50),
+            'max_depth': optuna.distributions.CategoricalDistribution(choices=[-1, 3, 5, 7, 10, 15, 20, 30, 50]),
             'learning_rate': optuna.distributions.FloatDistribution(low=1e-3, high=1e-1, log=True),
             'num_leaves': optuna.distributions.IntDistribution(low=20, high=150),
             'subsample': optuna.distributions.FloatDistribution(low=0.5, high=1.0),
@@ -265,20 +277,132 @@ def build_final_model(name, params):
 class DummyTrial:
     def __init__(self, params):
         self.params = params
-
     def suggest_int(self, name, low, high):
         return self.params.get(name, low)
-
     def suggest_float(self, name, low, high, log=False):
         return self.params.get(name, low)
-
     def suggest_categorical(self, name, choices):
         return self.params.get(name, choices[0])
+
+def _build_pipeline_for_trial(name, trial, X_train, y_train, feature_selection_method, RANDOM_SEED):
+    steps = []
+    steps.append(('scaler', StandardScaler()))
+    apply_feature_selection = (feature_selection_method != 'none')
+    if name == 'PLS_reg' and feature_selection_method not in ['elasticnet', 'umap', 'pca', 'kpca', 'pls', 'tsne']:
+        apply_feature_selection = False
+    if apply_feature_selection:
+        transformer = get_feature_selection_transformer(
+            feature_selection_method,
+            trial,
+            X_train,
+            y_train,
+            is_pls=(name == 'PLS_reg')
+        )
+        if transformer is not None:
+            steps.append(('feature_selection', transformer))
+
+    # Model per trial
+    if name == 'Neural_Network_reg':
+        n_layers = trial.suggest_int('n_layers', 1, 15)
+        hidden_layer_size = trial.suggest_int('hidden_layer_size', 10, 200)
+        alpha = trial.suggest_float('alpha', 1e-4, 1e-1, log=True)
+        learning_rate_init = trial.suggest_float('learning_rate_init', 1e-4, 1e-1, log=True)
+        model = MLPRegressor(
+            hidden_layer_sizes=tuple([hidden_layer_size] * n_layers),
+            alpha=alpha,
+            learning_rate_init=learning_rate_init,
+            max_iter=200000,
+            random_state=RANDOM_SEED
+        )
+    elif name == 'Random_Forest_reg':
+        n_estimators = trial.suggest_int('n_estimators', 100, 1000)
+        max_depth = trial.suggest_int('max_depth', 5, 50)
+        max_features = trial.suggest_categorical('max_features', ['sqrt', 'log2', None])
+        min_samples_split = trial.suggest_int('min_samples_split', 2, 20)
+        min_samples_leaf = trial.suggest_int('min_samples_leaf', 1, 20)
+        model = RandomForestRegressor(
+            n_estimators=n_estimators,
+            max_depth=max_depth,
+            max_features=max_features,
+            min_samples_split=min_samples_split,
+            min_samples_leaf=min_samples_leaf,
+            random_state=RANDOM_SEED,
+            n_jobs=-1
+        )
+    elif name == 'SVM_reg':
+        C = trial.suggest_float('C', 1e-3, 1e3, log=True)
+        gamma = trial.suggest_float('gamma', 1e-4, 1e1, log=True)
+        epsilon = trial.suggest_float('epsilon', 1e-4, 1e1, log=True)
+        model = SVR(C=C, gamma=gamma, epsilon=epsilon)
+    elif name == 'XGBoost_reg':
+        n_estimators = trial.suggest_int('n_estimators', 50, 500)
+        max_depth = trial.suggest_int('max_depth', 3, 15)
+        learning_rate = trial.suggest_float('learning_rate', 1e-3, 1e-1, log=True)
+        subsample = trial.suggest_float('subsample', 0.5, 1.0)
+        colsample_bytree = trial.suggest_float('colsample_bytree', 0.5, 1.0)
+        reg_alpha = trial.suggest_float('reg_alpha', 0.0, 1.0)
+        reg_lambda = trial.suggest_float('reg_lambda', 0.0, 1.0)
+        model = XGBRegressor(
+            n_estimators=n_estimators,
+            max_depth=max_depth,
+            learning_rate=learning_rate,
+            subsample=subsample,
+            colsample_bytree=colsample_bytree,
+            reg_alpha=reg_alpha,
+            reg_lambda=reg_lambda,
+            eval_metric='rmse',
+            random_state=RANDOM_SEED,
+            verbosity=0,
+            n_jobs=-1
+        )
+    elif name == 'PLS_reg':
+        n_components = trial.suggest_int('n_components', 2, min(X_train.shape[1], X_train.shape[0]-1))
+        model = PLSRegression(n_components=n_components)
+    elif name == 'KNN_reg':
+        n_neighbors = trial.suggest_int('n_neighbors', 1, 50)
+        weights = trial.suggest_categorical('weights', ['uniform', 'distance'])
+        p = trial.suggest_int('p', 1, 3)
+        model = KNeighborsRegressor(
+            n_neighbors=n_neighbors,
+            weights=weights,
+            p=p,
+            n_jobs=-1
+        )
+    elif name == 'LightGBM_reg':
+        n_estimators = trial.suggest_int('n_estimators', 50, 500)
+        max_depth = trial.suggest_categorical('max_depth', [-1, 3, 5, 7, 10, 15, 20, 30, 50])
+        learning_rate = trial.suggest_float('learning_rate', 1e-3, 1e-1, log=True)
+        num_leaves = trial.suggest_int('num_leaves', 20, 150)
+        subsample = trial.suggest_float('subsample', 0.5, 1.0)
+        colsample_bytree = trial.suggest_float('colsample_bytree', 0.5, 1.0)
+        reg_alpha = trial.suggest_float('reg_alpha', 0.0, 1.0)
+        reg_lambda = trial.suggest_float('reg_lambda', 0.0, 1.0)
+        model = LGBMRegressor(
+            n_estimators=n_estimators,
+            max_depth=max_depth,
+            learning_rate=learning_rate,
+            num_leaves=num_leaves,
+            subsample=subsample,
+            colsample_bytree=colsample_bytree,
+            reg_alpha=reg_alpha,
+            reg_lambda=reg_lambda,
+            random_state=RANDOM_SEED,
+            force_col_wise=True,
+            verbosity=-1,
+            n_jobs=-1
+        )
+    else:
+        raise ValueError(f"Unsupported model: {name}")
+
+    steps.append(('regressor', model))
+    pipeline = Pipeline(steps)
+    return pipeline
 
 def run_model(name, X, y, sample_ids, prefix, feature_selection_method):
     import optuna
     RANDOM_SEED = 1234
     np.random.seed(RANDOM_SEED)
+    random.seed(RANDOM_SEED)
     cv_outer = KFold(n_splits=5, shuffle=True, random_state=RANDOM_SEED)
 
     regressors = {
@@ -295,14 +419,12 @@ def run_model(name, X, y, sample_ids, prefix, feature_selection_method):
         return
 
     apply_feature_selection = (feature_selection_method != 'none')
-
     if name == 'PLS_reg' and feature_selection_method not in ['elasticnet', 'umap', 'pca', 'kpca', 'pls', 'tsne']:
         apply_feature_selection = False
         print(f"Skipping feature selection for {name} as it is incompatible with '{feature_selection_method}'.")
 
     param_distributions = get_param_distributions(name, X.shape[1])
 
-    best_params_list = []
     outer_metrics = []
     y_preds = np.zeros_like(y, dtype=float)
 
@@ -316,113 +438,14 @@ def run_model(name, X, y, sample_ids, prefix, feature_selection_method):
         study = optuna.create_study(direction='minimize', sampler=sampler)
 
         def objective(trial):
-            steps = []
-            if apply_feature_selection:
-                transformer = get_feature_selection_transformer(
-                    feature_selection_method,
-                    trial,
-                    X_train,
-                    y_train,
-                    is_pls=(name == 'PLS_reg')
-                )
-                if transformer is not None:
-                    steps.append(('feature_selection', transformer))
-
-            model = build_final_model(name, {})
-            # Override with trial suggestions if any
-            if name == 'Neural_Network_reg':
-                n_layers = trial.suggest_int('n_layers', 1, 15)
-                hidden_layer_size = trial.suggest_int('hidden_layer_size', 10, 200)
-                alpha = trial.suggest_float('alpha', 1e-4, 1e-1, log=True)
-                learning_rate_init = trial.suggest_float('learning_rate_init', 1e-4, 1e-1, log=True)
-                hidden_layer_sizes = tuple([hidden_layer_size] * n_layers)
-                model = MLPRegressor(
-                    hidden_layer_sizes=hidden_layer_sizes,
-                    alpha=alpha,
-                    learning_rate_init=learning_rate_init,
-                    max_iter=200000,
-                    random_state=RANDOM_SEED
-                )
-            elif name == 'Random_Forest_reg':
-                n_estimators = trial.suggest_int('n_estimators', 100, 1000)
-                max_depth = trial.suggest_int('max_depth', 5, 50)
-                max_features = trial.suggest_categorical('max_features', ['sqrt', 'log2', None])
-                min_samples_split = trial.suggest_int('min_samples_split', 2, 20)
-                min_samples_leaf = trial.suggest_int('min_samples_leaf', 1, 20)
-                model = RandomForestRegressor(
-                    n_estimators=n_estimators,
-                    max_depth=max_depth,
-                    max_features=max_features,
-                    min_samples_split=min_samples_split,
-                    min_samples_leaf=min_samples_leaf,
-                    random_state=RANDOM_SEED,
-                    n_jobs=-1
-                )
-            elif name == 'SVM_reg':
-                C = trial.suggest_float('C', 1e-3, 1e3, log=True)
-                gamma = trial.suggest_float('gamma', 1e-4, 1e1, log=True)
-                epsilon = trial.suggest_float('epsilon', 1e-4, 1e1, log=True)
-                model = SVR(C=C, gamma=gamma, epsilon=epsilon)
-            elif name == 'XGBoost_reg':
-                n_estimators = trial.suggest_int('n_estimators', 50, 500)
-                max_depth = trial.suggest_int('max_depth', 3, 15)
-                learning_rate = trial.suggest_float('learning_rate', 1e-3, 1e-1, log=True)
-                subsample = trial.suggest_float('subsample', 0.5, 1.0)
-                colsample_bytree = trial.suggest_float('colsample_bytree', 0.5, 1.0)
-                reg_alpha = trial.suggest_float('reg_alpha', 0.0, 1.0)
-                reg_lambda = trial.suggest_float('reg_lambda', 0.0, 1.0)
-                model = XGBRegressor(
-                    n_estimators=n_estimators,
-                    max_depth=max_depth,
-                    learning_rate=learning_rate,
-                    subsample=subsample,
-                    colsample_bytree=colsample_bytree,
-                    reg_alpha=reg_alpha,
-                    reg_lambda=reg_lambda,
-                    eval_metric='rmse',
-                    random_state=RANDOM_SEED,
-                    verbosity=0,
-                    n_jobs=-1
-                )
-            elif name == 'PLS_reg':
-                n_components = trial.suggest_int('n_components', 2, min(X_train.shape[1], X_train.shape[0]-1))
-                model = PLSRegression(n_components=n_components)
-            elif name == 'KNN_reg':
-                n_neighbors = trial.suggest_int('n_neighbors', 1, 50)
-                weights = trial.suggest_categorical('weights', ['uniform', 'distance'])
-                p = trial.suggest_int('p', 1, 3)
-                model = KNeighborsRegressor(
-                    n_neighbors=n_neighbors,
-                    weights=weights,
-                    p=p,
-                    n_jobs=-1
-                )
-            elif name == 'LightGBM_reg':
-                n_estimators = trial.suggest_int('n_estimators', 50, 500)
-                max_depth = trial.suggest_int('max_depth', -1, 50)
-                learning_rate = trial.suggest_float('learning_rate', 1e-3, 1e-1, log=True)
-                num_leaves = trial.suggest_int('num_leaves', 20, 150)
-                subsample = trial.suggest_float('subsample', 0.5, 1.0)
-                colsample_bytree = trial.suggest_float('colsample_bytree', 0.5, 1.0)
-                reg_alpha = trial.suggest_float('reg_alpha', 0.0, 1.0)
-                reg_lambda = trial.suggest_float('reg_lambda', 0.0, 1.0)
-                model = LGBMRegressor(
-                    n_estimators=n_estimators,
-                    max_depth=max_depth,
-                    learning_rate=learning_rate,
-                    num_leaves=num_leaves,
-                    subsample=subsample,
-                    colsample_bytree=colsample_bytree,
-                    reg_alpha=reg_alpha,
-                    reg_lambda=reg_lambda,
-                    random_state=RANDOM_SEED,
-                    force_col_wise=True,
-                    verbosity=-1,
-                    n_jobs=-1
-                )
-
-            steps.append(('regressor', model))
-            pipeline = Pipeline(steps)
+            pipeline = _build_pipeline_for_trial(
+                name=name,
+                trial=trial,
+                X_train=X_train,
+                y_train=y_train,
+                feature_selection_method=feature_selection_method,
+                RANDOM_SEED=RANDOM_SEED
+            )
             with SuppressOutput():
                 cv_inner = KFold(n_splits=5, shuffle=True, random_state=RANDOM_SEED)
                 mse_scores = []
@@ -448,9 +471,9 @@ def run_model(name, X, y, sample_ids, prefix, feature_selection_method):
             print(f"Optuna optimization failed on fold {fold_idx} for {name}: {e}. Using default parameters.")
             best_params = {}
 
-        best_params_list.append(best_params)
-
+        # Final pipeline for this fold (scaler + optional feature_selection + regressor)
         steps_final = []
+        steps_final.append(('scaler', StandardScaler()))
         if apply_feature_selection and study.best_trial is not None:
             transformer = get_feature_selection_transformer(
                 feature_selection_method,
@@ -531,6 +554,7 @@ def run_model(name, X, y, sample_ids, prefix, feature_selection_method):
         plt.xlabel('Actual')
         plt.ylabel('Predicted')
         plt.title(f'Actual vs Predicted for {name} - Fold {fold_idx}')
+        plt.tight_layout()
         plt.savefig(f"{prefix}_{name}_fold{fold_idx}_prediction.png", dpi=300)
         plt.close()
 
@@ -540,6 +564,7 @@ def run_model(name, X, y, sample_ids, prefix, feature_selection_method):
         plt.xlabel('Residuals')
         plt.ylabel('Frequency')
         plt.title(f'Residuals for {name} - Fold {fold_idx}')
+        plt.tight_layout()
         plt.savefig(f"{prefix}_{name}_fold{fold_idx}_residuals.png", dpi=300)
         plt.close()
 
@@ -565,6 +590,7 @@ def run_model(name, X, y, sample_ids, prefix, feature_selection_method):
     plt.ylabel('Metric Value')
     plt.title(f'{name} Performance Metrics Across Folds')
     plt.legend()
+    plt.tight_layout()
     plt.savefig(f"{prefix}_{name}_metrics_line_plot.png", dpi=300)
     plt.close()
 
@@ -581,6 +607,7 @@ def run_model(name, X, y, sample_ids, prefix, feature_selection_method):
     plt.xlabel('Actual')
     plt.ylabel('Predicted')
     plt.title(f'Overall Actual vs Predicted for {name}')
+    plt.tight_layout()
     plt.savefig(f"{prefix}_{name}_overall_prediction.png", dpi=300)
     plt.close()
 
@@ -589,68 +616,107 @@ def run_model(name, X, y, sample_ids, prefix, feature_selection_method):
     plt.xlabel('Residuals')
     plt.ylabel('Frequency')
     plt.title(f'Overall Residuals for {name}')
+    plt.tight_layout()
     plt.savefig(f"{prefix}_{name}_overall_residuals.png", dpi=300)
     plt.close()
 
-    param_counts = {}
-    for fold_params in best_params_list:
-        for k, v in fold_params.items():
-            if k not in param_counts:
-                param_counts[k] = {}
-            if v not in param_counts[k]:
-                param_counts[k][v] = 0
-            param_counts[k][v] += 1
-    aggregated_params = {}
-    for k, v_counts in param_counts.items():
-        aggregated_params[k] = max(v_counts, key=v_counts.get)
+    # ===== Post-evaluation: full-data CV to select final hyperparameters and fit final model =====
+    print(f"Running full-data CV hyperparameter search for final {name} model...")
+    sampler_full = TPESampler(seed=RANDOM_SEED)
+    study_full = optuna.create_study(direction='minimize', sampler=sampler_full)
 
-    steps_aggregated = []
-    if apply_feature_selection and len(aggregated_params) > 0:
-        dummy_trial = DummyTrial(aggregated_params)
-        aggregator_transformer = get_feature_selection_transformer(
+    def objective_full(trial):
+        pipeline = _build_pipeline_for_trial(
+            name=name,
+            trial=trial,
+            X_train=X,
+            y_train=y,
+            feature_selection_method=feature_selection_method,
+            RANDOM_SEED=RANDOM_SEED
+        )
+        with SuppressOutput():
+            cv_inner = KFold(n_splits=5, shuffle=True, random_state=RANDOM_SEED)
+            mse_scores = []
+            for in_train_idx, in_valid_idx in cv_inner.split(X, y):
+                X_in_train, X_in_valid = X.iloc[in_train_idx], X.iloc[in_valid_idx]
+                y_in_train, y_in_valid = y[in_train_idx], y[in_valid_idx]
+                try:
+                    pipeline.fit(X_in_train, y_in_train)
+                    preds_val = pipeline.predict(X_in_valid)
+                    if np.any(np.isnan(preds_val)):
+                        mse_scores.append(float('inf'))
+                    else:
+                        mse_val = mean_squared_error(y_in_valid, preds_val)
+                        mse_scores.append(mse_val)
+                except Exception:
+                    mse_scores.append(float('inf'))
+            return np.mean(mse_scores)
+
+    try:
+        study_full.optimize(objective_full, n_trials=50, n_jobs=1, show_progress_bar=False)
+        final_best_params = study_full.best_params
+    except Exception as e:
+        print(f"Optuna final optimization failed for {name}: {e}. Using default parameters.")
+        final_best_params = {}
+
+    steps_final_full = []
+    steps_final_full.append(('scaler', StandardScaler()))
+    # feature selection transformer built with final_best_params through DummyTrial to keep consistency
+    if apply_feature_selection and len(final_best_params) > 0:
+        dummy_trial = DummyTrial(final_best_params)
+        transformer_final = get_feature_selection_transformer(
             feature_selection_method,
             dummy_trial,
             X,
             y,
             is_pls=(name == 'PLS_reg')
         )
-
+        # For t-SNE we still avoid adding it to the final predictive pipeline
         if feature_selection_method == 'tsne':
-            aggregator_transformer = None
-
-        if aggregator_transformer is not None:
+            transformer_final = None
+        if transformer_final is not None:
             try:
-                aggregator_transformer.fit(X, y)
-            except ValueError as e:
-                print(f"Feature selection aggregator error: {e}")
-                aggregator_transformer = None
-            if aggregator_transformer is not None:
-                steps_aggregated.append(('feature_selection', aggregator_transformer))
+                transformer_final.fit(StandardScaler().fit(X).transform(X), y)  # ensure it can fit, actual fit will be in pipeline
+            except Exception:
+                pass
+            steps_final_full.append(('feature_selection', transformer_final))
 
-    final_model_aggregated = build_final_model(name, aggregated_params)
-    steps_aggregated.append(('regressor', final_model_aggregated))
-    final_pipeline_aggregated = Pipeline(steps_aggregated)
+    final_model_full = build_final_model(name, final_best_params)
+    steps_final_full.append(('regressor', final_model_full))
+    final_pipeline_full = Pipeline(steps_final_full)
 
     with SuppressOutput():
         try:
-            final_pipeline_aggregated.fit(X, y)
+            final_pipeline_full.fit(X, y)
         except Exception as e:
-            print(f"Error fitting the final aggregated model for {name}: {e}")
+            print(f"Error fitting the final full-data model for {name}: {e}")
 
     model_pkl_path = f"{prefix}_{name}_best_model.pkl"
-    dump(final_pipeline_aggregated, model_pkl_path)
-    print(f"Final aggregated best model pipeline saved to: {model_pkl_path}")
+    dump(final_pipeline_full, model_pkl_path)
+    print(f"Final best model pipeline saved to: {model_pkl_path}")
 
-    if apply_feature_selection and len(aggregated_params) > 0 and aggregator_transformer is not None:
+    # ===== Consistent exports based on the fitted final pipeline (except t-SNE kept as-is) =====
+    if apply_feature_selection and 'feature_selection' in final_pipeline_full.named_steps:
+        fs = final_pipeline_full.named_steps['feature_selection']
+        scaler_fitted = final_pipeline_full.named_steps.get('scaler', None)
         try:
-            X_fs = aggregator_transformer.transform(X)
-        except ValueError as e:
-            print(f"Error transforming data with aggregator_transformer: {e}")
+            if scaler_fitted is not None:
+                X_scaled_full = scaler_fitted.transform(X)
+            else:
+                X_scaled_full = X.values
+        except Exception:
+            X_scaled_full = X.values
+
+        try:
+            X_fs = fs.transform(X_scaled_full)
+        except Exception as e:
+            print(f"Error transforming data with final feature selection: {e}")
             X_fs = None
+
         if X_fs is not None:
             if feature_selection_method == 'elasticnet':
-                if hasattr(aggregator_transformer.selector, 'get_support'):
-                    selected_mask = aggregator_transformer.selector.get_support()
+                if hasattr(fs.selector, 'get_support'):
+                    selected_mask = fs.selector.get_support()
                     selected_features = X.columns[selected_mask]
                     X_fs_df = pd.DataFrame(X_fs, columns=selected_features)
                     X_fs_df.insert(0, 'SampleID', sample_ids)
@@ -660,18 +726,20 @@ def run_model(name, X, y, sample_ids, prefix, feature_selection_method):
                     print(f"ElasticNet selected features file saved to {enet_csv_path}")
 
             elif feature_selection_method == 'pca':
-                pca_csv_path = f"{prefix}_{name}_best_pca_transformed_X.csv"
-                comp_count = aggregator_transformer.n_components
+                comp_count = getattr(fs, 'n_components', None)
+                if comp_count is None and hasattr(fs, 'n_components_'):
+                    comp_count = fs.n_components_
                 comp_cols = [f"PCA_Component_{i+1}" for i in range(comp_count)]
                 X_pca_df = pd.DataFrame(X_fs, columns=comp_cols)
                 X_pca_df.insert(0, 'SampleID', sample_ids)
                 X_pca_df['Label'] = y
+                pca_csv_path = f"{prefix}_{name}_best_pca_transformed_X.csv"
                 X_pca_df.to_csv(pca_csv_path, index=False)
                 print(f"Best PCA transformed data saved to {pca_csv_path}")
 
-                if hasattr(aggregator_transformer, 'explained_variance_ratio_'):
+                if hasattr(fs, 'explained_variance_ratio_'):
                     var_csv_path = f"{prefix}_{name}_pca_explained_variance.csv"
-                    evr = aggregator_transformer.explained_variance_ratio_
+                    evr = fs.explained_variance_ratio_
                     evr_df = pd.DataFrame({
                         'Component': np.arange(1, len(evr) + 1),
                         'Explained Variance Ratio': evr
@@ -680,12 +748,14 @@ def run_model(name, X, y, sample_ids, prefix, feature_selection_method):
                     print(f"PCA explained variance ratios saved to {var_csv_path}")
 
             elif feature_selection_method == 'kpca':
-                kpca_csv_path = f"{prefix}_{name}_best_kpca_transformed_X.csv"
-                comp_count = aggregator_transformer.n_components
+                comp_count = getattr(fs, 'n_components', None)
+                if comp_count is None and hasattr(fs, 'n_components_'):
+                    comp_count = fs.n_components_
                 comp_cols = [f"KPCA_Component_{i+1}" for i in range(comp_count)]
                 X_kpca_df = pd.DataFrame(X_fs, columns=comp_cols)
                 X_kpca_df.insert(0, 'SampleID', sample_ids)
                 X_kpca_df['Label'] = y
+                kpca_csv_path = f"{prefix}_{name}_best_kpca_transformed_X.csv"
                 X_kpca_df.to_csv(kpca_csv_path, index=False)
                 print(f"Best KPCA transformed data saved to {kpca_csv_path}")
 
@@ -695,37 +765,47 @@ def run_model(name, X, y, sample_ids, prefix, feature_selection_method):
                 print(f"No variance info for KPCA. File created at {var_csv_path}")
 
             elif feature_selection_method == 'pls':
+                comp_count = getattr(fs, 'n_components', None)
+                if comp_count is None:
+                    comp_count = getattr(fs, 'n_components_', None)
+                if comp_count is None:
+                    comp_count = getattr(getattr(fs, 'pls', None), 'n_components', None)
+                if comp_count is None:
+                    comp_count = 2
+                comp_cols = [f"PLS_Component_{i+1}" for i in range(comp_count)]
+                X_pls_df = pd.DataFrame(X_fs, columns=comp_cols)
+                X_pls_df.insert(0, 'SampleID', sample_ids)
+                X_pls_df['Label'] = y
                 pls_csv_path = f"{prefix}_{name}_best_pls_transformed_X.csv"
-                if hasattr(aggregator_transformer.pls, 'transform'):
-                    comp_count = aggregator_transformer.n_components
-                    comp_cols = [f"PLS_Component_{i+1}" for i in range(comp_count)]
-                    X_pls_df = pd.DataFrame(X_fs, columns=comp_cols)
-                    X_pls_df.insert(0, 'SampleID', sample_ids)
-                    X_pls_df['Label'] = y
-                    X_pls_df.to_csv(pls_csv_path, index=False)
-                    print(f"Best PLS transformed data saved to {pls_csv_path}")
+                X_pls_df.to_csv(pls_csv_path, index=False)
+                print(f"Best PLS transformed data saved to {pls_csv_path}")
 
-                    var_csv_path = f"{prefix}_{name}_pls_explained_variance.csv"
-                    if hasattr(aggregator_transformer.pls, 'x_scores_'):
-                        x_scores = aggregator_transformer.pls.x_scores_
-                        explained_var = np.var(x_scores, axis=0) / np.var(X, axis=0).sum()
+                var_csv_path = f"{prefix}_{name}_pls_explained_variance.csv"
+                try:
+                    if hasattr(fs, 'pls') and hasattr(fs.pls, 'x_scores_'):
+                        x_scores = fs.pls.x_scores_
+                        explained_var = np.var(x_scores, axis=0) / np.var(X_scaled_full, axis=0).sum()
                         var_df = pd.DataFrame({
                             'Component': np.arange(1, len(explained_var) + 1),
                             'Explained Variance Ratio': explained_var
                         })
                         var_df.to_csv(var_csv_path, index=False)
                         print(f"PLS explained variance ratios saved to {var_csv_path}")
+                except Exception:
+                    pass
 
             elif feature_selection_method == 'umap':
-                umap_csv_path = f"{prefix}_{name}_best_umap_transformed_X.csv"
-                if hasattr(aggregator_transformer, '_umap'):
-                    comp_count = aggregator_transformer.n_components_
+                if hasattr(fs, '_umap'):
+                    comp_count = fs.n_components_
                 else:
-                    comp_count = aggregator_transformer.n_components
+                    comp_count = getattr(fs, 'n_components', None)
+                    if comp_count is None:
+                        comp_count = X_fs.shape[1]
                 comp_cols = [f"UMAP_Component_{i+1}" for i in range(comp_count)]
                 X_umap_df = pd.DataFrame(X_fs, columns=comp_cols)
                 X_umap_df.insert(0, 'SampleID', sample_ids)
                 X_umap_df['Label'] = y
+                umap_csv_path = f"{prefix}_{name}_best_umap_transformed_X.csv"
                 X_umap_df.to_csv(umap_csv_path, index=False)
                 print(f"Best UMAP transformed data saved to {umap_csv_path}")
 
@@ -734,6 +814,7 @@ def run_model(name, X, y, sample_ids, prefix, feature_selection_method):
                     f.write("UMAP does not provide explained variance info.\n")
                 print(f"No variance info for UMAP. File created at {var_csv_path}")
 
+    # Keep t-SNE export as-is (not part of predictive pipeline)
     if feature_selection_method == 'tsne':
         tsne_csv_path = f"{prefix}_{name}_tsne_transformed_X.csv"
         tsne_transformer = TSNE(
@@ -766,9 +847,7 @@ def main_regression():
 
     args = parser.parse_args()
 
-    # -------------------------------------------------------
-    # Below is the key addition to allow shorthand model names
-    # -------------------------------------------------------
+    # Model aliases
     model_aliases = {
         "NN_reg": "Neural_Network_reg",
         "RF_reg": "Random_Forest_reg",
@@ -779,14 +858,12 @@ def main_regression():
         "LGBM_reg": "LightGBM_reg"
     }
 
-    # Convert any shorthand models in args.models to full names if applicable
     parsed_models = []
     for m in args.models:
         if m in model_aliases:
             parsed_models.append(model_aliases[m])
         else:
             parsed_models.append(m)
-    # -------------------------------------------------------
 
     data = pd.read_csv(args.csv).dropna()
     if 'SampleID' not in data.columns or 'Label' not in data.columns:
@@ -796,9 +873,8 @@ def main_regression():
     X_original = data.drop(columns=['SampleID', 'Label']).copy()
     y = data['Label'].astype(float).values.ravel()
 
-    scaler = StandardScaler()
-    X_scaled = scaler.fit_transform(X_original)
-    X = pd.DataFrame(X_scaled, columns=X_original.columns)
+    # DO NOT scale globally here. Scaling is inside the Pipeline per CV fold and for the final model.
+    X = X_original  # keep as-is
 
     feature_selection_method = args.feature_selection
 
@@ -811,7 +887,6 @@ def main_regression():
         'KNN_reg',
         'LightGBM_reg'
     ]
-    # Use parsed_models instead of args.models
     selected_models = [m for m in parsed_models if m in regressors_available]
     if not selected_models:
         print("No valid models selected. Exiting.")
@@ -850,22 +925,47 @@ def main_regression():
         metrics = ['MSE', 'MAE', 'RMSE', 'R2']
         bar_width = 0.2
         index_vals = np.arange(len(summary_df['Model']))
-
+        
         plt.figure(figsize=(12, 8))
         colors = ['skyblue', 'salmon', 'lightgreen', 'orange']
         for i, metric in enumerate(metrics):
             plt.bar(index_vals + i * bar_width, summary_df[metric], bar_width, label=metric, color=colors[i])
+        
+        max_vals = [summary_df[m].max() for m in metrics]
+        min_vals = [summary_df[m].min() for m in metrics]
+        global_max = max(max_vals) if max_vals else 0.0
+        global_min = min(min_vals) if min_vals else 0.0
+        unit = (global_max - min(0.0, global_min)) or 1.0
+        
+        # staggered but all upward; larger offsets so they don't collide
+        series_offsets = [0.04, 0.06, 0.08, 0.10]  # scaled by 'unit'
+        min_pad = 0.02 * global_max if global_max > 0 else 0.1  # ensures small bars (e.g., R2) still get visible padding
+        
+        for i, metric in enumerate(metrics):
+            delta = max(series_offsets[i] * unit, min_pad)
             for j, val in enumerate(summary_df[metric]):
-                plt.text(index_vals[j] + i * bar_width, val + 0.01, str(val),
-                         ha='center', va='bottom', fontsize=9)
-
+                x = index_vals[j] + i * bar_width
+                y_pos = float(val) + delta       # always above bar
+                plt.text(
+                    x, y_pos, f"{float(val):.2f}",
+                    ha='center', va='bottom', fontsize=10, zorder=3, clip_on=False
+                )
+        
+        # ---- y-limits: add enough headroom for the tallest label ----
+        headroom = max(series_offsets) * unit + min_pad + 0.05 * (global_max if global_max > 0 else 1.0)
+        ylim_low = 0.0  # keep baseline at zero so nothing goes below axis
+        ylim_high = max(global_max * 1.15, global_max + headroom) if global_max != 0 else 1.0
+        if ylim_high <= ylim_low:
+            ylim_high = ylim_low + 1.0
+        plt.ylim(ylim_low, ylim_high)
+        
         plt.xlabel('Model')
         plt.ylabel('Metric Value')
         plt.title('Average Performance Metrics for All Models')
         plt.xticks(index_vals + bar_width * (len(metrics) - 1) / 2, summary_df['Model'], rotation=45, ha='right')
         plt.legend()
         plt.tight_layout()
-
+        
         summary_chart_path = f"{args.prefix}_models_summary_bar_chart.png"
         plt.savefig(summary_chart_path, dpi=300)
         plt.close()

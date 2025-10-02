@@ -19,14 +19,11 @@ import contextlib
 import joblib
 import optuna
 from optuna.samplers import TPESampler
-from optuna.exceptions import TrialPruned
 from sklearn.base import BaseEstimator, ClassifierMixin, TransformerMixin
-from sklearn.linear_model import ElasticNet
+from sklearn.linear_model import LogisticRegression
 from sklearn.feature_selection import SelectFromModel
 from sklearn.pipeline import Pipeline
 from sklearn.exceptions import ConvergenceWarning
-from sklearn.decomposition import PCA, KernelPCA
-from sklearn.manifold import TSNE
 import umap
 from scipy.sparse.linalg import ArpackError
 
@@ -36,7 +33,22 @@ warnings.filterwarnings('ignore', category=UserWarning)
 warnings.filterwarnings('ignore', category=DeprecationWarning)
 warnings.filterwarnings('ignore', category=ConvergenceWarning)
 
-# Suppress output
+
+def enlarge_fonts(ax, label=22, ticks=18, title=24, legend=20, legend_title=22):
+    ax.xaxis.label.set_size(label)
+    ax.yaxis.label.set_size(label)
+    if hasattr(ax, "title"):
+        ax.title.set_size(title)
+    for t in ax.get_xticklabels() + ax.get_yticklabels():
+        t.set_fontsize(ticks)
+    leg = ax.get_legend()
+    if leg is not None:
+        for txt in leg.get_texts():
+            txt.set_fontsize(legend)
+        if leg.get_title() is not None:
+            leg.get_title().set_fontsize(legend_title)
+
+
 class SuppressOutput(contextlib.AbstractContextManager):
     def __enter__(self):
         self._stdout = sys.stdout
@@ -49,7 +61,20 @@ class SuppressOutput(contextlib.AbstractContextManager):
         sys.stdout = self._stdout
         sys.stderr = self._stderr
 
-# Custom PLSDA classifier
+
+def multiclass_specificity(cm: np.ndarray) -> float:
+    cm = cm.astype(float)
+    K = cm.shape[0]
+    specs = []
+    for i in range(K):
+        tp = cm[i, i]
+        fn = cm[i, :].sum() - tp
+        fp = cm[:, i].sum() - tp
+        tn = cm.sum() - (tp + fn + fp)
+        specs.append(tn / (tn + fp) if (tn + fp) > 0 else 0.0)
+    return np.mean(specs) if len(specs) > 0 else 0.0
+
+
 class PLSDAClassifier(BaseEstimator, ClassifierMixin):
     def __init__(self, n_components=2, max_iter=1000):
         self.n_components = n_components
@@ -58,50 +83,71 @@ class PLSDAClassifier(BaseEstimator, ClassifierMixin):
         self.classes_ = None
 
     def fit(self, X, y):
+        # y is expected to be encoded integers (0..n_classes-1)
         self.classes_ = np.unique(y)
         y_onehot = label_binarize(y, classes=self.classes_)
         if y_onehot.ndim == 1:
-            # Binary case
             y_onehot = np.vstack([1 - y_onehot, y_onehot]).T
-        self.pls = PLSRegression(n_components=self.n_components, max_iter=self.max_iter, tol=1e-06)
+        # clamp n_components to valid range
+        n_targets = y_onehot.shape[1]
+        max_comp = max(1, min(X.shape[0] - 1, X.shape[1], n_targets))
+        n_comp = max(1, min(self.n_components, max_comp))
+        self.pls = PLSRegression(n_components=n_comp, max_iter=self.max_iter, tol=1e-06)
         self.pls.fit(X, y_onehot)
         return self
 
     def predict(self, X):
-        y_pred_continuous = self.pls.predict(X)
-        if y_pred_continuous.shape[1] > 1:
-            y_pred = self.classes_[np.argmax(y_pred_continuous, axis=1)]
+        y_pred_cont = self.pls.predict(X)
+        if y_pred_cont.shape[1] > 1:
+            y_idx = np.argmax(y_pred_cont, axis=1)
+            return self.classes_[y_idx]
         else:
-            # Binary case
-            y_bin = (y_pred_continuous >= 0.5).astype(int).ravel()
-            y_pred = self.classes_[y_bin]
-        return y_pred
+            y_bin = (y_pred_cont >= 0.5).astype(int).ravel()
+            return self.classes_[y_bin]
 
     def predict_proba(self, X):
-        y_pred_continuous = self.pls.predict(X)
-        y_pred_proba = np.maximum(y_pred_continuous, 0)
-        if y_pred_proba.shape[1] > 1:
-            sum_probs = y_pred_proba.sum(axis=1, keepdims=True)
-            y_pred_proba = y_pred_proba / sum_probs
+        y_pred_cont = self.pls.predict(X)
+        y_pred_proba = np.maximum(y_pred_cont, 0.0)
+        eps = 1e-12
+        if y_pred_proba.ndim == 1 or y_pred_proba.shape[1] == 1:
+            p1 = np.clip(y_pred_proba.ravel(), 0.0, 1.0)
+            p0 = 1.0 - p1
+            probs = np.vstack([p0, p1]).T
+            probs = np.clip(probs, 0.0, None)
+            s = probs.sum(axis=1, keepdims=True)
+            s = np.where(s <= eps, 1.0, s)
+            probs = probs / s
+            return probs
         else:
-            # Binary case
-            prob_class1 = y_pred_proba.ravel()
-            prob_class0 = 1 - prob_class1
-            y_pred_proba = np.vstack([prob_class0, prob_class1]).T
-        return y_pred_proba
+            probs = y_pred_proba
+            s = probs.sum(axis=1, keepdims=True)
+            zero_mask = (s <= eps).ravel()
+            s = np.clip(s, eps, None)
+            probs = probs / s
+            if np.any(zero_mask):
+                k = probs.shape[1]
+                probs[zero_mask, :] = 1.0 / k
+            return probs
 
-# ElasticNet feature selector
+
 class ElasticNetFeatureSelector(BaseEstimator, TransformerMixin):
-    def __init__(self, alpha=1.0, l1_ratio=0.5, max_iter=10000, tol=1e-4, random_state=1234):
-        self.alpha = alpha
+    # LogisticRegression with elastic-net penalty for classification feature selection
+    def __init__(self, C=1.0, l1_ratio=0.5, max_iter=10000, tol=1e-4):
+        self.C = C
         self.l1_ratio = l1_ratio
         self.max_iter = max_iter
         self.tol = tol
-        self.random_state = random_state
         self.selector = SelectFromModel(
-            ElasticNet(alpha=self.alpha, l1_ratio=self.l1_ratio,
-                      max_iter=self.max_iter, tol=self.tol,
-                      random_state=self.random_state)
+            LogisticRegression(
+                penalty='elasticnet',
+                solver='saga',
+                l1_ratio=self.l1_ratio,
+                C=self.C,
+                max_iter=self.max_iter,
+                tol=self.tol,
+                random_state=1234,
+                class_weight='balanced'
+            )
         )
 
     def fit(self, X, y):
@@ -111,11 +157,10 @@ class ElasticNetFeatureSelector(BaseEstimator, TransformerMixin):
     def transform(self, X):
         return self.selector.transform(X)
 
-# UMAP transformer (no additional transformer class needed since UMAP is used directly in the pipeline)
 
 def safe_umap(n_components, n_neighbors, min_dist, X, random_state=1234):
     n_samples = X.shape[0]
-    n_components = min(n_components, max(1, n_samples - 1))
+    n_components = min(n_components, max(1, min(n_samples - 1, X.shape[1])))
     n_neighbors = min(n_neighbors, max(2, n_samples - 2))
     return umap.UMAP(
         n_components=n_components,
@@ -125,11 +170,16 @@ def safe_umap(n_components, n_neighbors, min_dist, X, random_state=1234):
         init='random'
     )
 
+
+def max_pls_components(X, y_encoded):
+    n_classes = len(np.unique(y_encoded))
+    upper = max(1, min(X.shape[0] - 1, X.shape[1], max(1, n_classes - 1)))
+    return upper
+
+
 def plsda_nested_cv(inp, prefix, feature_selection_method):
-    # Read data
     data = pd.read_csv(inp)
 
-    # Ensure 'SampleID' and 'Label' columns exist
     if 'SampleID' not in data.columns or 'Label' not in data.columns:
         raise ValueError("Input data must contain 'SampleID' and 'Label' columns.")
 
@@ -137,55 +187,49 @@ def plsda_nested_cv(inp, prefix, feature_selection_method):
     X = data.drop(columns=['SampleID', 'Label']).copy()
     y = data['Label']
 
-    # Standardization
-    # scaler = StandardScaler()
-    # X_scaled = scaler.fit_transform(X)
-    # X = pd.DataFrame(X_scaled, columns=X.columns)
-
-    # Encode labels
     le = LabelEncoder()
     y_encoded = le.fit_transform(y)
     y_binarized = label_binarize(y_encoded, classes=np.unique(y_encoded))
+    if y_binarized.ndim == 1:
+        y_binarized = np.vstack([1 - y_binarized, y_binarized]).T
     num_classes = len(np.unique(y_encoded))
 
-    # Define outer cross-validation strategy
     cv_outer = StratifiedKFold(n_splits=5, shuffle=True, random_state=1234)
 
-    # Lists to store outer fold metrics
     outer_f1_scores = []
     outer_auc_scores = []
 
-    # Iterate over each outer fold
     fold_idx = 1
     for train_idx, test_idx in cv_outer.split(X, y_encoded):
         print(f"Processing outer fold {fold_idx}...")
         X_train_outer, X_test_outer = X.iloc[train_idx], X.iloc[test_idx]
         y_train_outer, y_test_outer = y_encoded[train_idx], y_encoded[test_idx]
 
-        # Define inner cross-validation strategy
         cv_inner = StratifiedKFold(n_splits=5, shuffle=True, random_state=1234)
 
-        # Define the objective function for Optuna within the outer fold
         def objective_inner(trial):
             steps = [('scaler', StandardScaler())]
 
-            # Add feature selection based on the method
             if feature_selection_method == 'elasticnet':
-                # Suggest hyperparameters for ElasticNet
-                elasticnet_alpha = trial.suggest_loguniform('elasticnet_alpha', 1e-4, 1e1)
-                l1_ratio = trial.suggest_uniform('elasticnet_l1_ratio', 0.0, 1.0)
+                lr_C = trial.suggest_loguniform('lr_C', 1e-3, 1e3)
+                lr_l1 = trial.suggest_uniform('lr_l1_ratio', 0.0, 1.0)
                 steps.append(('feature_selection', ElasticNetFeatureSelector(
-                    alpha=elasticnet_alpha,
-                    l1_ratio=l1_ratio,
+                    C=lr_C,
+                    l1_ratio=lr_l1,
                     max_iter=10000,
-                    tol=1e-4,
-                    random_state=1234
+                    tol=1e-4
                 )))
-                max_n_components = min(10, X_train_outer.shape[1], X_train_outer.shape[0])
             elif feature_selection_method == 'umap':
-                # Suggest hyperparameters for UMAP
-                umap_n_components = trial.suggest_int('umap_n_components', 2, min(100, X_train_outer.shape[1]))
-                umap_n_neighbors = trial.suggest_int('umap_n_neighbors', 5, min(50, X_train_outer.shape[0]-1))
+                umap_n_components = trial.suggest_int(
+                    'umap_n_components',
+                    2,
+                    min(100, X_train_outer.shape[1], X_train_outer.shape[0] - 1)
+                )
+                umap_n_neighbors = trial.suggest_int(
+                    'umap_n_neighbors',
+                    5,
+                    min(50, X_train_outer.shape[0] - 1)
+                )
                 umap_min_dist = trial.suggest_uniform('umap_min_dist', 0.0, 0.99)
                 steps.append(('feature_selection', safe_umap(
                     n_components=umap_n_components,
@@ -194,21 +238,12 @@ def plsda_nested_cv(inp, prefix, feature_selection_method):
                     X=X_train_outer
                 )))
 
-                max_n_components = umap_n_components
-            else:
-                # No feature selection
-                max_n_components = min(100, X_train_outer.shape[1], X_train_outer.shape[0])
-                if max_n_components < 1:
-                    max_n_components = 1
-
-            # Suggest hyperparameters for PLSDA
-            plsda_n_components = trial.suggest_int('plsda_n_components', 1, max_n_components)
+            max_comp = max_pls_components(X_train_outer, y_train_outer)
+            plsda_n_components = trial.suggest_int('plsda_n_components', 1, max_comp)
             steps.append(('plsda', PLSDAClassifier(n_components=plsda_n_components, max_iter=1000)))
 
-            # Create pipeline
             pipeline = Pipeline(steps)
 
-            # Perform inner cross-validation
             with SuppressOutput():
                 f1_scores = []
                 for inner_train_idx, inner_valid_idx in cv_inner.split(X_train_outer, y_train_outer):
@@ -220,31 +255,25 @@ def plsda_nested_cv(inp, prefix, feature_selection_method):
                         f1 = f1_score(y_valid_inner, y_pred_inner, average='weighted')
                         f1_scores.append(f1)
                     except (ValueError, ArpackError):
-                        # If feature selection or PLSDA fails
                         f1_scores.append(0.0)
                 return np.mean(f1_scores)
 
-        # Create an Optuna study for the inner fold
         study_inner = optuna.create_study(direction='maximize', sampler=TPESampler(seed=1234))
         study_inner.optimize(objective_inner, n_trials=50, show_progress_bar=False)
 
-        # Best hyperparameters from the inner fold
         best_params_inner = study_inner.best_params
 
-        # Initialize the best model with the best hyperparameters
         steps = [('scaler', StandardScaler())]
 
         if feature_selection_method == 'elasticnet':
-            best_elasticnet_alpha = best_params_inner.get('elasticnet_alpha', 1.0)
-            best_l1_ratio = best_params_inner.get('elasticnet_l1_ratio', 0.5)
+            best_lr_C = best_params_inner.get('lr_C', 1.0)
+            best_lr_l1 = best_params_inner.get('lr_l1_ratio', 0.5)
             steps.append(('feature_selection', ElasticNetFeatureSelector(
-                alpha=best_elasticnet_alpha,
-                l1_ratio=best_l1_ratio,
+                C=best_lr_C,
+                l1_ratio=best_lr_l1,
                 max_iter=10000,
-                tol=1e-4,
-                random_state=1234
+                tol=1e-4
             )))
-            max_n_components = min(10, X_train_outer.shape[1], X_train_outer.shape[0])
         elif feature_selection_method == 'umap':
             best_umap_n_components = best_params_inner.get('umap_n_components', 2)
             best_umap_n_neighbors = best_params_inner.get('umap_n_neighbors', 15)
@@ -256,20 +285,12 @@ def plsda_nested_cv(inp, prefix, feature_selection_method):
                 X=X_train_outer
             )))
 
-            max_n_components = best_umap_n_components
-        else:
-            max_n_components = min(100, X_train_outer.shape[1], X_train_outer.shape[0])
-            if max_n_components < 1:
-                max_n_components = 1
-
-        # Get the best PLSDA n_components
         best_plsda_n_components = best_params_inner.get('plsda_n_components', 2)
+        best_plsda_n_components = max(1, min(best_plsda_n_components, max_pls_components(X_train_outer, y_train_outer)))
         steps.append(('plsda', PLSDAClassifier(n_components=best_plsda_n_components, max_iter=1000)))
 
-        # Create the best model pipeline
         best_model_inner = Pipeline(steps)
 
-        # Fit the model on the outer training set
         with SuppressOutput():
             try:
                 best_model_inner.fit(X_train_outer, y_train_outer)
@@ -280,7 +301,6 @@ def plsda_nested_cv(inp, prefix, feature_selection_method):
                 fold_idx += 1
                 continue
 
-        # Predict probabilities and classes on the outer test set
         try:
             y_pred_prob_outer = best_model_inner.predict_proba(X_test_outer)
             y_pred_class_outer = best_model_inner.predict(X_test_outer)
@@ -291,11 +311,9 @@ def plsda_nested_cv(inp, prefix, feature_selection_method):
             fold_idx += 1
             continue
 
-        # Compute F1 score
         f1_outer = f1_score(y_test_outer, y_pred_class_outer, average='weighted')
         outer_f1_scores.append(f1_outer)
 
-        # Compute AUC
         if num_classes == 2:
             try:
                 fpr, tpr, _ = roc_curve(y_test_outer, y_pred_prob_outer[:, 1])
@@ -305,8 +323,8 @@ def plsda_nested_cv(inp, prefix, feature_selection_method):
         else:
             try:
                 y_binarized_test = label_binarize(y_test_outer, classes=np.unique(y_encoded))
-                if y_binarized_test.shape[1] == 1:
-                    y_binarized_test = np.hstack([1 - y_binarized_test, y_binarized_test])
+                if y_binarized_test.ndim == 1:
+                    y_binarized_test = np.vstack([1 - y_binarized_test, y_binarized_test]).T
                 fpr, tpr, _ = roc_curve(y_binarized_test.ravel(), y_pred_prob_outer.ravel())
                 auc_outer = auc(fpr, tpr)
             except ValueError:
@@ -316,52 +334,53 @@ def plsda_nested_cv(inp, prefix, feature_selection_method):
         print(f"Fold {fold_idx} - F1 Score: {f1_outer:.4f}, AUC: {auc_outer:.4f}")
         fold_idx += 1
 
-    # Plot and save the F1 and AUC scores per outer fold
     plt.figure(figsize=(10, 6))
     folds = range(1, cv_outer.get_n_splits() + 1)
     plt.plot(folds, outer_f1_scores, marker='o', linestyle='-', label='F1 Score')
     plt.plot(folds, outer_auc_scores, marker='s', linestyle='-', label='AUC Score')
-    
-    plt.title('F1 and AUC Scores per Outer Fold', fontsize=16, fontweight='bold', pad=15)
-    plt.xlabel('Outer Fold Number', fontsize=18, labelpad=10)
-    plt.ylabel('Score (F1 / AUC)', fontsize=18, labelpad=10)
-    plt.xticks(folds, fontsize=14)
-    plt.yticks(fontsize=14)
-    plt.legend(fontsize=14, title_fontsize=16)
+    plt.title('F1 and AUC Scores per Outer Fold', fontsize=26, fontweight='bold', pad=14)
+    plt.xlabel('Outer Fold Number', fontsize=22, labelpad=12)
+    plt.ylabel('Score (F1 / AUC)', fontsize=22, labelpad=12)
+    plt.xticks(folds, fontsize=18)
+    plt.yticks(fontsize=18)
+    plt.legend(fontsize=18, title_fontsize=20)
     plt.ylim(0, 1.05)
-    plt.grid(True)
+    plt.grid(True, alpha=0.3)
+    ax_cv = plt.gca()
+    enlarge_fonts(ax_cv)
     plt.tight_layout()
-    plt.savefig(f"{prefix}_plsda_nested_cv_f1_auc.png", dpi=300)
+    plt.savefig(f"{prefix}_plsda_nested_cv_f1_auc.png", dpi=300, bbox_inches="tight")
     plt.close()
 
     print("Nested cross-validation completed.")
     print(f"Average F1 Score: {np.mean(outer_f1_scores):.4f} ± {np.std(outer_f1_scores):.4f}")
     print(f"Average AUC: {np.mean(outer_auc_scores):.4f} ± {np.std(outer_auc_scores):.4f}")
 
-    # After nested CV, perform hyperparameter tuning on the entire dataset
     print("Starting hyperparameter tuning on the entire dataset...")
 
-    # Define the objective function for Optuna on the entire dataset
     def objective_full(trial):
         steps = [('scaler', StandardScaler())]
 
-        # Add feature selection based on the method
         if feature_selection_method == 'elasticnet':
-            # Suggest hyperparameters for ElasticNet
-            elasticnet_alpha = trial.suggest_loguniform('elasticnet_alpha', 1e-4, 1e1)
-            l1_ratio = trial.suggest_uniform('elasticnet_l1_ratio', 0.0, 1.0)
+            lr_C = trial.suggest_loguniform('lr_C', 1e-3, 1e3)
+            lr_l1 = trial.suggest_uniform('lr_l1_ratio', 0.0, 1.0)
             steps.append(('feature_selection', ElasticNetFeatureSelector(
-                alpha=elasticnet_alpha,
-                l1_ratio=l1_ratio,
+                C=lr_C,
+                l1_ratio=lr_l1,
                 max_iter=10000,
-                tol=1e-4,
-                random_state=1234
+                tol=1e-4
             )))
-            max_n_components_full = min(10, X.shape[1], X.shape[0])
         elif feature_selection_method == 'umap':
-            # Suggest hyperparameters for UMAP
-            umap_n_components = trial.suggest_int('umap_n_components', 2, min(100, X.shape[1]))
-            umap_n_neighbors = trial.suggest_int('umap_n_neighbors', 5, min(50, X.shape[0]-1))
+            umap_n_components = trial.suggest_int(
+                'umap_n_components',
+                2,
+                min(100, X.shape[1], X.shape[0] - 1)
+            )
+            umap_n_neighbors = trial.suggest_int(
+                'umap_n_neighbors',
+                5,
+                min(50, X.shape[0] - 1)
+            )
             umap_min_dist = trial.suggest_uniform('umap_min_dist', 0.0, 0.99)
             steps.append(('feature_selection', safe_umap(
                 n_components=umap_n_components,
@@ -370,21 +389,12 @@ def plsda_nested_cv(inp, prefix, feature_selection_method):
                 X=X
             )))
 
-            max_n_components_full = umap_n_components
-        else:
-            # No feature selection
-            max_n_components_full = min(100, X.shape[1], X.shape[0])
-            if max_n_components_full < 1:
-                max_n_components_full = 1
-
-        # Suggest hyperparameters for PLSDA
-        plsda_n_components = trial.suggest_int('plsda_n_components', 1, max_n_components_full)
+        max_comp_full = max_pls_components(X, y_encoded)
+        plsda_n_components = trial.suggest_int('plsda_n_components', 1, max_comp_full)
         steps.append(('plsda', PLSDAClassifier(n_components=plsda_n_components, max_iter=1000)))
 
-        # Create pipeline
         pipeline = Pipeline(steps)
 
-        # Perform cross-validation
         with SuppressOutput():
             f1_scores = []
             for train_idx_full, valid_idx_full in cv_outer.split(X, y_encoded):
@@ -396,32 +406,26 @@ def plsda_nested_cv(inp, prefix, feature_selection_method):
                     f1 = f1_score(y_valid_full, y_pred_full, average='weighted')
                     f1_scores.append(f1)
                 except (ValueError, ArpackError):
-                    # If feature selection or PLSDA fails
                     f1_scores.append(0.0)
             return np.mean(f1_scores)
 
-    # Create an Optuna study for the entire dataset
     study_full = optuna.create_study(direction='maximize', sampler=TPESampler(seed=1234))
     study_full.optimize(objective_full, n_trials=50, show_progress_bar=True)
 
-    # Best hyperparameters from the entire dataset
     best_params_full = study_full.best_params
     print(f"Best parameters for PLSDA: {best_params_full}")
 
-    # Initialize the best model with the best hyperparameters
     steps = [('scaler', StandardScaler())]
 
     if feature_selection_method == 'elasticnet':
-        best_elasticnet_alpha_full = best_params_full.get('elasticnet_alpha', 1.0)
-        best_l1_ratio_full = best_params_full.get('elasticnet_l1_ratio', 0.5)
+        best_lr_C_full = best_params_full.get('lr_C', 1.0)
+        best_lr_l1_full = best_params_full.get('lr_l1_ratio', 0.5)
         steps.append(('feature_selection', ElasticNetFeatureSelector(
-            alpha=best_elasticnet_alpha_full,
-            l1_ratio=best_l1_ratio_full,
+            C=best_lr_C_full,
+            l1_ratio=best_lr_l1_full,
             max_iter=10000,
-            tol=1e-4,
-            random_state=1234
+            tol=1e-4
         )))
-        max_n_components_full = min(10, X.shape[1], X.shape[0])
     elif feature_selection_method == 'umap':
         best_umap_n_components_full = best_params_full.get('umap_n_components', 2)
         best_umap_n_neighbors_full = best_params_full.get('umap_n_neighbors', 15)
@@ -433,20 +437,12 @@ def plsda_nested_cv(inp, prefix, feature_selection_method):
             X=X
         )))
 
-        max_n_components_full = best_umap_n_components_full
-    else:
-        max_n_components_full = min(100, X.shape[1], X.shape[0])
-        if max_n_components_full < 1:
-            max_n_components_full = 1
-
-    # Get the best PLSDA n_components
     best_plsda_n_components_full = best_params_full.get('plsda_n_components', 2)
+    best_plsda_n_components_full = max(1, min(best_plsda_n_components_full, max_pls_components(X, y_encoded)))
     steps.append(('plsda', PLSDAClassifier(n_components=best_plsda_n_components_full, max_iter=1000)))
 
-    # Create the best model pipeline
     best_model = Pipeline(steps)
 
-    # Fit the model on the entire dataset
     with SuppressOutput():
         try:
             best_model.fit(X, y_encoded)
@@ -454,14 +450,11 @@ def plsda_nested_cv(inp, prefix, feature_selection_method):
             print(f"Error fitting the final model: {e}")
             sys.exit(1)
 
-    # Save the best model and data
     joblib.dump(best_model, f"{prefix}_plsda_model.pkl")
     joblib.dump((X, y_encoded, le), f"{prefix}_plsda_data.pkl")
 
-    # Output the best parameters
     print(f"Best parameters for PLSDA: {best_params_full}")
 
-    # If feature selection is used, save the transformed data and variance information
     if feature_selection_method != 'none':
         if 'feature_selection' in best_model.named_steps:
             try:
@@ -491,35 +484,33 @@ def plsda_nested_cv(inp, prefix, feature_selection_method):
             variance_csv_path = f"{prefix}_plsda_variance.csv"
             if feature_selection_method == 'elasticnet':
                 with open(variance_csv_path, 'w') as f:
-                    f.write("ElasticNet does not provide variance information.\n")
+                    f.write("ElasticNet does not provide explained variance information.\n")
                 print(f"No variance information available for ElasticNet. File created at {variance_csv_path}")
             elif feature_selection_method == 'umap':
                 with open(variance_csv_path, 'w') as f:
-                    f.write("UMAP does not provide variance information.\n")
+                    f.write("UMAP does not provide explained variance information.\n")
                 print(f"No variance information available for UMAP. File created at {variance_csv_path}")
             else:
                 with open(variance_csv_path, 'w') as f:
-                    f.write(f"{feature_selection_method.upper()} does not provide variance information.\n")
+                    f.write(f"{feature_selection_method.upper()} does not provide explained variance information.\n")
                 print(f"No variance information available for {feature_selection_method.upper()}. File created at {variance_csv_path}")
         else:
             print("Transformed data is not available.")
     else:
         print("No feature selection method selected. Skipping transformed data and variance information saving.")
 
-    # Prediction using cross_val_predict
     try:
         y_pred_prob = cross_val_predict(best_model, X, y_encoded, cv=cv_outer, method='predict_proba', n_jobs=-1)
         y_pred_class = np.argmax(y_pred_prob, axis=1)
     except (ValueError, ArpackError) as e:
         print(f"Error during cross_val_predict: {e}")
         y_pred_class = np.zeros_like(y_encoded)
+        y_pred_prob = np.zeros((len(y_encoded), num_classes))
 
-    # Calculate performance metrics
     acc = accuracy_score(y_encoded, y_pred_class)
     f1 = f1_score(y_encoded, y_pred_class, average='weighted')
     cm = confusion_matrix(y_encoded, y_pred_class)
 
-    # Calculate sensitivity and specificity
     if num_classes == 2:
         if cm.shape == (2, 2):
             tn, fp, fn, tp = cm.ravel()
@@ -530,28 +521,30 @@ def plsda_nested_cv(inp, prefix, feature_selection_method):
             specificity = 0
     else:
         with np.errstate(divide='ignore', invalid='ignore'):
-            sensitivity = np.mean(np.divide(np.diag(cm), np.sum(cm, axis=1),
-                                            out=np.zeros_like(np.diag(cm), dtype=float),
-                                            where=np.sum(cm, axis=1)!=0))
-            specificity = np.mean(np.divide(np.diag(cm), np.sum(cm, axis=0),
-                                            out=np.zeros_like(np.diag(cm), dtype=float),
-                                            where=np.sum(cm, axis=0)!=0))
+            sensitivity = np.mean(
+                np.divide(
+                    np.diag(cm),
+                    np.sum(cm, axis=1),
+                    out=np.zeros_like(np.diag(cm), dtype=float),
+                    where=np.sum(cm, axis=1) != 0
+                )
+            )
+        specificity = multiclass_specificity(cm)
 
-    # Plot confusion matrix
     disp = ConfusionMatrixDisplay(confusion_matrix=cm, display_labels=le.classes_)
     disp.plot(cmap=plt.cm.Blues)
-    plt.title('Confusion Matrix for PLSDA',fontsize=12,fontweight='bold')
-    plt.savefig(f"{prefix}_plsda_confusion_matrix.png", dpi=300)
+    plt.title('Confusion Matrix for PLSDA', fontsize=16, fontweight='bold', pad=12)
+    enlarge_fonts(disp.ax_)
+    plt.savefig(f"{prefix}_plsda_confusion_matrix.png", dpi=300, bbox_inches="tight")
     plt.close()
 
-    # ROC and AUC
     fpr = {}
     tpr = {}
     roc_auc = {}
 
     if num_classes == 2:
         try:
-            fpr[0], tpr[0], _ = roc_curve(y_binarized[:, 0], y_pred_prob[:, 1])
+            fpr[0], tpr[0], _ = roc_curve(y_encoded, y_pred_prob[:, 1])
             roc_auc[0] = auc(fpr[0], tpr[0])
         except ValueError:
             roc_auc[0] = 0.0
@@ -563,20 +556,33 @@ def plsda_nested_cv(inp, prefix, feature_selection_method):
             except ValueError:
                 fpr[i], tpr[i], roc_auc[i] = np.array([0, 1]), np.array([0, 1]), 0.0
 
-        # Compute overall ROC AUC for multi-class
         try:
             fpr["micro"], tpr["micro"], _ = roc_curve(y_binarized.ravel(), y_pred_prob.ravel())
             roc_auc["micro"] = auc(fpr["micro"], tpr["micro"])
         except ValueError:
             fpr["micro"], tpr["micro"], roc_auc["micro"] = np.array([0, 1]), np.array([0, 1]), 0.0
 
-    # Save ROC data
-    roc_data = {'fpr': fpr, 'tpr': tpr, 'roc_auc': roc_auc}
-    np.save(f"{prefix}_plsda_roc_data.npy", roc_data)
+        try:
+            class_keys = [k for k in fpr.keys() if isinstance(k, (int, np.integer))]
+            valid_keys = [k for k in class_keys if len(fpr[k]) > 1 and len(tpr[k]) > 1]
+            if len(valid_keys) > 0:
+                all_fpr = np.unique(np.concatenate([fpr[k] for k in valid_keys]))
+                mean_tpr = np.zeros_like(all_fpr)
+                for k in valid_keys:
+                    mean_tpr += np.interp(all_fpr, fpr[k], tpr[k])
+                mean_tpr /= len(valid_keys)
+                fpr["macro"] = all_fpr
+                tpr["macro"] = mean_tpr
+                roc_auc["macro"] = auc(fpr["macro"], tpr["macro"])
+            else:
+                fpr["macro"], tpr["macro"], roc_auc["macro"] = np.array([0, 1]), np.array([0, 1]), 0.0
+        except Exception:
+            fpr["macro"], tpr["macro"], roc_auc["macro"] = np.array([0, 1]), np.array([0, 1]), 0.0
 
-    # Plot and save ROC curve
+    roc_data = {'fpr': fpr, 'tpr': tpr, 'roc_auc': roc_auc}
+    np.save(f"{prefix}_plsda_roc_data.npy", roc_data, allow_pickle=True)
+
     plt.figure(figsize=(10, 8))
-    
     if num_classes == 2:
         plt.plot(fpr[0], tpr[0], label=f'AUC = {roc_auc[0]:.2f}')
     else:
@@ -584,51 +590,55 @@ def plsda_nested_cv(inp, prefix, feature_selection_method):
             if i in roc_auc and roc_auc[i] > 0.0:
                 plt.plot(fpr[i], tpr[i], label=f'{le.inverse_transform([i])[0]} (AUC = {roc_auc[i]:.2f})')
         if "micro" in roc_auc and roc_auc["micro"] > 0.0:
-            plt.plot(fpr["micro"], tpr["micro"], label=f'Overall (AUC = {roc_auc["micro"]:.2f})', linestyle='--')
-    
+            plt.plot(fpr["micro"], tpr["micro"], label=f'Micro-average (AUC = {roc_auc["micro"]:.2f})', linestyle='--')
+        if "macro" in roc_auc and roc_auc["macro"] > 0.0:
+            plt.plot(fpr["macro"], tpr["macro"], label=f'Macro-average (AUC = {roc_auc["macro"]:.2f})', linestyle=':')
+
     plt.plot([0, 1], [0, 1], 'k--')
     plt.xlim([0.0, 1.0])
     plt.ylim([0.0, 1.05])
-    plt.xlabel('False Positive Rate (1 - Specificity)', fontsize=18, labelpad=10)
-    plt.ylabel('True Positive Rate (Sensitivity)', fontsize=18, labelpad=10)
-    plt.title('ROC Curves for PLSDA', fontsize=22, fontweight='bold', pad=15)
-    plt.legend(loc="lower right", fontsize=14, title_fontsize=16)
-    plt.xticks(fontsize=14)
-    plt.yticks(fontsize=14)
+    plt.xlabel('False Positive Rate (1 - Specificity)', fontsize=22, labelpad=12)
+    plt.ylabel('True Positive Rate (Sensitivity)', fontsize=22, labelpad=12)
+    plt.title('ROC Curves for PLSDA', fontsize=26, fontweight='bold', pad=14)
+    plt.legend(loc="lower right", fontsize=18, title_fontsize=20)
+    ax_roc = plt.gca()
+    enlarge_fonts(ax_roc)
     plt.tight_layout()
-    plt.savefig(f'{prefix}_plsda_roc_curve.png', dpi=300)
+    plt.savefig(f'{prefix}_plsda_roc_curve.png', dpi=300, bbox_inches="tight")
     plt.close()
 
-    # Output performance metrics as a bar chart
     metrics = {'Accuracy': acc, 'F1 Score': f1, 'Sensitivity': sensitivity, 'Specificity': specificity}
     metrics_df = pd.DataFrame(list(metrics.items()), columns=['Metric', 'Value'])
     ax = metrics_df.plot(kind='bar', x='Metric', y='Value', legend=False)
-    plt.title('Performance Metrics for PLSDA',fontsize=14,fontweight='bold')
-    plt.ylabel('Value')
+    plt.title('Performance Metrics for PLSDA', fontsize=20, fontweight='bold', pad=10)
+    plt.ylabel('Value', fontsize=22, labelpad=12)
     plt.ylim(0, 1.1)
     for container in ax.containers:
         ax.bar_label(container, fmt='%.2f', padding=5)
-    plt.xticks(rotation=45, ha='right')
+    plt.xticks(rotation=45, ha='right', fontsize=18)
+    ax.tick_params(axis='y', labelsize=18)
+    enlarge_fonts(ax)
     plt.tight_layout()
-    plt.savefig(f'{prefix}_plsda_metrics.png', dpi=300)
+    plt.savefig(f'{prefix}_plsda_metrics.png', dpi=300, bbox_inches="tight")
     plt.close()
 
-    # Create a DataFrame for predictions
     predictions_df = pd.DataFrame({
         'SampleID': sample_ids,
         'Original Label': y,
         'Predicted Label': le.inverse_transform(y_pred_class)
     })
-
-    # Save predictions to CSV
     predictions_df.to_csv(f"{prefix}_plsda_predictions.csv", index=False)
     print(f"Predictions saved to {prefix}_plsda_predictions.csv")
 
+
 if __name__ == '__main__':
-    parser = argparse.ArgumentParser(description='Run PLSDA with Nested Cross-Validation, Feature Selection (UMAP or ElasticNet), and Optuna hyperparameter optimization.')
+    parser = argparse.ArgumentParser(
+        description='Run PLSDA with Nested Cross-Validation, Feature Selection (UMAP or ElasticNet), and Optuna hyperparameter optimization.'
+    )
     parser.add_argument('-i', type=str, required=True, help='Input file in CSV format')
     parser.add_argument('-p', type=str, required=True, help='Output prefix')
-    parser.add_argument('-f', type=str, choices=['none', 'elasticnet', 'umap'], default='none', help='Feature selection method to use. Options: none, elasticnet, umap.')
+    parser.add_argument('-f', type=str, choices=['none', 'elasticnet', 'umap'], default='none',
+                        help='Feature selection method to use. Options: none, elasticnet, umap.')
     args = parser.parse_args()
 
     plsda_nested_cv(args.i, args.p, args.f)
