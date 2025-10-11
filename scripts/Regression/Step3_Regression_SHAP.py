@@ -10,15 +10,54 @@ from joblib import Parallel, delayed, load
 import argparse
 import warnings
 from sklearn.pipeline import Pipeline
+from sklearn.decomposition import PCA, KernelPCA
+
+# Try to import wrappers used in regression for type checks; fall back to None if unavailable
+try:
+    from wrappers import UMAPPipelineWrapper, TSNEPipelineWrapper
+except Exception:
+    UMAPPipelineWrapper = None
+    TSNEPipelineWrapper = None
 
 # Import custom feature selectors for proper unpickling
 from feature_selectors import PLSFeatureSelector, ElasticNetFeatureSelector, TSNETransformer
 
+# Global plotting style
+plt.rcParams.update({
+    "font.size": 14,
+    "axes.titlesize": 18,
+    "axes.labelsize": 16,
+    "xtick.labelsize": 12,
+    "ytick.labelsize": 12,
+    "legend.fontsize": 12
+})
+
+# Be conservative: silence only the specific FutureWarning text from sklearn Pipeline if any slip through.
+warnings.filterwarnings(
+    "ignore",
+    message="This Pipeline instance is not fitted yet. Call 'fit' with appropriate arguments.*",
+    category=FutureWarning
+)
 warnings.filterwarnings("ignore", message="The figure layout has changed to tight")
 
 
+def _apply_fitted_steps_sequentially(X, steps):
+    """
+    Apply each fitted transform step sequentially without wrapping them in a new Pipeline.
+    This avoids sklearn Pipeline's 'not fitted yet' FutureWarning.
+    """
+    X_cur = X
+    for name, step in steps:
+        # Some steps expect pandas with column names; others accept numpy
+        # Try DataFrame-based transform first; fallback to ndarray if needed.
+        try:
+            X_cur = step.transform(X_cur)
+        except Exception:
+            X_cur = step.transform(np.asarray(X_cur))
+    return X_cur
+
+
 def calculate_shap_values(model_name, num_features, output_prefix):
-    
     try:
         # Paths
         X_path = f"{output_prefix}_{model_name}_X.npy"
@@ -39,83 +78,90 @@ def calculate_shap_values(model_name, num_features, output_prefix):
         if isinstance(feature_names[0], bytes):
             feature_names = feature_names.astype(str)
 
-        # Create DataFrame from original features
+        # Create DataFrame from original features (keep names)
         X_df = pd.DataFrame(X, columns=feature_names)
 
-        # Load trained pipeline
+        # Load trained pipeline (fitted)
         model_pipeline = load(model_path)
         if not isinstance(model_pipeline, Pipeline):
             print(f"Error: The loaded model '{model_name}' is not a Pipeline object.")
             return
 
-        if 'regressor' not in model_pipeline.named_steps:
+        if "regressor" not in model_pipeline.named_steps:
             print(f"Error: No 'regressor' step found in pipeline for '{model_name}'.")
             return
 
-        final_regressor = model_pipeline.named_steps['regressor']
+        final_regressor = model_pipeline.named_steps["regressor"]
 
-        # Build sub-pipeline for steps except the final regressor
-        feature_transform_steps = []
-        for step_name, step_obj in model_pipeline.steps:
-            if step_name == 'regressor':
-                continue
-            feature_transform_steps.append((step_name, step_obj))
+        # All steps except the final regressor
+        feature_transform_steps = [(n, s) for (n, s) in model_pipeline.steps if n != "regressor"]
 
-        # If no transform steps, pass original X
+        # Transform X by all non-regressor steps sequentially (no new Pipeline object)
         if len(feature_transform_steps) == 0:
             X_transformed_array = X_df.values
-            num_transformed_features = X_transformed_array.shape[1]
-            shap_feature_names = list(feature_names)
         else:
-            # We have transforms in the pipeline
-            feature_transform_pipeline = Pipeline(feature_transform_steps)
-            X_transformed_array = feature_transform_pipeline.transform(X_df)
-            num_transformed_features = X_transformed_array.shape[1]
-
-            # Determine feature names for SHAP
-            if 'feature_selection' not in model_pipeline.named_steps:
-                # e.g., PCA, KPCA, UMAP, etc.
-                shap_feature_names = [f"Component_{i+1}" for i in range(num_transformed_features)]
+            X_transformed_array = _apply_fitted_steps_sequentially(X_df, feature_transform_steps)
+            # Ensure ndarray
+            if isinstance(X_transformed_array, pd.DataFrame):
+                X_transformed_array = X_transformed_array.values
             else:
-                selection_step = model_pipeline.named_steps['feature_selection']
-                if isinstance(selection_step, ElasticNetFeatureSelector):
-                    mask = selection_step.selector.get_support()
-                    shap_feature_names = list(feature_names[mask])
-                else:
-                    # PCA, KPCA, UMAP, t-SNE, PLSFeatureSelector, etc.
-                    shap_feature_names = [f"Component_{i+1}" for i in range(num_transformed_features)]
+                X_transformed_array = np.asarray(X_transformed_array)
 
-        # Depending on how the final regressor was fitted, it might expect columns
-        # that match feature_names_in_. We create a function that handles arrays or DataFrames.
+        num_transformed_features = X_transformed_array.shape[1]
+
+        # Determine SHAP feature names based on the feature_selection step
+        selection_step = model_pipeline.named_steps.get("feature_selection", None)
+
+        if selection_step is None:
+            shap_feature_names = list(feature_names)
+        elif isinstance(selection_step, ElasticNetFeatureSelector):
+            mask = selection_step.selector.get_support()
+            shap_feature_names = list(feature_names[mask])
+        elif isinstance(selection_step, PLSFeatureSelector):
+            shap_feature_names = [f"PLS_Component_{i+1}" for i in range(num_transformed_features)]
+        elif isinstance(selection_step, PCA):
+            shap_feature_names = [f"PCA_Component_{i+1}" for i in range(num_transformed_features)]
+        elif isinstance(selection_step, KernelPCA):
+            shap_feature_names = [f"KPCA_Component_{i+1}" for i in range(num_transformed_features)]
+        elif (UMAPPipelineWrapper is not None) and isinstance(selection_step, UMAPPipelineWrapper):
+            shap_feature_names = [f"UMAP_Component_{i+1}" for i in range(num_transformed_features)]
+        elif (TSNEPipelineWrapper is not None) and isinstance(selection_step, TSNEPipelineWrapper):
+            shap_feature_names = [f"TSNE_Component_{i+1}" for i in range(num_transformed_features)]
+        elif isinstance(selection_step, TSNETransformer):
+            shap_feature_names = [f"TSNE_Component_{i+1}" for i in range(num_transformed_features)]
+        else:
+            shap_feature_names = [f"Component_{i+1}" for i in range(num_transformed_features)]
+
+        # Final consistency check: match names length to transformed feature count
+        if len(shap_feature_names) != num_transformed_features:
+            shap_feature_names = [f"Feature_{i+1}" for i in range(num_transformed_features)]
+
+        # Final regressor prediction wrapper
         def predict_fs(array_input):
-            # If the final regressor was fitted with named columns, we build a DataFrame
-            # with matching columns. Otherwise, we pass the array directly.
             if hasattr(final_regressor, "feature_names_in_"):
-                return final_regressor.predict(
-                    pd.DataFrame(array_input, columns=final_regressor.feature_names_in_)
-                )
+                # Align columns to what regressor expects
+                df_in = pd.DataFrame(array_input, columns=final_regressor.feature_names_in_)
+                return final_regressor.predict(df_in)
             else:
                 return final_regressor.predict(array_input)
 
-        # Adjust background size for certain regressors
-        if model_name == 'KNN_reg':
+        # Background sampling (smaller for KNN)
+        rng = np.random.default_rng(42)
+        if model_name == "KNN_reg":
             background_size = min(10, X_transformed_array.shape[0])
         else:
             background_size = min(100, X_transformed_array.shape[0])
-
-        background_indices = np.random.choice(X_transformed_array.shape[0], background_size, replace=False)
+        background_indices = rng.choice(X_transformed_array.shape[0], background_size, replace=False)
         background_array = X_transformed_array[background_indices]
 
-        # If the final regressor needs columns, convert background_array to DataFrame
+        # Build explainer background in the right type (DataFrame if regressor wants named columns)
         if hasattr(final_regressor, "feature_names_in_"):
-            background_df = pd.DataFrame(
-                background_array,
-                columns=final_regressor.feature_names_in_
-            )
+            background_df = pd.DataFrame(background_array, columns=final_regressor.feature_names_in_)
             explainer_data = background_df
         else:
             explainer_data = background_array
 
+        # PermutationExplainer evals
         required_max_evals = 2 * num_transformed_features + 1
         explainer = shap.PermutationExplainer(
             predict_fs,
@@ -123,29 +169,23 @@ def calculate_shap_values(model_name, num_features, output_prefix):
             max_evals=required_max_evals
         )
 
-        # SHAP for each row
-        def compute_shap_one_sample(sample_idx):
-            single_sample_array = X_transformed_array[[sample_idx]]
-            if hasattr(final_regressor, "feature_names_in_"):
-                single_sample_df = pd.DataFrame(
-                    single_sample_array,
-                    columns=final_regressor.feature_names_in_
-                )
-                shap_values_single = explainer(single_sample_df).values.flatten()
-            else:
-                shap_values_single = explainer(single_sample_array).values.flatten()
-            return shap_values_single
+        # SHAP for full transformed X
+        if hasattr(final_regressor, "feature_names_in_"):
+            X_full_for_pred = pd.DataFrame(
+                X_transformed_array,
+                columns=final_regressor.feature_names_in_
+            )
+        else:
+            X_full_for_pred = X_transformed_array
 
-        shap_values_list = Parallel(n_jobs=-1)(
-            delayed(compute_shap_one_sample)(i) for i in range(X_transformed_array.shape[0])
-        )
-        shap_values = np.array(shap_values_list)
+        shap_values_obj = explainer(X_full_for_pred)
+        shap_values = shap_values_obj.values  # shape: (n_samples, n_features)
 
-        # Save SHAP values
+        # Save raw SHAP values
         shap_values_path = f"{output_prefix}_shap_values_{model_name}.npy"
         np.save(shap_values_path, shap_values)
 
-        # Build summary DataFrame
+        # Summary DataFrame (mean |SHAP|)
         abs_shap_vals = np.abs(shap_values)
         mean_shap_vals = np.mean(abs_shap_vals, axis=0)
         shap_df = pd.DataFrame({
@@ -156,27 +196,37 @@ def calculate_shap_values(model_name, num_features, output_prefix):
         shap_csv_path = f"{output_prefix}_{model_name}_shap_values.csv"
         shap_df.to_csv(shap_csv_path, index=False)
 
-        # Bar plot
+        # Bar plot (top-k)
         top_shap_df = shap_df.head(num_features)
         plt.figure(figsize=(15, 10))
-        sns.barplot(x="Mean SHAP Value", y="Feature", data=top_shap_df)
-        plt.title(f"SHAP Mean Summary Plot for {model_name}")
+        ax = sns.barplot(x="Mean SHAP Value", y="Feature", data=top_shap_df)
+        ax.set_title(f"SHAP Mean Summary Plot for {model_name}", fontsize=18)
+        ax.set_xlabel("Mean SHAP Value", fontsize=16)
+        ax.set_ylabel("Feature", fontsize=16)
+        ax.tick_params(axis='x', labelsize=12)
+        ax.tick_params(axis='y', labelsize=12)
         plt.tight_layout()
-        plt.savefig(f"{output_prefix}_{model_name}_shap_summary_bar.png", dpi=300)
+        plt.savefig(f"{output_prefix}_{model_name}_shap_summary_bar.png", dpi=300, bbox_inches="tight")
         plt.close()
 
-        # Summary dot plot
-        shap_summary_path = f"{output_prefix}_{model_name}_shap_summary_dot.png"
+        # Beeswarm (summary dot) plot with title
         plt.figure(figsize=(15, 10))
-        shap.summary_plot(
-            shap_values,
-            features=X_transformed_array,
-            feature_names=shap_feature_names,
-            show=False,
-            max_display=num_features
-        )
-        plt.title(f"SHAP Summary Dot Plot for {model_name}")
-        plt.savefig(shap_summary_path, dpi=300)
+        with warnings.catch_warnings():
+            warnings.filterwarnings(
+                "ignore",
+                message="The NumPy global RNG was seeded by calling `np.random.seed`",
+                category=FutureWarning
+            )
+            shap.summary_plot(
+                shap_values,
+                features=X_transformed_array,
+                feature_names=shap_feature_names,
+                show=False,
+                max_display=num_features
+            )
+        plt.title(f"SHAP Summary Dot Plot for {model_name}", fontsize=18)
+        plt.tight_layout()
+        plt.savefig(f"{output_prefix}_{model_name}_shap_summary_dot.png", dpi=300, bbox_inches="tight")
         plt.close()
 
         print(f"SHAP analysis completed for model '{model_name}'.")

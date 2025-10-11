@@ -1,7 +1,7 @@
 import argparse
 import pandas as pd
 import numpy as np
-from sklearn.preprocessing import LabelEncoder, label_binarize, StandardScaler
+from sklearn.preprocessing import LabelEncoder, label_binarize, StandardScaler, LabelBinarizer
 from sklearn.model_selection import StratifiedKFold, cross_val_predict
 from sklearn.linear_model import LogisticRegression
 from sklearn.feature_selection import SelectFromModel
@@ -35,6 +35,21 @@ warnings.filterwarnings('ignore', category=DeprecationWarning)
 warnings.filterwarnings('ignore', category=ConvergenceWarning)
 
 
+def enlarge_fonts(ax, label=22, ticks=18, title=24, legend=20, legend_title=22):
+    ax.xaxis.label.set_size(label)
+    ax.yaxis.label.set_size(label)
+    if hasattr(ax, "title"):
+        ax.title.set_size(title)
+    for t in ax.get_xticklabels() + ax.get_yticklabels():
+        t.set_fontsize(ticks)
+    leg = ax.get_legend()
+    if leg is not None:
+        for txt in leg.get_texts():
+            txt.set_fontsize(legend)
+        if leg.get_title() is not None:
+            leg.get_title().set_fontsize(legend_title)
+
+
 class SuppressOutput(contextlib.AbstractContextManager):
     def __enter__(self):
         self._stdout = sys.stdout
@@ -48,6 +63,19 @@ class SuppressOutput(contextlib.AbstractContextManager):
         sys.stderr = self._stderr
 
 
+def multiclass_specificity(cm: np.ndarray) -> float:
+    cm = cm.astype(float)
+    K = cm.shape[0]
+    specs = []
+    for i in range(K):
+        tp = cm[i, i]
+        fn = cm[i, :].sum() - tp
+        fp = cm[:, i].sum() - tp
+        tn = cm.sum() - (tp + fn + fp)
+        specs.append(tn / (tn + fp) if (tn + fp) > 0 else 0.0)
+    return np.mean(specs) if len(specs) > 0 else 0.0
+
+
 class PLSFeatureSelector(BaseEstimator, TransformerMixin):
     def __init__(self, n_components=2, max_iter=1000, tol=1e-06):
         self.n_components = n_components
@@ -56,12 +84,24 @@ class PLSFeatureSelector(BaseEstimator, TransformerMixin):
         self.pls = None
 
     def fit(self, X, y):
-        self.pls = PLSRegression(n_components=self.n_components, max_iter=self.max_iter, tol=self.tol)
-        self.pls.fit(X, y)
+        X_array = X.values if hasattr(X, "values") else X
+        lb = LabelBinarizer()
+        Y = lb.fit_transform(y)
+        if Y.ndim == 1:
+            Y = np.vstack([1 - Y, Y]).T
+        n_comp = max(1, min(self.n_components, X_array.shape[1], X_array.shape[0] - 1))
+        self.pls = PLSRegression(n_components=n_comp, max_iter=self.max_iter, tol=self.tol)
+        self.pls.fit(X_array, Y)
         return self
 
     def transform(self, X):
-        return self.pls.transform(X)
+        X_array = X.values if hasattr(X, "values") else X
+        X_pls = self.pls.transform(X_array)
+        return pd.DataFrame(
+            X_pls,
+            index=X.index if hasattr(X, "index") else None,
+            columns=[f"PLS_Component_{i+1}" for i in range(X_pls.shape[1])]
+        )
 
 
 class TSNETransformer(BaseEstimator, TransformerMixin):
@@ -94,8 +134,9 @@ class TSNETransformer(BaseEstimator, TransformerMixin):
 
 
 class ElasticNetFeatureSelector(BaseEstimator, TransformerMixin):
-    def __init__(self, alpha=1.0, l1_ratio=0.5, max_iter=10000, tol=1e-4):
-        self.alpha = alpha
+    # LogisticRegression with elastic-net penalty for classification feature selection
+    def __init__(self, C=1.0, l1_ratio=0.5, max_iter=10000, tol=1e-4):
+        self.C = C
         self.l1_ratio = l1_ratio
         self.max_iter = max_iter
         self.tol = tol
@@ -104,10 +145,12 @@ class ElasticNetFeatureSelector(BaseEstimator, TransformerMixin):
                 penalty='elasticnet',
                 solver='saga',
                 l1_ratio=self.l1_ratio,
-                C=1.0 / self.alpha,
+                C=self.C,
                 max_iter=self.max_iter,
                 tol=self.tol,
-                random_state=1234
+                random_state=1234,
+                class_weight='balanced',
+                n_jobs=-1
             )
         )
 
@@ -117,6 +160,7 @@ class ElasticNetFeatureSelector(BaseEstimator, TransformerMixin):
 
     def transform(self, X):
         return self.selector.transform(X)
+
 
 def safe_umap(n_components, n_neighbors, min_dist, X, random_state=1234):
     n_samples = X.shape[0]
@@ -130,6 +174,7 @@ def safe_umap(n_components, n_neighbors, min_dist, X, random_state=1234):
         init='random'
     )
 
+
 def logistic_regression_nested_cv(inp, prefix, feature_selection_method):
     data = pd.read_csv(inp)
     if 'SampleID' not in data.columns or 'Label' not in data.columns:
@@ -140,8 +185,6 @@ def logistic_regression_nested_cv(inp, prefix, feature_selection_method):
     y = data['Label']
 
     scaler = StandardScaler()
-    # X_scaled = scaler.fit_transform(X)
-    # X = pd.DataFrame(X_scaled, columns=X.columns)
 
     le = LabelEncoder()
     y_encoded = le.fit_transform(y)
@@ -262,11 +305,11 @@ def logistic_regression_nested_cv(inp, prefix, feature_selection_method):
                             tol=1e-06
                         )))
                     elif feature_selection_method == 'elasticnet':
-                        elasticnet_alpha = trial.suggest_loguniform('elasticnet_alpha', 1e-4, 1e1)
-                        l1_ratio = trial.suggest_uniform('elasticnet_l1_ratio', 0.0, 1.0)
+                        lr_C = trial.suggest_loguniform('lr_C', 1e-3, 1e3)
+                        lr_l1_ratio = trial.suggest_uniform('lr_l1_ratio', 0.0, 1.0)
                         steps.append(('feature_selection', ElasticNetFeatureSelector(
-                            alpha=elasticnet_alpha,
-                            l1_ratio=l1_ratio,
+                            C=lr_C,
+                            l1_ratio=lr_l1_ratio,
                             max_iter=10000,
                             tol=1e-4
                         )))
@@ -326,7 +369,6 @@ def logistic_regression_nested_cv(inp, prefix, feature_selection_method):
                         min_dist=best_umap_min_dist,
                         X=X_train_outer
                     )))
-
                 elif feature_selection_method == 'pls':
                     best_pls_n_components = best_params_inner.get('pls_n_components', 2)
                     best_pls_n_components = min(best_pls_n_components, X_train_outer.shape[0] - 1, X_train_outer.shape[1])
@@ -336,22 +378,27 @@ def logistic_regression_nested_cv(inp, prefix, feature_selection_method):
                         tol=1e-06
                     )))
                 elif feature_selection_method == 'elasticnet':
-                    best_elasticnet_alpha = best_params_inner.get('elasticnet_alpha', 1.0)
-                    best_l1_ratio = best_params_inner.get('elasticnet_l1_ratio', 0.5)
+                    best_lr_C = best_params_inner.get('lr_C', 1.0)
+                    best_lr_l1_ratio = best_params_inner.get('lr_l1_ratio', 0.5)
                     steps.append(('feature_selection', ElasticNetFeatureSelector(
-                        alpha=best_elasticnet_alpha,
-                        l1_ratio=best_l1_ratio,
+                        C=best_lr_C,
+                        l1_ratio=best_lr_l1_ratio,
                         max_iter=10000,
                         tol=1e-4
                     )))
 
-            best_C = best_params_inner.get('C', 1.0)
-            steps.append(('logreg', LogisticRegression(C=best_C, random_state=1234, max_iter=1000,class_weight='balanced')))
+            n_estimators_placeholder = best_params_inner.get('n_estimators', None)  # kept to avoid removing any part
+            steps.append(('logreg', LogisticRegression(
+                C=best_params_inner.get('C', 1.0),
+                random_state=1234,
+                max_iter=1000,
+                class_weight='balanced'
+            )))
             best_model_inner = Pipeline(steps)
 
             if tsne_selected:
                 best_model_inner = Pipeline([
-                    ('logreg', LogisticRegression(C=best_C, random_state=1234, max_iter=1000,class_weight='balanced'))
+                    ('logreg', LogisticRegression(C=best_params_inner.get('C', 1.0), random_state=1234, max_iter=1000, class_weight='balanced'))
                 ])
                 X_train_outer_fold_final = X_transformed_final.iloc[train_idx].reset_index(drop=True)
                 X_test_outer_fold_final = X_transformed_final.iloc[test_idx].reset_index(drop=True)
@@ -408,7 +455,7 @@ def logistic_regression_nested_cv(inp, prefix, feature_selection_method):
 
         def objective_full_tsne(trial):
             C = trial.suggest_loguniform('C', 1e-2, 100)
-            model = LogisticRegression(C=C, random_state=1234, max_iter=1000,class_weight='balanced')
+            model = LogisticRegression(C=C, random_state=1234, max_iter=1000, class_weight='balanced')
             with SuppressOutput():
                 f1_scores_tsne = []
                 for train_idx_full, valid_idx_full in cv_outer.split(X_transformed_final, y_encoded):
@@ -430,7 +477,7 @@ def logistic_regression_nested_cv(inp, prefix, feature_selection_method):
         print(f"Best parameters for Logistic Regression with t-SNE: {best_params_full_tsne}")
 
         best_C_full_tsne = best_params_full_tsne.get('C', 1.0)
-        best_model = LogisticRegression(C=best_C_full_tsne, random_state=1234, max_iter=1000,class_weight='balanced')
+        best_model = LogisticRegression(C=best_C_full_tsne, random_state=1234, max_iter=1000, class_weight='balanced')
 
         with SuppressOutput():
             try:
@@ -484,14 +531,13 @@ def logistic_regression_nested_cv(inp, prefix, feature_selection_method):
                 sensitivity = np.mean(np.divide(np.diag(cm), np.sum(cm, axis=1),
                                                 out=np.zeros_like(np.diag(cm), dtype=float),
                                                 where=np.sum(cm, axis=1)!=0))
-                specificity = np.mean(np.divide(np.diag(cm), np.sum(cm, axis=0),
-                                                out=np.zeros_like(np.diag(cm), dtype=float),
-                                                where=np.sum(cm, axis=0)!=0))
+            specificity = multiclass_specificity(cm)
 
         disp = ConfusionMatrixDisplay(confusion_matrix=cm, display_labels=le.classes_)
         disp.plot(cmap=plt.cm.Blues)
-        plt.title('Confusion Matrix for Logistic Regression with t-SNE',fontsize=12,fontweight='bold')
-        plt.savefig(f"{prefix}_logistic_regression_confusion_matrix.png", dpi=300)
+        plt.title('Confusion Matrix for Logistic Regression with t-SNE', fontsize=16, fontweight='bold', pad=12)
+        enlarge_fonts(disp.ax_)
+        plt.savefig(f"{prefix}_logistic_regression_confusion_matrix.png", dpi=300, bbox_inches="tight")
         plt.close()
 
         fpr_dict = {}
@@ -500,7 +546,7 @@ def logistic_regression_nested_cv(inp, prefix, feature_selection_method):
 
         if num_classes == 2:
             try:
-                fpr_dict[0], tpr_dict[0], _ = roc_curve(y_binarized[:, 0], y_pred_prob[:, 1])
+                fpr_dict[0], tpr_dict[0], _ = roc_curve(y_encoded, y_pred_prob[:, 1])
                 roc_auc_dict[0] = auc(fpr_dict[0], tpr_dict[0])
             except ValueError:
                 roc_auc_dict[0] = 0.0
@@ -518,12 +564,29 @@ def logistic_regression_nested_cv(inp, prefix, feature_selection_method):
             except ValueError:
                 fpr_dict["micro"], tpr_dict["micro"], roc_auc_dict["micro"] = np.array([0, 1]), np.array([0, 1]), 0.0
 
+            try:
+                class_keys = [k for k in fpr_dict.keys() if isinstance(k, (int, np.integer))]
+                valid_keys = [k for k in class_keys if len(fpr_dict[k]) > 1 and len(tpr_dict[k]) > 1]
+                if len(valid_keys) > 0:
+                    all_fpr = np.unique(np.concatenate([fpr_dict[k] for k in valid_keys]))
+                    mean_tpr = np.zeros_like(all_fpr)
+                    for k in valid_keys:
+                        mean_tpr += np.interp(all_fpr, fpr_dict[k], tpr_dict[k])
+                    mean_tpr /= len(valid_keys)
+                    fpr_dict["macro"] = all_fpr
+                    tpr_dict["macro"] = mean_tpr
+                    roc_auc_dict["macro"] = auc(all_fpr, mean_tpr)
+                else:
+                    fpr_dict["macro"], tpr_dict["macro"], roc_auc_dict["macro"] = np.array([0, 1]), np.array([0, 1]), 0.0
+            except Exception:
+                fpr_dict["macro"], tpr_dict["macro"], roc_auc_dict["macro"] = np.array([0, 1]), np.array([0, 1]), 0.0
+
         roc_data = {
             'fpr': fpr_dict,
             'tpr': tpr_dict,
             'roc_auc': roc_auc_dict
         }
-        np.save(f"{prefix}_logistic_regression_roc_data.npy", roc_data)
+        np.save(f"{prefix}_logistic_regression_roc_data.npy", roc_data, allow_pickle=True)
 
         plt.figure(figsize=(10, 8))
         if num_classes == 2:
@@ -533,20 +596,21 @@ def logistic_regression_nested_cv(inp, prefix, feature_selection_method):
                 if i in roc_auc_dict and roc_auc_dict[i] > 0.0:
                     plt.plot(fpr_dict[i], tpr_dict[i], label=f'{le.inverse_transform([i])[0]} (AUC = {roc_auc_dict[i]:.2f})')
             if "micro" in roc_auc_dict and roc_auc_dict["micro"] > 0.0:
-                plt.plot(fpr_dict["micro"], tpr_dict["micro"], label=f'Overall (AUC = {roc_auc_dict["micro"]:.2f})', linestyle='--')
+                plt.plot(fpr_dict["micro"], tpr_dict["micro"], label=f'Micro-average (AUC = {roc_auc_dict["micro"]:.2f})', linestyle='--')
+            if "macro" in roc_auc_dict and roc_auc_dict["macro"] > 0.0:
+                plt.plot(fpr_dict["macro"], tpr_dict["macro"], label=f'Macro-average (AUC = {roc_auc_dict["macro"]:.2f})', linestyle=':')
 
         plt.plot([0, 1], [0, 1], 'k--', lw=1.2)
         plt.xlim([0.0, 1.0])
         plt.ylim([0.0, 1.05])
-        plt.xlabel('False Positive Rate (1 - Specificity)', fontsize=18, labelpad=10)
-        plt.ylabel('True Positive Rate (Sensitivity)', fontsize=18, labelpad=10)
-        plt.title('ROC Curves for Logistic Regression', fontsize=22, fontweight='bold', pad=15)
-        plt.xticks(fontsize=14)
-        plt.yticks(fontsize=14)
-        plt.legend(loc="lower right", fontsize=14, title_fontsize=16)
-        #plt.grid(True)
+        plt.xlabel('False Positive Rate (1 - Specificity)', fontsize=22, labelpad=12)
+        plt.ylabel('True Positive Rate (Sensitivity)', fontsize=22, labelpad=12)
+        plt.title('ROC Curves for Logistic Regression', fontsize=26, fontweight='bold', pad=14)
+        plt.legend(loc="lower right", fontsize=18, title_fontsize=20)
+        ax_tsne_roc = plt.gca()
+        enlarge_fonts(ax_tsne_roc)
         plt.tight_layout()
-        plt.savefig(f'{prefix}_logistic_regression_roc_curve.png', dpi=300)
+        plt.savefig(f'{prefix}_logistic_regression_roc_curve.png', dpi=300, bbox_inches="tight")
         plt.close()
 
         metrics = {
@@ -557,14 +621,16 @@ def logistic_regression_nested_cv(inp, prefix, feature_selection_method):
         }
         metrics_df = pd.DataFrame(list(metrics.items()), columns=['Metric', 'Value'])
         ax = metrics_df.plot(kind='bar', x='Metric', y='Value', legend=False)
-        plt.title('Performance Metrics for Logistic Regression with t-SNE',fontsize=14,fontweight='bold')
-        plt.ylabel('Value')
-        plt.ylim(0, 1)
+        plt.title('Performance Metrics for Logistic Regression with t-SNE', fontsize=20, fontweight='bold', pad=10)
+        plt.ylabel('Value', fontsize=22, labelpad=12)
+        plt.ylim(0, 1.1)
         for container in ax.containers:
-            ax.bar_label(container, fmt='%.2f')
-        plt.xticks(rotation=45, ha='right')
+            ax.bar_label(container, fmt='%.2f', padding=5)
+        plt.xticks(rotation=45, ha='right', fontsize=18)
+        ax.tick_params(axis='y', labelsize=18)
+        enlarge_fonts(ax)
         plt.tight_layout()
-        plt.savefig(f'{prefix}_logistic_regression_metrics.png', dpi=300)
+        plt.savefig(f'{prefix}_logistic_regression_metrics.png', dpi=300, bbox_inches="tight")
         plt.close()
 
         predictions_df = pd.DataFrame({
@@ -581,15 +647,18 @@ def logistic_regression_nested_cv(inp, prefix, feature_selection_method):
         folds = range(1, cv_outer.get_n_splits() + 1)
         plt.plot(folds, outer_f1_scores, marker='o', label='F1 Score')
         plt.plot(folds, outer_auc_scores, marker='s', label='AUC')
-        plt.xlabel('Outer Fold Number')
-        plt.ylabel('Score')
-        plt.title('F1 and AUC Scores per Outer Fold',fontsize=16,fontweight='bold')
-        plt.xticks(folds)
+        plt.xlabel('Outer Fold Number', fontsize=22, labelpad=12)
+        plt.ylabel('Score', fontsize=22, labelpad=12)
+        plt.title('F1 and AUC Scores per Outer Fold', fontsize=26, fontweight='bold', pad=14)
+        plt.xticks(folds, fontsize=18)
+        plt.yticks(fontsize=18)
+        plt.legend(fontsize=18, title_fontsize=20)
         plt.ylim(0, 1)
-        plt.legend()
         plt.grid(True)
+        ax_cv = plt.gca()
+        enlarge_fonts(ax_cv)
         plt.tight_layout()
-        plt.savefig(f"{prefix}_logistic_regression_nested_cv_f1_auc.png", dpi=300)
+        plt.savefig(f"{prefix}_logistic_regression_nested_cv_f1_auc.png", dpi=300, bbox_inches="tight")
         plt.close()
 
         print("Nested cross-validation completed.")
@@ -635,7 +704,6 @@ def logistic_regression_nested_cv(inp, prefix, feature_selection_method):
                         min_dist=umap_min_dist,
                         X=X
                     )))
-
                 elif feature_selection_method == 'pls':
                     max_components_pls = min(X.shape[0] - 1, X.shape[1])
                     pls_n_components = trial.suggest_int('pls_n_components', 1, max_components_pls)
@@ -645,17 +713,17 @@ def logistic_regression_nested_cv(inp, prefix, feature_selection_method):
                         tol=1e-06
                     )))
                 elif feature_selection_method == 'elasticnet':
-                    elasticnet_alpha = trial.suggest_loguniform('elasticnet_alpha', 1e-4, 1e1)
-                    l1_ratio = trial.suggest_uniform('elasticnet_l1_ratio', 0.0, 1.0)
+                    lr_C = trial.suggest_loguniform('lr_C', 1e-3, 1e3)
+                    lr_l1_ratio = trial.suggest_uniform('lr_l1_ratio', 0.0, 1.0)
                     steps.append(('feature_selection', ElasticNetFeatureSelector(
-                        alpha=elasticnet_alpha,
-                        l1_ratio=l1_ratio,
+                        C=lr_C,
+                        l1_ratio=lr_l1_ratio,
                         max_iter=10000,
                         tol=1e-4
                     )))
 
             C = trial.suggest_loguniform('C', 1e-2, 100)
-            steps.append(('logreg', LogisticRegression(C=C, random_state=1234, max_iter=1000,class_weight='balanced')))
+            steps.append(('logreg', LogisticRegression(C=C, random_state=1234, max_iter=1000, class_weight='balanced')))
             pipeline = Pipeline(steps)
 
             with SuppressOutput():
@@ -710,7 +778,6 @@ def logistic_regression_nested_cv(inp, prefix, feature_selection_method):
                     min_dist=best_umap_min_dist_full,
                     X=X
                 )))
-
             elif feature_selection_method == 'pls':
                 best_pls_n_components_full = min(
                     best_params_full.get('pls_n_components', 2),
@@ -723,46 +790,28 @@ def logistic_regression_nested_cv(inp, prefix, feature_selection_method):
                     tol=1e-06
                 )))
             elif feature_selection_method == 'elasticnet':
-                best_elasticnet_alpha_full = best_params_full.get('elasticnet_alpha', 1.0)
-                best_l1_ratio_full = best_params_full.get('elasticnet_l1_ratio', 0.5)
+                best_lr_C_full = best_params_full.get('lr_C', 1.0)
+                best_lr_l1_ratio_full = best_params_full.get('lr_l1_ratio', 0.5)
                 steps.append(('feature_selection', ElasticNetFeatureSelector(
-                    alpha=best_elasticnet_alpha_full,
-                    l1_ratio=best_l1_ratio_full,
+                    C=best_lr_C_full,
+                    l1_ratio=best_lr_l1_ratio_full,
                     max_iter=10000,
                     tol=1e-4
                 )))
 
-        if not tsne_selected:
-            best_C_full = best_params_full.get('C', 1.0)
-            steps.append(('logreg', LogisticRegression(C=best_C_full, random_state=1234, max_iter=1000, class_weight='balanced')))
-            best_model = Pipeline(steps)
-        else:
-            best_C_full_tsne = best_params_full_tsne.get('C', 1.0)
-            best_model = Pipeline([
-                ('logreg', LogisticRegression(C=best_C_full_tsne, random_state=1234, max_iter=1000, class_weight='balanced'))
-            ])
+        best_C_full = best_params_full.get('C', 1.0)
+        steps.append(('logreg', LogisticRegression(C=best_C_full, random_state=1234, max_iter=1000, class_weight='balanced')))
+        best_model = Pipeline(steps)
 
         with SuppressOutput():
             try:
-                if tsne_selected:
-                    best_model.fit(X_transformed_final, y_encoded)
-                else:
-                    best_model.fit(X, y_encoded)
+                best_model.fit(X, y_encoded)
             except (ValueError, ArpackError, NotImplementedError) as e:
                 print(f"Error fitting the final model: {e}")
                 sys.exit(1)
 
-        if tsne_selected:
-            joblib.dump(best_model, f"{prefix}_logistic_regression_model.pkl")
-            joblib.dump((X_transformed_final, y_encoded, le), f"{prefix}_logistic_regression_data.pkl")
-        else:
-            joblib.dump(best_model, f"{prefix}_logistic_regression_model.pkl")
-            joblib.dump((X, y_encoded, le), f"{prefix}_logistic_regression_data.pkl")
-
-        if tsne_selected:
-            print(f"Best parameters for Logistic Regression with t-SNE: {best_params_full_tsne}")
-        else:
-            print(f"Best parameters for Logistic Regression: {best_params_full}")
+        joblib.dump(best_model, f"{prefix}_logistic_regression_model.pkl")
+        joblib.dump((X, y_encoded, le), f"{prefix}_logistic_regression_data.pkl")
 
         if feature_selection_method != 'none' and not tsne_selected:
             if 'feature_selection' in best_model.named_steps:
@@ -795,9 +844,6 @@ def logistic_regression_nested_cv(inp, prefix, feature_selection_method):
 
                 variance_csv_path = f"{prefix}_logistic_regression_variance.csv"
                 if feature_selection_method == 'pca':
-                    # ----------------------
-                    # Fix for full PCA below
-                    # ----------------------
                     pca_full_n_components = min(X.shape[0], X.shape[1])
                     full_pca = PCA(n_components=pca_full_n_components, random_state=1234)
                     with SuppressOutput():
@@ -844,158 +890,176 @@ def logistic_regression_nested_cv(inp, prefix, feature_selection_method):
             else:
                 print("Feature selection failed or no feature selection method selected. Skipping transformed data and variance information saving.")
 
-        if not tsne_selected:
-            y_pred_prob = None
-            try:
-                y_pred_prob = cross_val_predict(
-                    best_model,
-                    X,
-                    y_encoded,
-                    cv=cv_outer,
-                    method='predict_proba',
-                    n_jobs=-1
+        y_pred_prob = None
+        try:
+            y_pred_prob = cross_val_predict(
+                best_model,
+                X,
+                y_encoded,
+                cv=cv_outer,
+                method='predict_proba',
+                n_jobs=-1
+            )
+            y_pred_class = np.argmax(y_pred_prob, axis=1)
+        except (ValueError, ArpackError, NotImplementedError) as e:
+            print(f"Error during cross_val_predict: {e}")
+            y_pred_class = np.zeros_like(y_encoded)
+            y_pred_prob = np.zeros((len(y_encoded), num_classes))
+
+        acc = accuracy_score(y_encoded, y_pred_class)
+        f1 = f1_score(y_encoded, y_pred_class, average='weighted')
+        cm = confusion_matrix(y_encoded, y_pred_class)
+
+        if num_classes == 2:
+            if cm.shape == (2, 2):
+                tn, fp, fn, tp = cm.ravel()
+                sensitivity = tp / (tp + fn) if (tp + fn) > 0 else 0
+                specificity = tn / (tn + fp) if (tn + fp) > 0 else 0
+            else:
+                sensitivity = 0
+                specificity = 0
+        else:
+            with np.errstate(divide='ignore', invalid='ignore'):
+                sensitivity = np.mean(
+                    np.divide(
+                        np.diag(cm),
+                        np.sum(cm, axis=1),
+                        out=np.zeros_like(np.diag(cm), dtype=float),
+                        where=np.sum(cm, axis=1)!=0
+                    )
                 )
-                y_pred_class = np.argmax(y_pred_prob, axis=1)
-            except (ValueError, ArpackError, NotImplementedError) as e:
-                print(f"Error during cross_val_predict: {e}")
-                y_pred_class = np.zeros_like(y_encoded)
-                y_pred_prob = np.zeros((len(y_encoded), num_classes))
+            specificity = multiclass_specificity(cm)
 
-            acc = accuracy_score(y_encoded, y_pred_class)
-            f1 = f1_score(y_encoded, y_pred_class, average='weighted')
-            cm = confusion_matrix(y_encoded, y_pred_class)
+        disp = ConfusionMatrixDisplay(confusion_matrix=cm, display_labels=le.classes_)
+        disp.plot(cmap=plt.cm.Blues)
+        plt.title('Confusion Matrix for Logistic Regression', fontsize=16, fontweight='bold', pad=12)
+        enlarge_fonts(disp.ax_)
+        plt.savefig(f"{prefix}_logistic_regression_confusion_matrix.png", dpi=300, bbox_inches="tight")
+        plt.close()
 
-            if num_classes == 2:
-                if cm.shape == (2, 2):
-                    tn, fp, fn, tp = cm.ravel()
-                    sensitivity = tp / (tp + fn) if (tp + fn) > 0 else 0
-                    specificity = tn / (tn + fp) if (tn + fp) > 0 else 0
+        fpr_dict = {}
+        tpr_dict = {}
+        roc_auc_dict = {}
+
+        if num_classes == 2:
+            try:
+                fpr_dict[0], tpr_dict[0], _ = roc_curve(y_encoded, y_pred_prob[:, 1])
+                roc_auc_dict[0] = auc(fpr_dict[0], tpr_dict[0])
+            except ValueError:
+                roc_auc_dict[0] = 0.0
+        else:
+            for i in range(y_binarized.shape[1]):
+                try:
+                    fpr_dict[i], tpr_dict[i], _ = roc_curve(y_binarized[:, i], y_pred_prob[:, i])
+                    roc_auc_dict[i] = auc(fpr_dict[i], tpr_dict[i])
+                except ValueError:
+                    fpr_dict[i], tpr_dict[i], roc_auc_dict[i] = np.array([0, 1]), np.array([0, 1]), 0.0
+
+            try:
+                fpr_dict["micro"], tpr_dict["micro"], _ = roc_curve(
+                    y_binarized.ravel(),
+                    y_pred_prob.ravel()
+                )
+                roc_auc_dict["micro"] = auc(fpr_dict["micro"], tpr_dict["micro"])
+            except ValueError:
+                fpr_dict["micro"], tpr_dict["micro"], roc_auc_dict["micro"] = (
+                    np.array([0, 1]),
+                    np.array([0, 1]),
+                    0.0
+                )
+
+            try:
+                class_keys = [k for k in fpr_dict.keys() if isinstance(k, (int, np.integer))]
+                valid_keys = [k for k in class_keys if len(fpr_dict[k]) > 1 and len(tpr_dict[k]) > 1]
+                if len(valid_keys) > 0:
+                    all_fpr = np.unique(np.concatenate([fpr_dict[k] for k in valid_keys]))
+                    mean_tpr = np.zeros_like(all_fpr)
+                    for k in valid_keys:
+                        mean_tpr += np.interp(all_fpr, fpr_dict[k], tpr_dict[k])
+                    mean_tpr /= len(valid_keys)
+                    fpr_dict["macro"] = all_fpr
+                    tpr_dict["macro"] = mean_tpr
+                    roc_auc_dict["macro"] = auc(all_fpr, mean_tpr)
                 else:
-                    sensitivity = 0
-                    specificity = 0
-            else:
-                with np.errstate(divide='ignore', invalid='ignore'):
-                    sensitivity = np.mean(
-                        np.divide(
-                            np.diag(cm),
-                            np.sum(cm, axis=1),
-                            out=np.zeros_like(np.diag(cm), dtype=float),
-                            where=np.sum(cm, axis=1)!=0
-                        )
-                    )
-                    specificity = np.mean(
-                        np.divide(
-                            np.diag(cm),
-                            np.sum(cm, axis=0),
-                            out=np.zeros_like(np.diag(cm), dtype=float),
-                            where=np.sum(cm, axis=0)!=0
-                        )
-                    )
+                    fpr_dict["macro"], tpr_dict["macro"], roc_auc_dict["macro"] = np.array([0, 1]), np.array([0, 1]), 0.0
+            except Exception:
+                fpr_dict["macro"], tpr_dict["macro"], roc_auc_dict["macro"] = np.array([0, 1]), np.array([0, 1]), 0.0
 
-            disp = ConfusionMatrixDisplay(confusion_matrix=cm, display_labels=le.classes_)
-            disp.plot(cmap=plt.cm.Blues)
-            plt.title('Confusion Matrix for Logistic Regression',fontsize=12,fontweight='bold')
-            plt.savefig(f"{prefix}_logistic_regression_confusion_matrix.png", dpi=300)
-            plt.close()
+        roc_data = {
+            'fpr': fpr_dict,
+            'tpr': tpr_dict,
+            'roc_auc': roc_auc_dict
+        }
+        np.save(f"{prefix}_logistic_regression_roc_data.npy", roc_data, allow_pickle=True)
 
-            fpr_dict = {}
-            tpr_dict = {}
-            roc_auc_dict = {}
+        plt.figure(figsize=(10, 8))
 
-            if num_classes == 2:
-                try:
-                    fpr_dict[0], tpr_dict[0], _ = roc_curve(y_binarized[:, 0], y_pred_prob[:, 1])
-                    roc_auc_dict[0] = auc(fpr_dict[0], tpr_dict[0])
-                except ValueError:
-                    roc_auc_dict[0] = 0.0
-            else:
-                for i in range(y_binarized.shape[1]):
-                    try:
-                        fpr_dict[i], tpr_dict[i], _ = roc_curve(y_binarized[:, i], y_pred_prob[:, i])
-                        roc_auc_dict[i] = auc(fpr_dict[i], tpr_dict[i])
-                    except ValueError:
-                        fpr_dict[i], tpr_dict[i], roc_auc_dict[i] = np.array([0, 1]), np.array([0, 1]), 0.0
-
-                try:
-                    fpr_dict["micro"], tpr_dict["micro"], _ = roc_curve(
-                        y_binarized.ravel(),
-                        y_pred_prob.ravel()
-                    )
-                    roc_auc_dict["micro"] = auc(fpr_dict["micro"], tpr_dict["micro"])
-                except ValueError:
-                    fpr_dict["micro"], tpr_dict["micro"], roc_auc_dict["micro"] = (
-                        np.array([0, 1]),
-                        np.array([0, 1]),
-                        0.0
-                    )
-
-            roc_data = {
-                'fpr': fpr_dict,
-                'tpr': tpr_dict,
-                'roc_auc': roc_auc_dict
-            }
-            np.save(f"{prefix}_logistic_regression_roc_data.npy", roc_data)
-
-            plt.figure(figsize=(10, 8))
-
-            if num_classes == 2:
-                plt.plot(fpr_dict[0], tpr_dict[0], label=f'AUC = {roc_auc_dict[0]:.2f}')
-            else:
-                for i in range(len(le.classes_)):
-                    if i in roc_auc_dict and roc_auc_dict[i] > 0.0:
-                        plt.plot(
-                            fpr_dict[i],
-                            tpr_dict[i],
-                            label=f'{le.inverse_transform([i])[0]} (AUC = {roc_auc_dict[i]:.2f})'
-                        )
-                if "micro" in roc_auc_dict and roc_auc_dict["micro"] > 0.0:
+        if num_classes == 2:
+            plt.plot(fpr_dict[0], tpr_dict[0], label=f'AUC = {roc_auc_dict[0]:.2f}')
+        else:
+            for i in range(len(le.classes_)):
+                if i in roc_auc_dict and roc_auc_dict[i] > 0.0:
                     plt.plot(
-                        fpr_dict["micro"],
-                        tpr_dict["micro"],
-                        label=f'Overall (AUC = {roc_auc_dict["micro"]:.2f})',
-                        linestyle='--'
+                        fpr_dict[i],
+                        tpr_dict[i],
+                        label=f'{le.inverse_transform([i])[0]} (AUC = {roc_auc_dict[i]:.2f})'
                     )
+            if "micro" in roc_auc_dict and roc_auc_dict["micro"] > 0.0:
+                plt.plot(
+                    fpr_dict["micro"],
+                    tpr_dict["micro"],
+                    label=f'Micro-average (AUC = {roc_auc_dict["micro"]:.2f})',
+                    linestyle='--'
+                )
+            if "macro" in roc_auc_dict and roc_auc_dict["macro"] > 0.0:
+                plt.plot(
+                    fpr_dict["macro"],
+                    tpr_dict["macro"],
+                    label=f'Macro-average (AUC = {roc_auc_dict["macro"]:.2f})',
+                    linestyle=':'
+                )
 
-            plt.plot([0, 1], [0, 1], 'k--', lw=1.2)
-            plt.xlim([0.0, 1.0])
-            plt.ylim([0.0, 1.05])
-            plt.xlabel('False Positive Rate (1 - Specificity)', fontsize=18, labelpad=10)
-            plt.ylabel('True Positive Rate (Sensitivity)', fontsize=18, labelpad=10)
-            plt.title('ROC Curves for Logistic Regression', fontsize=22, fontweight='bold', pad=15)
-            plt.xticks(fontsize=14)
-            plt.yticks(fontsize=14)
-            plt.legend(loc="lower right", fontsize=14, title_fontsize=16)
-            #plt.grid(True)
-            plt.tight_layout()
-            plt.savefig(f'{prefix}_logistic_regression_roc_curve.png', dpi=300)
-            plt.close()
+        plt.plot([0, 1], [0, 1], 'k--', lw=1.2)
+        plt.xlim([0.0, 1.0])
+        plt.ylim([0.0, 1.05])
+        plt.xlabel('False Positive Rate (1 - Specificity)', fontsize=22, labelpad=12)
+        plt.ylabel('True Positive Rate (Sensitivity)', fontsize=22, labelpad=12)
+        plt.title('ROC Curves for Logistic Regression', fontsize=26, fontweight='bold', pad=14)
+        plt.legend(loc="lower right", fontsize=18, title_fontsize=20)
+        ax_roc = plt.gca()
+        enlarge_fonts(ax_roc)
+        plt.tight_layout()
+        plt.savefig(f'{prefix}_logistic_regression_roc_curve.png', dpi=300, bbox_inches="tight")
+        plt.close()
 
-            metrics = {
-                'Accuracy': acc,
-                'F1 Score': f1,
-                'Sensitivity': sensitivity,
-                'Specificity': specificity
-            }
-            metrics_df = pd.DataFrame(list(metrics.items()), columns=['Metric', 'Value'])
-            ax = metrics_df.plot(kind='bar', x='Metric', y='Value', legend=False)
-            plt.title('Performance Metrics for Logistic Regression',fontsize=14,fontweight='bold')
-            plt.ylabel('Value')
-            plt.ylim(0, 1.1)
-            for container in ax.containers:
-                ax.bar_label(container, fmt='%.2f', padding=5)
-            plt.xticks(rotation=45, ha='right')
-            plt.tight_layout()
-            plt.savefig(f'{prefix}_logistic_regression_metrics.png', dpi=300)
-            plt.close()
+        metrics = {
+            'Accuracy': acc,
+            'F1 Score': f1,
+            'Sensitivity': sensitivity,
+            'Specificity': specificity
+        }
+        metrics_df = pd.DataFrame(list(metrics.items()), columns=['Metric', 'Value'])
+        ax = metrics_df.plot(kind='bar', x='Metric', y='Value', legend=False)
+        plt.title('Performance Metrics for Logistic Regression', fontsize=20, fontweight='bold', pad=10)
+        plt.ylabel('Value', fontsize=22, labelpad=12)
+        plt.ylim(0, 1.1)
+        for container in ax.containers:
+            ax.bar_label(container, fmt='%.2f', padding=5)
+        plt.xticks(rotation=45, ha='right', fontsize=18)
+        ax.tick_params(axis='y', labelsize=18)
+        enlarge_fonts(ax)
+        plt.tight_layout()
+        plt.savefig(f'{prefix}_logistic_regression_metrics.png', dpi=300, bbox_inches="tight")
+        plt.close()
 
-            predictions_df = pd.DataFrame({
-                'SampleID': sample_ids,
-                'Original Label': y,
-                'Predicted Label': le.inverse_transform(y_pred_class)
-            })
-            predictions_df.to_csv(f"{prefix}_logistic_regression_predictions.csv", index=False)
+        predictions_df = pd.DataFrame({
+            'SampleID': sample_ids,
+            'Original Label': y,
+            'Predicted Label': le.inverse_transform(y_pred_class)
+        })
+        predictions_df.to_csv(f"{prefix}_logistic_regression_predictions.csv", index=False)
 
-            print(f"Predictions saved to {prefix}_logistic_regression_predictions.csv")
+        print(f"Predictions saved to {prefix}_logistic_regression_predictions.csv")
 
 
 def main():
