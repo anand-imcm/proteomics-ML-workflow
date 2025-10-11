@@ -16,7 +16,10 @@ The workflow: takes proteomic data and sample labels as input, imputing missing 
 
 The workflow is implemented in Python, R and Workflow Description Language (WDL), and can be executed on a cloud-based platform for biomedical data analysis. Deployment in this manner provides a standardized, user-friendly interface, and ensures the reproducibility and reliability of analytical outputs. Furthermore, such deployment renders the workflow scalable and streamlines the analysis of large, complex proteomic data. This ML workflow thus represents a significant advancement, empowering researchers to efficiently explore proteomic landscapes and identify biomarkers critical for early detection and treatment of diseases.
 
-<img src="proteomics-ml-WDL_white.png" width="900" height="800">
+<!-- markdownlint-disable MD033 -->
+<div align="center">
+  <img src="assets/proteomics-ml-WDL_white.png" width="900" height="auto"">
+</div>
 
 ## Workflow Steps
 
