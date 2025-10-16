@@ -88,11 +88,13 @@ machine learning, cloud-based workflow, classification and regression, proteomic
 1. **Create a new environment with Cromwell**
 
    Using `mamba` (recommended):
+
    ```bash
    mamba create --name biomarkerml bioconda::cromwell
    ```
 
    Or, using `conda`:
+
    ```bash
    conda create --name biomarkerml -c bioconda cromwell
    ```
@@ -100,11 +102,13 @@ machine learning, cloud-based workflow, classification and regression, proteomic
 2. **Activate the environment**
 
    With `mamba`:
+
    ```bash
    mamba activate biomarkerml
    ```
 
    Or, with `conda`:
+
    ```bash
    conda activate biomarkerml
    ```
@@ -114,10 +118,12 @@ machine learning, cloud-based workflow, classification and regression, proteomic
    - All workflow inputs must be specified in a JSON file.
    - Use the provided `example/inputs.json` file as a template. You can find this file in the `example/` directory of the repository.
    - Make a copy of `example/inputs.json` and edit it to specify your own input data file and desired output prefix. At a minimum, update these two fields:
+
       ```json
         "main.input_csv": "/full/path/to/your/input/data.csv",
         "main.output_prefix": "your_output_prefix"
         ```
+
    - Replace `/full/path/to/your/input/data.csv` with the absolute path to your CSV data file, and set `your_output_prefix` to a name you want for your analysis outputs.
    - You can adjust other parameters in the JSON file as needed. See the **Inputs** section below for descriptions of all available options.
 
@@ -130,10 +136,11 @@ machine learning, cloud-based workflow, classification and regression, proteomic
 ## Inputs
 
 - **`main.input_csv`** : [File] Input file in `.csv` format, includes a `Label` column, with each row representing a sample and each column representing a feature. An example of the `.csv` is shown below:
+
   SampleID | Label  | Protein1 | Protein2 | ... | ProteinN |
-  |:-------|:-------|:---------|:---------|-----|:---------|
-  | ID1 | Label1 | 0.1      | 0.4      | ... | 0.01     |
-  | ID2 | Label2 | 0.2      | 0.1      | ... | 0.3      |
+  :--------|:-------|:---------|:---------|-----|:---------|
+  ID1      | Label1 | 0.1      | 0.4      | ... | 0.01     |
+  ID2      | Label2 | 0.2      | 0.1      | ... | 0.3      |
 
 - **`main.output_prefix`** : [String] Analysis ID. This will be used as prefix for all the output files.
 
@@ -145,7 +152,6 @@ machine learning, cloud-based workflow, classification and regression, proteomic
 > It is recommended to select only one dimensionality reduction method when using it alongside classification or regression models.
 >
 > If multiple dimensionality reduction methods are specified, the workflow will only perform the dimentinality reduction and generate a report.
-
 
 - **`main.num_of_dimensions`**: [Int] Total number of expected dimensions after applying dimensionality reduction for the visualization. This option only works when multiple `dimensionality_reduction_choices` are selected. Default value: `3`.
 
@@ -196,37 +202,37 @@ machine learning, cloud-based workflow, classification and regression, proteomic
 
 ## Components
 
-| Package | License |
-|:--------|:--------|
-| [micromamba==1.5.5](www.github.com/mamba-org/mamba#micromamba) | BSD-3-Clause |
-| [python](www.python.org/) | PSF/GPL-compat |
-| [joblib](www.github.com/joblib/joblib) | BSD-3-Clause |
-| [matplotlib](www.matplotlib.org) | PSF/BSD-compat |
-| [numpy](www.numpy.org/) | BSD |
-| [pandas](www.pandas.pydata.org/) | BSD 3-Clause |
-| [scikit-learn](www.scikit-learn.org) | BSD-3-Clause |
-| [xgboost](https://github.com/dmlc/xgboost) | Apache-2.0 |
-| [shap](https://github.com/shap/shap) | MIT |
-| [pillow](https://github.com/python-pillow/Pillow) | Open Source HPND |
-| [PyTorch](https://github.com/pytorch/pytorch) | BSD |
-| [Optuna](https://github.com/optuna) | MIT |
-| [fpdf](https://github.com/reingart/pyfpdf) | LGPL-3.0 |
-| [seaborn](https://github.com/mwaskom/seaborn) | BSD-3-Clause |
-| [umap-learn](https://github.com/lmcinnes/umap) | BSD-3-Clause |
-| [AnnotationDbi](https://bioconductor.org/packages/release/bioc/html/AnnotationDbi.html) | Artistic-2.0 |
-| [BiocManager](https://bioconductor.github.io/BiocManager/) | Artistic-2.0 |
-| [fields](https://cran.r-project.org/web/packages/fields/index.html) | GPL (>= 2) |
-| [ggplot2](https://ggplot2.tidyverse.org/index.html) | MIT |
-| [igraph](https://r.igraph.org/) | GPL (>= 2) |
-| [magrittr](https://magrittr.tidyverse.org/) | MIT |
-| [optparse](https://cran.r-project.org/web/packages/optparse/index.html) | GPL (>= 2) |
-| [STRINGdb](https://bioconductor.org/packages/release/bioc/html/STRINGdb.html) | GPL (>= 2) |
-| [tidyverse](https://www.tidyverse.org/) | GPL-3 |
-| [writexl](https://cloud.r-project.org/web/packages/writexl/index.html) | BSD-2-clause |
-| [org.Hs.eg.db](https://bioconductor.org/packages/release/data/annotation/html/org.Hs.eg.db.html) | Artistic-2.0 |
+Package | License |
+:--------|:--------|
+[micromamba==1.5.5](www.github.com/mamba-org/mamba#micromamba) | BSD-3-Clause |
+[python](www.python.org/) | PSF/GPL-compat |
+[joblib](www.github.com/joblib/joblib) | BSD-3-Clause |
+[matplotlib](www.matplotlib.org) | PSF/BSD-compat |
+[numpy](www.numpy.org/) | BSD |
+[pandas](www.pandas.pydata.org/) | BSD 3-Clause |
+[scikit-learn](www.scikit-learn.org) | BSD-3-Clause |
+[xgboost](https://github.com/dmlc/xgboost) | Apache-2.0 |
+[shap](https://github.com/shap/shap) | MIT |
+[pillow](https://github.com/python-pillow/Pillow) | Open Source HPND |
+[PyTorch](https://github.com/pytorch/pytorch) | BSD |
+[Optuna](https://github.com/optuna) | MIT |
+[fpdf](https://github.com/reingart/pyfpdf) | LGPL-3.0 |
+[seaborn](https://github.com/mwaskom/seaborn) | BSD-3-Clause |
+[umap-learn](https://github.com/lmcinnes/umap) | BSD-3-Clause |
+[AnnotationDbi](https://bioconductor.org/packages/release/bioc/html/AnnotationDbi.html) | Artistic-2.0 |
+[BiocManager](https://bioconductor.github.io/BiocManager/) | Artistic-2.0 |
+[fields](https://cran.r-project.org/web/packages/fields/index.html) | GPL (>= 2) |
+[ggplot2](https://ggplot2.tidyverse.org/index.html) | MIT |
+[igraph](https://r.igraph.org/) | GPL (>= 2) |
+[magrittr](https://magrittr.tidyverse.org/) | MIT |
+[optparse](https://cran.r-project.org/web/packages/optparse/index.html) | GPL (>= 2) |
+[STRINGdb](https://bioconductor.org/packages/release/bioc/html/STRINGdb.html) | GPL (>= 2) |
+[tidyverse](https://www.tidyverse.org/) | GPL-3 |
+[writexl](https://cloud.r-project.org/web/packages/writexl/index.html) | BSD-2-clause |
+[org.Hs.eg.db](https://bioconductor.org/packages/release/data/annotation/html/org.Hs.eg.db.html) | Artistic-2.0 |
 
 ## Citations
 
 If you use `BiomarkerML` for your analysis, please cite the following Zenodo record:
 
-> Zhou, Y., Maurya, A.K., Deng, Y., Fletcher, M.P., Ren, C., & Taylor, A. (2025). A cloud-based proteomics ML workflow for biomarker discovery. Zenodo. https://doi.org/10.5281/zenodo.17367501
+> Zhou, Y., Maurya, A.K., Deng, Y., Fletcher, M.P., Ren, C., & Taylor, A. (2025). A cloud-based proteomics ML workflow for biomarker discovery. Zenodo. [https://doi.org/10.5281/zenodo.17367501](https://doi.org/10.5281/zenodo.17367501)
