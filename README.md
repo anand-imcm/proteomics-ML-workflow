@@ -227,6 +227,8 @@ machine learning, cloud-based workflow, classification and regression, proteomic
 
 ## Citations
 
-> Zhou, Y., Maurya, A., Deng, Y., & Taylor, A. (2024). A cloud-based proteomics ML workflow for biomarker discovery. Zenodo. [https://doi.org/10.5281/zenodo.13378490](https://doi.org/10.5281/zenodo.13378490)
+If you use `BiomarkerML` for your analysis, please cite the following Zenodo record:
 
-If you use `proteomics-ML-workflow` for your analysis, please cite the Zenodo record for that specific version using the following DOI: [10.5281/zenodo.13378490](https://zenodo.org/doi/10.5281/zenodo.13378490).
+> Zhou, Y., Maurya, A.K., Deng, Y., Fletcher, M.P., Ren, C., & Taylor, A. (2025). A cloud-based proteomics ML workflow for biomarker discovery. Zenodo. https://doi.org/10.5281/zenodo.17367501
+
+
