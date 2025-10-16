@@ -8,15 +8,17 @@
 > [!TIP]
 > To import the workflow into your Terra workspace, click on the above Dockstore badge, and select 'Terra' from the 'Launch with' widget on the Dockstore workflow page.
 
-## Introduction
-
-High-throughput affinity and mass-spectrometry-based proteomic studies of large clinical cohorts generate vast proteomic data and can enable rapid disease biomarker discovery. Here, we introduce an advanced machine learning (ML) workflow designed to streamline the ML analysis of proteomics data, thus enabling researchers to efficiently leverage sophisticated algorithms in the search for critical disease biomarkers.
-
-The workflow: takes proteomic data and sample labels as input, imputing missing values where necessary; pre-processes the data for ML models and optionally performs dimensionality reduction; makes available as standard a catalogue of machine learning and deep learning classification and regression models, including both well established and cutting-edge methods; calculates accuracy, sensitivity and specificity of models, enabling the evaluation and comparison of models based on these metrics; and carries out feature selection in models using SHapley Additive exPlanations (SHAP) values. In addition to these ML capabilities, the workflow also provides downstream modules for functional enrichment and protein-protein interaction (PPI) network analyses of feature-selected proteins.
-
-The workflow is implemented in Python, R and Workflow Description Language (WDL), and can be executed on a cloud-based platform for biomedical data analysis. Deployment in this manner provides a standardized, user-friendly interface, and ensures the reproducibility and reliability of analytical outputs. Furthermore, such deployment renders the workflow scalable and streamlines the analysis of large, complex proteomic data. This ML workflow thus represents a significant advancement, empowering researchers to efficiently explore proteomic landscapes and identify biomarkers critical for early detection and treatment of diseases.
+**Background**: High-throughput affinity and mass-spectrometry-based proteomic studies of large clinical cohorts generate high-dimensional proteomic data useful for accelerated disease biomarker discovery. A powerful approach to realizing the potential of these big, complex, and non-linear data, whilst ensuring reproducible results, is to use automated machine learning (ML) and deep learning (DL) pipelines for their analysis. However, there remains a gap in comprehensive ML workflows tailored to proteomic biomarker discovery and designed for biomedical researchers who need pipelines to optimally self-configure and automatically avoid over-fitting.
+ 
+**Findings**: We present BiomarkerML, a cloud-based workflow for automated, reproducible, and efficient ML/DL analysis of proteomic data for biomarker discovery, designed for novice-ML users and implemented in Python, R and Workflow Description Language (WDL). BiomarkerML: ingests proteomic and clinical data alongside sample labels; pre-processes data for model fitting and optionally performs dimensionality reduction and visualization; fits a catalogue of ML and DL classification and regression models; and calculates model performance metrics for model comparison. Next, the workflow applies mean SHapley Additive exPlanations (SHAP) to quantify the contribution of each protein to model predictions across all samples. Finally, proteins with high mean SHAP values, and their co-expressed protein network interactors, are identified as candidate biomarkers. Importantly, hyperparameters - configuration variables set prior to training models - are automatically fine-tuned via grid-search, and BiomarkerML employs weighted, nested cross-validation to avoid model over-fitting and data leakage.
+ 
+**Conclusions**: BiomarkerML is scalable, provides a standardized, user-friendly interface, and streamlines analyses to ensure reproducibility of results. Overall, BiomarkerML is a significant advancement, enabling novice-ML researchers to use cutting-edge ML/DL tools to identify disease biomarkers in complex proteomic data.
+ 
+**Keywords**:
+machine learning, cloud-based workflow, classification and regression, proteomic biomarker identification 
 
 <!-- markdownlint-disable MD033 -->
+<br>
 <div align="center">
   <img src="assets/proteomics-ml-WDL_white.png" width="900" height="auto"">
 </div>
