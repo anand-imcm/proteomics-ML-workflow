@@ -1,19 +1,4 @@
 # This script is a module for performing protein-protein interaction (PPI) network analysis on proteins selected based on protein importance derived from classification or regression machine learning models.
-
-# Example Command line for case: 
-# 4 platform comparison
-# Rscript protein_network.R \
-#     --score_thresholdHere 200 \
-#     --combined_score_thresholdHere 400 \
-#     --SHAPthresh 100 \
-#     --patternChosen "shap_values.csv" \
-#     --converProId FALSE \
-#     --proteinExpFile "Olink1.csv" \
-#     --CorMethod "spearman" \
-#     --CorThreshold 0.8 \
-#     > "/home/rstudio/YD/ML_workflow_DY/output/Network_WT.log" 2>&1 
-
-# All the other cases
 # Rscript protein_network.R \
 #     --score_thresholdHere 400 \
 #     --combined_score_thresholdHere 800 \
@@ -52,7 +37,7 @@ option_list <- list(
               help = "File name pattern defining which SHAP files to be included for analysis.", metavar = "FilePattern"),
   make_option(c("-v", "--converProId"), type = "logical", default = TRUE, 
               help = "Whether to perform protein name mapping from UniProt IDs to Entrez Gene Symbols.", metavar = "converProId"),
-  make_option(c("-x","--proteinExpFile"), type = "character", default = "Multiclass_Classification_Dataset.csv", 
+  make_option(c("-x","--proteinExpFile"), type = "character", default = "Binary_Classification_Dataset.csv", 
               help = "Name of the input file containing the protein expression profile.", metavar = "EXPRESSION"),
   make_option(c("-m","--CorMethod"), type = "character", default = "spearman", 
               help = "Correlation method used to define strongly co-expressed proteins; choose from Spearman, Pearson, or Kendall.", metavar = "CorMethod"),
@@ -231,7 +216,7 @@ map2String <- function(string_db, Pro_Plot_F, Full_SHAP_F_Plot, score_thresholdH
                horizontal = TRUE, 
                legend.width = 0.3, 
                legend.shrink = 0.3, 
-               legend.mar = 3,
+               legend.mar =5,
                legend.args = list(text = myTitle, side = 1, font = 2, line = 1, cex = 0.5),
                axis.args = list(cex.axis = 0.4, mgp = c(3, 0.3, 0),
                                 at = pretty(range(as.numeric(nodeValue), na.rm = TRUE)),
@@ -307,21 +292,26 @@ map2String <- function(string_db, Pro_Plot_F, Full_SHAP_F_Plot, score_thresholdH
     ### Plot the network
     layout_pos_expanded <- layout_with_fr(g_expanded)
     
+    #load("Object4InteractivePlot_Binary.rdat")
+    #load("Object4InteractivePlot_MultiClass.rdat")
+    # par(mar = c(6, 4, 4, 2)) ### For the paper figure, need to set permission to plot legend out of margin
+    
     plot(g_expanded, 
          layout = layout_pos_expanded, 
          vertex.label = nodeName2_expanded, 
-         vertex.size = 4, 
-         vertex.label.cex = 0.4,
-         vertex.label.font = 2,
+         vertex.size = 8, 
+         vertex.label.cex = 0.9,
+         vertex.label.font = 1,
          vertex.color = nodeColor_expanded, 
          vertex.shape = nodeShape,
          edge.color = "grey", 
          vertex.label.color = "black",
          vertex.label.family = "sans", 
-         vertex.label.dist = 0.65, 
-         cex.main = 0.02, 
-         #main = paste0("PPEI: ", patternChosen), 
-         rescale = TRUE)
+         vertex.label.dist = 1.1, 
+         cex.main = 1.5, 
+         main = "Expanded PPI Network of SHAP-Selected Proteins in LightGBM",
+         #rescale = TRUE
+         )
     
     ### Add a color legend
     image.plot(legend.only = TRUE, 
@@ -331,24 +321,26 @@ map2String <- function(string_db, Pro_Plot_F, Full_SHAP_F_Plot, score_thresholdH
                legend.width = 0.3, 
                legend.shrink = 0.3, 
                legend.mar = 3,
-               legend.args = list(text = myTitle_expanded, side = 1, font = 2, line = 1, cex = 0.5),
-               axis.args = list(cex.axis = 0.4, mgp = c(3, 0.3, 0),
+               legend.args = list(text = myTitle_expanded, side = 1, font = 1, line = 1.5, cex = 0.9),
+               axis.args = list(cex.axis = 0.8, mgp = c(3, 0.3, 0),
                                 at = pretty(range(as.numeric(nodeValue_expanded), na.rm = TRUE)),
                                 labels = format(pretty(range(as.numeric(nodeValue_expanded), na.rm = TRUE)), scientific = TRUE, digits = 2)
                                 ))
     
-    legend(x = "bottom",                   
-           inset = c(0, -0.07),                
+    legend(x = par("usr")[2],  # x-coordinate at right edge
+           y = par("usr")[4],  # y-coordinate at top
+           xjust = 0.5, 
+           yjust = 1.2,
            legend = c("High SHAP Protein", "Coexpressed Interactor"),
-           pch = c(21, 22),            
+           pch = c(21, 22),
            pt.bg = c("white", "white"),
-           pt.cex = 1.2,
-           cex = 0.5,
-           text.font = 2,
+           pt.cex = 2,
+           cex = 1.2,
+           text.font = 1,
            bty = "n",
-           horiz = TRUE,
-           seg.len = 0.2,
-           xpd = TRUE)
+           seg.len = 0.1,
+           xpd = TRUE,
+           x.intersp = 0.3)
     
     dev.off()
     
