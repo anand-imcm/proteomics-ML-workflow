@@ -1,0 +1,67 @@
+project:
+  seed: 20260918
+  species: human
+  expression_sample_id_column: SampleID
+  expression_group_column: Group
+  expression_protein_id_column: Protein
+  # Auto accepts long (SampleID, Protein, abundance) or wide samples-by-proteins files.
+  expression_value_column: Abundance
+biomarker_selection:
+  use_recommended_only: true
+  recommended_value: true
+cross_disease:
+  definition: PD_vs_ALS
+effect_size:
+  method: hedges_g
+  pd_case_label: PD
+  pd_control_label: HC
+  als_case_label: ALS
+  als_control_label: HC
+  minimum_group_n: 3
+  calculate_ci: true
+  ci_level: 0.95
+effect_concordance:
+  correlation_method: spearman
+  max_labels: 12
+convergence:
+  metric: protein_jaccard
+  report_continuous_metric: true
+supplementary:
+  export_correlation_heatmaps: true
+enrichment:
+  databases: [GO_BP, Reactome]
+  include_KEGG: false
+  fdr_threshold: 0.05
+  adjustment_method: BH
+  min_gene_set_size: 3
+  max_gene_set_size: 500
+  # The measurable expression-matrix proteins mapped to Entrez IDs are the universe.
+  background_strategy: measurable_mapped_expression_proteins
+  redundancy_jaccard_threshold: 0.50
+visualization:
+  max_pathways_XA: 15
+  max_pathways_XB: 8
+  max_biomarkers_XB: 30
+  heatmap_min_analysis_support: 2
+  max_pathways_YC: 15
+  max_shared_pathways_YD: 6
+  min_supporting_biomarkers_for_display: 2
+  include_cross_disease_in_YC: true
+correlation:
+  method: spearman
+  disease_samples_only: true
+  pd_label: PD
+  als_label: ALS
+  cluster_rows: true
+  cluster_columns: true
+  distance: one_minus_correlation
+  linkage: complete
+  use: pairwise.complete.obs
+figure:
+  width_mm: 180
+  dpi: 600
+  base_font_pt: 6
+  panel_label_pt: 9
+  # Helvetica is the PDF-safe metrically compatible sans-serif fallback.
+  font_family: Helvetica
+  output_formats: [png, tiff, pdf]

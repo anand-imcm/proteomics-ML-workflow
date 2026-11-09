@@ -1,0 +1,26 @@
+source("R/io_validation.R"); source("R/enrichment.R"); source("R/redundancy_reduction.R"); source("R/cross_disease.R")
+if (!file.exists("results/prepared_data.rds")) source("scripts/01_prepare_inputs.R")
+if (!file.exists("results/enrichment/pd_als_enrichment.rds")) source("scripts/02_run_enrichment.R")
+d <- readRDS("results/prepared_data.rds"); config <- d$config
+pd_als <- readRDS("results/enrichment/pd_als_enrichment.rds")
+member <- d$taxonomy
+class_sets <- build_biomarker_class_enrichment_sets(member, d$mapping, config)
+full <- run_enrichment_sets(class_sets$sets, d$mapping, d$universe, config)
+reduced <- reduce_pathway_redundancy(full, config$enrichment$redundancy_jaccard_threshold)
+links <- derive_pathway_support(reduced, member, d$mapping, config)
+disease_links <- derive_disease_pathway_links(pd_als$reduced, member, d$mapping, config)
+pathway_selection <- calculate_pathway_convergence_metrics(disease_links, config)
+edges <- build_convergence_edges(disease_links, pathway_selection)
+readr::write_csv(full, "results/cross_disease/full_enrichment.csv")
+readr::write_csv(reduced, "results/cross_disease/nonredundant_enrichment.csv")
+readr::write_csv(class_sets$eligibility, "results/cross_disease/biomarker_class_enrichment_eligibility.csv")
+readr::write_csv(links, "results/pathway_mapping/cross_disease_pathway_protein_links.csv")
+readr::write_csv(disease_links, "results/pathway_mapping/disease_axis_pathway_protein_links.csv")
+readr::write_csv(pathway_selection, "results/pathway_mapping/YD_shared_pathway_selection.csv")
+readr::write_csv(pathway_selection, "results/cross_disease/pathway_convergence_metrics.csv")
+readr::write_csv(edges, "results/pathway_mapping/convergence_edges.csv")
+readr::write_csv(edges, "results/pathway_mapping/YD_convergence_edges.csv")
+saveRDS(list(full=full, reduced=reduced, links=links, disease_links=disease_links,
+  eligibility=class_sets$eligibility, pathway_selection=pathway_selection, edges=edges),
+  "results/cross_disease/cross_disease_analysis.rds")
+message("Saved BiomarkerClass enrichment and continuous protein-Jaccard convergence results.")
